@@ -1,0 +1,12 @@
+@import "tailwindcss";
+
+@config "../tailwind.config.js";
+
+/* Remover outlines / bordas de foco nos elementos dos gráficos Recharts */
+.recharts-wrapper *:focus,
+.recharts-surface:focus {
+  outline: none !important;
+}
+.recharts-sector {
+  stroke: none !important; /* garante sem borda no Pie */
+}
