@@ -15,9 +15,14 @@ export const metadata: Metadata = {
     template: `%s - ${siteConfig.name}`,
   },
   description: siteConfig.description,
-  icons: {
-    icon: "/favicon.ico",
-  },
+  icons: [
+    {
+      rel: "icon",
+      url: "/faviconDark.ico",
+      media: "(prefers-color-scheme: light)",
+    },
+    { rel: "icon", url: "/favicon.ico", media: "(prefers-color-scheme: dark)" },
+  ],
 };
 
 export const viewport: Viewport = {
