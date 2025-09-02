@@ -468,6 +468,15 @@ export default function ClientesPage() {
                   </div>
                 )}
               </div>
+              {/* Adicione esta linha para mostrar o crédito */}
+              {typeof cliente.credito !== "undefined" && (
+                <p className="text-sm text-success font-semibold mt-1">
+                  Crédito: R${" "}
+                  {Number(cliente.credito)
+                    .toLocaleString("pt-BR", { minimumFractionDigits: 2 })
+                    .replace(",", ".")}
+                </p>
+              )}
             </CardBody>
           </Card>
         ))}

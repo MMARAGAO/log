@@ -67,25 +67,33 @@ interface EstoqueItem {
   minimo?: number;
   preco_compra?: number;
   preco_venda?: number;
-  quantidade?: number;
+  quantidade?: number; // Esta será removida da tabela estoque
   createdat?: string;
   updatedat?: string;
   fotourl?: string[];
   observacoes?: string;
+  // Novos campos para trabalhar com estoque por loja
+  estoque_lojas?: EstoqueLoja[];
+  quantidade_total?: number;
 }
 
-interface FilterState {
-  orderBy: string;
-  orderDirection: "asc" | "desc";
-  minQuantidade: string;
-  maxQuantidade: string;
-  minPrecoCompra: string;
-  maxPrecoCompra: string;
-  minPrecoVenda: string;
-  maxPrecoVenda: string;
-  marca: string;
-  estoqueBaixo: boolean;
-  semFoto: boolean;
+interface EstoqueLoja {
+  id: number;
+  produto_id: number;
+  loja_id: number;
+  quantidade: number;
+  updatedat: string;
+}
+
+interface Loja {
+  id: number;
+  nome: string;
+  endereco?: string;
+  telefone?: string;
+  createdat?: string;
+  updatedat?: string;
+  fotourl?: string[];
+  descricao?: string;
 }
 
 const ITEMS_PER_PAGE = 12;
@@ -342,12 +350,46 @@ function ModalPhotoCarousel({
   );
 }
 
+interface FilterState {
+  orderBy: string;
+  orderDirection: "asc" | "desc";
+  minQuantidade: string;
+  maxQuantidade: string;
+  minPrecoCompra: string;
+  maxPrecoCompra: string;
+  minPrecoVenda: string;
+  maxPrecoVenda: string;
+  marca: string;
+  estoqueBaixo: boolean;
+  semFoto: boolean;
+}
+
+// Vamos simplificar a interface para evitar confusões
+interface FormDataEstoque {
+  id?: number;
+  descricao?: string;
+  modelo?: string;
+  marca?: string;
+  compativel?: string;
+  minimo?: number;
+  preco_compra?: number;
+  preco_venda?: number;
+  quantidade?: number; // Adicionar esta propriedade
+  observacoes?: string;
+  createdat?: string;
+  updatedat?: string;
+  fotourl?: string[];
+  [key: `quantidade_loja_${number}`]: number;
+}
+
 export default function EstoquePage() {
   const [estoque, setEstoque] = useState<EstoqueItem[]>([]);
+  const [lojas, setLojas] = useState<Loja[]>([]);
+  const [selectedLoja, setSelectedLoja] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedItem, setSelectedItem] = useState<EstoqueItem | null>(null);
-  const [formData, setFormData] = useState<Partial<EstoqueItem>>({});
+  const [formData, setFormData] = useState<FormDataEstoque>({});
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   const [currentPhotos, setCurrentPhotos] = useState<string[]>([]);
@@ -381,22 +423,102 @@ export default function EstoquePage() {
   const canEditEstoque = !!permEstoque?.editar_estoque;
   const canDeleteEstoque = !!permEstoque?.deletar_estoque;
 
-  // Carregar estoque
+  // Carregar lojas
+  async function loadLojas() {
+    try {
+      const data = await fetchTable("lojas");
+      setLojas(data || []);
+      // if (data && data.length > 0 && !selectedLoja) {
+      //   setSelectedLoja(data[0].id);
+      // }
+    } catch (error) {
+      console.error("Erro ao carregar lojas:", error);
+    }
+  }
+
+  // Carregar estoque com quantidades por loja
+  // Carregar estoque com quantidades por loja
   async function loadEstoque() {
     setLoading(true);
     try {
+      console.log("🔄 Iniciando carregamento do estoque...");
       const data = await fetchTable("estoque");
-      setEstoque(data || []);
+      console.log("📦 Produtos carregados:", data?.length || 0);
+
+      if (data && data.length > 0) {
+        console.log("🔄 Carregando estoque por lojas...");
+
+        // Buscar todos os registros de estoque_lojas de uma vez
+        const todosEstoqueLojas = await fetchTable("estoque_lojas");
+        console.log(
+          "🏪 Registros de estoque por loja:",
+          todosEstoqueLojas?.length || 0
+        );
+
+        // Para cada produto, filtrar as quantidades de cada loja
+        const produtosComEstoque = data.map((produto, index) => {
+          try {
+            // Filtrar estoque de todas as lojas para este produto
+            const estoqueLojas =
+              todosEstoqueLojas?.filter(
+                (item) => item.produto_id === produto.id
+              ) || [];
+
+            // Calcular quantidade total
+            const quantidadeTotal = estoqueLojas.reduce((total, item) => {
+              const qty = Number(item.quantidade) || 0;
+              return total + qty;
+            }, 0);
+
+            if (index < 3) {
+              // Log apenas dos primeiros 3 produtos para debug
+              console.log(`📋 Produto ${produto.id} (${produto.descricao}):`, {
+                estoqueLojas: estoqueLojas.length,
+                quantidadeTotal,
+              });
+            }
+
+            return {
+              ...produto,
+              estoque_lojas: estoqueLojas,
+              quantidade_total: quantidadeTotal,
+            };
+          } catch (error) {
+            console.error(
+              `❌ Erro ao processar estoque do produto ${produto.id}:`,
+              error
+            );
+            return {
+              ...produto,
+              estoque_lojas: [],
+              quantidade_total: 0,
+            };
+          }
+        });
+
+        console.log("✅ Estoque processado com sucesso!");
+        setEstoque(produtosComEstoque);
+      } else {
+        console.log("📭 Nenhum produto encontrado");
+        setEstoque([]);
+      }
     } catch (error) {
-      console.error("Erro ao carregar estoque:", error);
+      console.error("❌ Erro ao carregar estoque:", error);
+      setEstoque([]);
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    loadEstoque();
+    loadLojas();
   }, []);
+
+  useEffect(() => {
+    if (lojas.length > 0) {
+      loadEstoque();
+    }
+  }, [lojas]);
 
   // Obter marcas únicas para o filtro
   const uniqueBrands = Array.from(
@@ -410,142 +532,53 @@ export default function EstoquePage() {
     return venda - compra;
   }
 
-  // Verificar estoque baixo
-  function isLowStock(item: EstoqueItem): boolean {
-    return (item.quantidade || 0) <= (item.minimo || 0);
+  // Função para obter quantidade de uma loja específica
+  function getQuantidadeLoja(item: EstoqueItem, lojaId: number): number {
+    if (!item.estoque_lojas || !Array.isArray(item.estoque_lojas)) {
+      return 0;
+    }
+
+    const estoqueLoja = item.estoque_lojas.find((el) => el.loja_id === lojaId);
+    return Number(estoqueLoja?.quantidade) || 0;
   }
 
-  // Aplicar filtros e ordenação
-  const filteredAndSortedEstoque = estoque
-    .filter((item) => {
-      // Filtro de busca por texto
-      const searchMatch =
-        !searchTerm ||
-        item.descricao?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.modelo?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.marca?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.compativel?.toLowerCase().includes(searchTerm.toLowerCase());
+  // Função para verificar estoque baixo considerando loja específica
+  function isLowStock(item: EstoqueItem, lojaId?: number): boolean {
+    if (lojaId) {
+      return getQuantidadeLoja(item, lojaId) <= (item.minimo || 0);
+    }
+    return (item.quantidade_total || 0) <= (item.minimo || 0);
+  }
 
-      // Filtro de quantidade
-      const quantidadeMatch =
-        (!filters.minQuantidade ||
-          (item.quantidade || 0) >= Number(filters.minQuantidade)) &&
-        (!filters.maxQuantidade ||
-          (item.quantidade || 0) <= Number(filters.maxQuantidade));
+  // Calcular estatísticas considerando loja selecionada
+  const totalQuantidade = selectedLoja
+    ? estoque.reduce(
+        (acc, item) => acc + getQuantidadeLoja(item, selectedLoja),
+        0
+      )
+    : estoque.reduce((acc, item) => acc + (item.quantidade_total || 0), 0);
 
-      // Filtro de preço de compra
-      const precoCompraMatch =
-        (!filters.minPrecoCompra ||
-          (item.preco_compra || 0) >=
-            currencyToNumber(filters.minPrecoCompra)) &&
-        (!filters.maxPrecoCompra ||
-          (item.preco_compra || 0) <= currencyToNumber(filters.maxPrecoCompra));
+  const totalPrecoVenda = selectedLoja
+    ? estoque.reduce((acc, item) => {
+        const qty = getQuantidadeLoja(item, selectedLoja);
+        return acc + (item.preco_venda || 0) * qty;
+      }, 0)
+    : estoque.reduce((acc, item) => {
+        const qty = item.quantidade_total || 0;
+        return acc + (item.preco_venda || 0) * qty;
+      }, 0);
 
-      // Filtro de preço de venda
-      const precoVendaMatch =
-        (!filters.minPrecoVenda ||
-          (item.preco_venda || 0) >= currencyToNumber(filters.minPrecoVenda)) &&
-        (!filters.maxPrecoVenda ||
-          (item.preco_venda || 0) <= currencyToNumber(filters.maxPrecoVenda));
+  const totalPrecoCompra = selectedLoja
+    ? estoque.reduce((acc, item) => {
+        const qty = getQuantidadeLoja(item, selectedLoja);
+        return acc + (item.preco_compra || 0) * qty;
+      }, 0)
+    : estoque.reduce((acc, item) => {
+        const qty = item.quantidade_total || 0;
+        return acc + (item.preco_compra || 0) * qty;
+      }, 0);
 
-      // Filtro de marca
-      const marcaMatch = !filters.marca || item.marca === filters.marca;
-
-      // Filtro de estoque baixo
-      const estoqueBaixoMatch = !filters.estoqueBaixo || isLowStock(item);
-
-      // Filtro de sem foto
-      const semFotoMatch =
-        !filters.semFoto || !item.fotourl || item.fotourl.length === 0;
-
-      return (
-        searchMatch &&
-        quantidadeMatch &&
-        precoCompraMatch &&
-        precoVendaMatch &&
-        marcaMatch &&
-        estoqueBaixoMatch &&
-        semFotoMatch
-      );
-    })
-    .sort((a, b) => {
-      let aValue: any, bValue: any;
-
-      switch (filters.orderBy) {
-        case "descricao":
-          aValue = a.descricao?.toLowerCase() || "";
-          bValue = b.descricao?.toLowerCase() || "";
-          break;
-        case "marca":
-          aValue = a.marca?.toLowerCase() || "";
-          bValue = b.marca?.toLowerCase() || "";
-          break;
-        case "modelo":
-          aValue = a.modelo?.toLowerCase() || "";
-          bValue = b.modelo?.toLowerCase() || "";
-          break;
-        case "quantidade":
-          aValue = a.quantidade || 0;
-          bValue = b.quantidade || 0;
-          break;
-        case "preco_compra":
-          aValue = a.preco_compra || 0;
-          bValue = b.preco_compra || 0;
-          break;
-        case "preco_venda":
-          aValue = a.preco_venda || 0;
-          bValue = b.preco_venda || 0;
-          break;
-        case "lucro":
-          aValue = calculateProfit(a);
-          bValue = calculateProfit(b);
-          break;
-        case "createdat":
-          aValue = new Date(a.createdat || 0);
-          bValue = new Date(b.createdat || 0);
-          break;
-        case "updatedat":
-          aValue = new Date(a.updatedat || 0);
-          bValue = new Date(b.updatedat || 0);
-          break;
-        default:
-          aValue = a.descricao?.toLowerCase() || "";
-          bValue = b.descricao?.toLowerCase() || "";
-      }
-
-      if (filters.orderDirection === "asc") {
-        return aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
-      } else {
-        return aValue > bValue ? -1 : aValue < bValue ? 1 : 0;
-      }
-    });
-
-  // Calcular paginação
-  const totalPages = Math.ceil(
-    filteredAndSortedEstoque.length / ITEMS_PER_PAGE
-  );
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const endIndex = startIndex + ITEMS_PER_PAGE;
-  const currentItems = filteredAndSortedEstoque.slice(startIndex, endIndex);
-
-  // Reset página quando buscar ou filtrar
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchTerm, filters]);
-
-  // Calcular estatísticas
-  const totalQuantidade = estoque.reduce(
-    (acc, item) => acc + (item.quantidade || 0),
-    0
-  );
-  const totalPrecoVenda = estoque.reduce(
-    (acc, item) => acc + (item.preco_venda || 0) * (item.quantidade || 0),
-    0
-  );
-  const totalPrecoCompra = estoque.reduce(
-    (acc, item) => acc + (item.preco_compra || 0) * (item.quantidade || 0),
-    0
-  );
+  // Calcular lucro potencial total
   const totalLucro = totalPrecoVenda - totalPrecoCompra;
 
   // Limpar filtros
@@ -568,7 +601,7 @@ export default function EstoquePage() {
 
   // Limpar formulário
   function clearForm() {
-    setFormData({});
+    setFormData({} as FormDataEstoque);
     setSelectedFiles([]);
     setPreviewUrls([]);
     setCurrentPhotos([]);
@@ -585,13 +618,23 @@ export default function EstoquePage() {
   // Editar item
   function handleEdit(item: EstoqueItem) {
     setSelectedItem(item);
-    setFormData({
+
+    // Criar formData com as quantidades atuais de cada loja
+    const formDataWithQuantidades: FormDataEstoque = {
       ...item,
       preco_compra: item.preco_compra || 0,
       preco_venda: item.preco_venda || 0,
       quantidade: item.quantidade || 0,
       minimo: item.minimo || 0,
+    };
+
+    // Adicionar quantidades por loja ao formData
+    lojas.forEach((loja) => {
+      const quantidade = getQuantidadeLoja(item, loja.id);
+      formDataWithQuantidades[`quantidade_loja_${loja.id}`] = quantidade;
     });
+
+    setFormData(formDataWithQuantidades);
     setCurrentPhotos(item.fotourl || []);
     setIsEditing(true);
     onOpen();
@@ -647,145 +690,268 @@ export default function EstoquePage() {
   }
 
   // Salvar item com verificação de permissão
+  // Atualizar a função handleSave para trabalhar com estoque por loja
   async function handleSave() {
     if (!formData.descricao) {
       alert("Descrição é obrigatória!");
       return;
     }
 
-    // Verificação de permissão
-    if (isEditing && !canEditEstoque) {
-      alert("Você não possui permissão para editar itens do estoque.");
-      return;
-    }
-    if (!isEditing && !canCreateEstoque) {
-      alert("Você não possui permissão para criar itens no estoque.");
-      return;
-    }
-
     setLoading(true);
     try {
-      const dataToSave = {
-        ...formData,
-        preco_compra: formData.preco_compra || 0,
-        preco_venda: formData.preco_venda || 0,
-        quantidade: formData.quantidade || 0,
-        minimo: formData.minimo || 0,
-      };
+      console.log("🔄 Iniciando salvamento...");
+      console.log("📋 FormData original:", formData);
+
+      let produtoId: number;
 
       if (isEditing && selectedItem) {
-        // Atualizar item existente
-        if (selectedFiles.length > 0) {
-          // Adicionar novas fotos uma por uma
-          let currentFotoArray = [...currentPhotos];
+        console.log("✏️ Editando produto ID:", selectedItem.id);
 
+        // Criar objeto apenas com campos válidos da tabela estoque
+        const validEstoqueFields = {
+          descricao: formData.descricao,
+          modelo: formData.modelo || null,
+          marca: formData.marca || null,
+          compativel: formData.compativel || null,
+          minimo: formData.minimo || 0,
+          preco_compra: formData.preco_compra || 0,
+          preco_venda: formData.preco_venda || 0,
+          observacoes: formData.observacoes || null,
+          updatedat: new Date().toISOString(),
+        };
+
+        // Remover campos undefined/null para evitar problemas
+        const cleanedData = Object.fromEntries(
+          Object.entries(validEstoqueFields).filter(
+            ([key, value]) => value !== undefined
+          )
+        );
+
+        console.log("🧹 Dados limpos para atualizar produto:", cleanedData);
+
+        // Atualizar produto existente
+        try {
+          const updateResult = await updateTable(
+            "estoque",
+            selectedItem.id,
+            cleanedData
+          );
+          console.log("✅ Produto atualizado:", updateResult);
+        } catch (updateError) {
+          console.error("❌ Erro ao atualizar produto:", updateError);
+          console.error("❌ Dados que causaram o erro:", cleanedData);
+          throw new Error(
+            `Erro ao atualizar produto: ${getErrorMessage(updateError)}`
+          );
+        }
+
+        produtoId = selectedItem.id;
+
+        // Atualizar quantidades por loja
+        console.log("🏪 Atualizando estoque por loja...");
+        for (const loja of lojas) {
+          try {
+            const quantidadeAtual = formData[`quantidade_loja_${loja.id}`];
+            console.log(
+              `📦 Loja ${loja.nome} (${loja.id}): quantidade = ${quantidadeAtual}`
+            );
+
+            if (quantidadeAtual !== undefined) {
+              await updateEstoqueLoja(produtoId, loja.id, quantidadeAtual);
+              console.log(`✅ Estoque atualizado para loja ${loja.nome}`);
+            }
+          } catch (estoqueError) {
+            console.error(
+              `❌ Erro ao atualizar estoque para loja ${loja.nome}:`,
+              estoqueError
+            );
+            // Não parar o processo se uma loja falhar
+          }
+        }
+
+        // Processar fotos se houver
+        if (selectedFiles.length > 0) {
+          console.log("📸 Processando fotos...");
+          let currentFotoArray = [...currentPhotos];
           for (let i = 0; i < selectedFiles.length; i++) {
+            try {
+              console.log(
+                `📸 Adicionando foto ${i + 1}/${selectedFiles.length}`
+              );
+              await updateTable(
+                "estoque",
+                selectedItem.id,
+                {}, // Objeto vazio para não interferir com outros campos
+                selectedFiles[i],
+                currentFotoArray
+              );
+
+              const updatedItems = await fetchTable("estoque");
+              const updatedItem = updatedItems?.find(
+                (item) => item.id === selectedItem.id
+              );
+              if (updatedItem?.fotourl) {
+                currentFotoArray = updatedItem.fotourl;
+              }
+            } catch (photoError) {
+              console.error(`❌ Erro ao adicionar foto ${i + 1}:`, photoError);
+              // Continuar mesmo se uma foto falhar
+            }
+          }
+        } else if (
+          currentPhotos.length !== (selectedItem.fotourl?.length || 0)
+        ) {
+          console.log("📸 Atualizando fotos existentes...");
+          // Atualizar apenas se as fotos mudaram
+          try {
             await updateTable(
               "estoque",
               selectedItem.id,
-              i === 0 ? dataToSave : {}, // Atualizar dados apenas na primeira chamada
-              selectedFiles[i],
-              currentFotoArray
+              {},
+              undefined,
+              currentPhotos
             );
-
-            // Buscar o item atualizado para pegar o array correto
-            const updatedItems = await fetchTable("estoque");
-            const updatedItem = updatedItems.find(
-              (item) => item.id === selectedItem.id
-            );
-            if (updatedItem?.fotourl) {
-              currentFotoArray = updatedItem.fotourl;
-            }
+          } catch (photoError) {
+            console.error("❌ Erro ao atualizar fotos:", photoError);
           }
-        } else {
-          // Apenas atualizar dados sem adicionar fotos
-          await updateTable(
-            "estoque",
-            selectedItem.id,
-            dataToSave,
-            undefined,
-            currentPhotos
-          );
         }
       } else {
-        // Criar novo item
-        if (selectedFiles.length === 0) {
-          // Criar item sem fotos
-          await insertTable("estoque", dataToSave);
-        } else {
-          // Criar item com fotos (múltiplas ou única)
-          console.log(`Criando item com ${selectedFiles.length} foto(s)`);
+        console.log("➕ Criando novo produto...");
 
-          // Inserir item com a primeira foto
-          await insertTable("estoque", dataToSave, selectedFiles[0]);
+        // Criar objeto apenas com campos válidos da tabela estoque
+        const validEstoqueFields = {
+          descricao: formData.descricao,
+          modelo: formData.modelo || null,
+          marca: formData.marca || null,
+          compativel: formData.compativel || null,
+          minimo: formData.minimo || 0,
+          preco_compra: formData.preco_compra || 0,
+          preco_venda: formData.preco_venda || 0,
+          observacoes: formData.observacoes || null,
+        };
 
+        // Remover campos undefined/null
+        const cleanedData = Object.fromEntries(
+          Object.entries(validEstoqueFields).filter(
+            ([key, value]) => value !== undefined
+          )
+        );
+
+        console.log("🧹 Dados limpos para criar produto:", cleanedData);
+
+        // Criar novo produto
+        let result;
+        try {
+          if (selectedFiles.length > 0) {
+            console.log("📸 Criando com foto inicial...");
+            result = await insertTable(
+              "estoque",
+              cleanedData,
+              selectedFiles[0]
+            );
+          } else {
+            console.log("📝 Criando sem foto...");
+            result = await insertTable("estoque", cleanedData);
+          }
+          console.log("✅ Produto criado:", result);
+        } catch (insertError) {
+          console.error("❌ Erro ao inserir produto:", insertError);
+          throw new Error(
+            `Erro ao criar produto: ${getErrorMessage(insertError)}`
+          );
+        }
+
+        // Buscar o produto recém-criado
+        console.log("🔍 Buscando produto recém-criado...");
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        const allItems = await fetchTable("estoque");
+        const newItem = allItems
+          ?.filter(
+            (item) =>
+              item.descricao === cleanedData.descricao &&
+              item.marca === cleanedData.marca &&
+              item.modelo === cleanedData.modelo
+          )
+          .sort(
+            (a, b) =>
+              new Date(b.createdat || "").getTime() -
+              new Date(a.createdat || "").getTime()
+          )[0];
+
+        if (newItem) {
+          produtoId = newItem.id;
+          console.log("✅ Produto encontrado, ID:", produtoId);
+
+          // Adicionar fotos restantes se houver
           if (selectedFiles.length > 1) {
-            // Aguardar para garantir que o item foi criado
-            await new Promise((resolve) => setTimeout(resolve, 1000));
-
-            // Buscar o item recém-criado
-            const allItems = await fetchTable("estoque");
-            const newItem = allItems
-              .filter(
-                (item) =>
-                  item.descricao === dataToSave.descricao &&
-                  item.marca === dataToSave.marca &&
-                  item.modelo === dataToSave.modelo
-              )
-              .sort(
-                (a, b) =>
-                  new Date(b.createdat || "").getTime() -
-                  new Date(a.createdat || "").getTime()
-              )[0];
-
-            if (newItem) {
-              console.log(
-                `Item criado com ID: ${newItem.id}, fotos atuais:`,
-                newItem.fotourl
-              );
-
-              // Adicionar fotos restantes uma por uma
-              for (let i = 1; i < selectedFiles.length; i++) {
-                console.log(
-                  `Adicionando foto ${i + 1} de ${selectedFiles.length}`
-                );
-
-                // Buscar o estado atual do item antes de cada upload
+            console.log("📸 Adicionando fotos restantes...");
+            for (let i = 1; i < selectedFiles.length; i++) {
+              try {
                 const currentItems = await fetchTable("estoque");
-                const currentItem = currentItems.find(
+                const currentItem = currentItems?.find(
                   (item) => item.id === newItem.id
                 );
                 const currentFotoArray = currentItem?.fotourl || [];
 
                 console.log(
-                  `Fotos atuais antes do upload ${i + 1}:`,
-                  currentFotoArray
+                  `📸 Adicionando foto ${i + 1}/${selectedFiles.length}`
                 );
-
                 await updateTable(
                   "estoque",
                   newItem.id,
-                  {}, // Não atualizar outros dados
+                  {},
                   selectedFiles[i],
                   currentFotoArray
                 );
-
-                // Aguardar entre uploads
                 await new Promise((resolve) => setTimeout(resolve, 500));
+              } catch (photoError) {
+                console.error(
+                  `❌ Erro ao adicionar foto ${i + 1}:`,
+                  photoError
+                );
               }
-            } else {
-              console.error("Não foi possível encontrar o item recém-criado");
             }
           }
+
+          // Criar registros de estoque por loja
+          console.log("🏪 Criando estoque por loja...");
+          for (const loja of lojas) {
+            try {
+              const quantidade = formData[`quantidade_loja_${loja.id}`] || 0;
+              console.log(`📦 Loja ${loja.nome}: quantidade = ${quantidade}`);
+
+              if (quantidade > 0) {
+                const estoqueData = {
+                  produto_id: produtoId,
+                  loja_id: loja.id,
+                  quantidade: quantidade,
+                };
+                console.log("📋 Dados do estoque:", estoqueData);
+
+                await insertTable("estoque_lojas", estoqueData);
+                console.log(`✅ Estoque criado para loja ${loja.nome}`);
+              }
+            } catch (estoqueError) {
+              console.error(
+                `❌ Erro ao criar estoque para loja ${loja.nome}:`,
+                estoqueError
+              );
+            }
+          }
+        } else {
+          throw new Error("Não foi possível encontrar o produto recém-criado");
         }
       }
 
-      // Recarregar dados apenas uma vez no final
+      console.log("🔄 Recarregando estoque...");
       await loadEstoque();
+
+      console.log("✅ Salvamento concluído com sucesso!");
       onClose();
       clearForm();
     } catch (error) {
-      console.error("Erro completo ao salvar item:", error);
+      console.error("❌ Erro ao salvar item:", error);
+      alert(`Erro ao salvar item: ${getErrorMessage(error)}`);
     } finally {
       setLoading(false);
     }
@@ -807,11 +973,225 @@ export default function EstoquePage() {
     }
   }
 
-  // Verificação de loading
-  if (loading && !isOpen) {
+  // Função para atualizar estoque de uma loja específica
+  async function updateEstoqueLoja(
+    produtoId: number,
+    lojaId: number,
+    quantidade: number
+  ) {
+    try {
+      console.log(
+        `🔄 Atualizando estoque - Produto: ${produtoId}, Loja: ${lojaId}, Quantidade: ${quantidade}`
+      );
+
+      // Buscar todos os registros de estoque_lojas
+      const todosEstoqueLojas = await fetchTable("estoque_lojas");
+      console.log(
+        "📋 Total de registros de estoque por loja:",
+        todosEstoqueLojas?.length || 0
+      );
+
+      // Filtrar para encontrar o registro específico
+      const estoqueExistente = todosEstoqueLojas?.filter(
+        (item) => item.produto_id === produtoId && item.loja_id === lojaId
+      );
+
+      console.log(
+        "🔍 Registros existentes encontrados:",
+        estoqueExistente?.length || 0
+      );
+
+      if (estoqueExistente && estoqueExistente.length > 0) {
+        console.log(
+          "✏️ Atualizando registro existente ID:",
+          estoqueExistente[0].id
+        );
+
+        const updateData = {
+          quantidade: quantidade,
+          updatedat: new Date().toISOString(),
+        };
+        console.log("📋 Dados para atualização:", updateData);
+
+        // Atualizar registro existente
+        const result = await updateTable(
+          "estoque_lojas",
+          estoqueExistente[0].id,
+          updateData
+        );
+        console.log("✅ Resultado da atualização:", result);
+      } else {
+        console.log("➕ Criando novo registro de estoque");
+
+        const insertData = {
+          produto_id: produtoId,
+          loja_id: lojaId,
+          quantidade: quantidade,
+        };
+        console.log("📋 Dados para inserção:", insertData);
+
+        // Criar novo registro
+        const result = await insertTable("estoque_lojas", insertData);
+        console.log("✅ Resultado da inserção:", result);
+      }
+    } catch (error) {
+      console.error("❌ Erro detalhado ao atualizar estoque da loja:", {
+        produtoId,
+        lojaId,
+        quantidade,
+        error,
+      });
+      throw error;
+    }
+  }
+
+  // Aplicar filtros e ordenação
+  const filteredAndSortedEstoque = estoque
+    .filter((item) => {
+      // Filtro de busca por texto
+      const searchMatch =
+        !searchTerm ||
+        item.descricao?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.modelo?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.marca?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.compativel?.toLowerCase().includes(searchTerm.toLowerCase());
+
+      // Quantidade baseada na loja selecionada
+      const quantidade = selectedLoja
+        ? getQuantidadeLoja(item, selectedLoja)
+        : item.quantidade_total || 0;
+
+      // Filtro de quantidade
+      const quantidadeMatch =
+        (!filters.minQuantidade ||
+          quantidade >= Number(filters.minQuantidade)) &&
+        (!filters.maxQuantidade || quantidade <= Number(filters.maxQuantidade));
+
+      // Filtro de preço de compra
+      const precoCompraMatch =
+        (!filters.minPrecoCompra ||
+          (item.preco_compra || 0) >=
+            currencyToNumber(filters.minPrecoCompra)) &&
+        (!filters.maxPrecoCompra ||
+          (item.preco_compra || 0) <= currencyToNumber(filters.maxPrecoCompra));
+
+      // Filtro de preço de venda
+      const precoVendaMatch =
+        (!filters.minPrecoVenda ||
+          (item.preco_venda || 0) >= currencyToNumber(filters.minPrecoVenda)) &&
+        (!filters.maxPrecoVenda ||
+          (item.preco_venda || 0) <= currencyToNumber(filters.maxPrecoVenda));
+
+      // Filtro de marca
+      const marcaMatch = !filters.marca || item.marca === filters.marca;
+
+      // Filtro de estoque baixo baseado na loja selecionada
+      const estoqueBaixoMatch =
+        !filters.estoqueBaixo || isLowStock(item, selectedLoja || undefined);
+
+      // Filtro de sem foto
+      const semFotoMatch =
+        !filters.semFoto || !item.fotourl || item.fotourl.length === 0;
+
+      return (
+        searchMatch &&
+        quantidadeMatch &&
+        precoCompraMatch &&
+        precoVendaMatch &&
+        marcaMatch &&
+        estoqueBaixoMatch &&
+        semFotoMatch
+      );
+    })
+    .sort((a, b) => {
+      let aValue: any, bValue: any;
+
+      switch (filters.orderBy) {
+        case "descricao":
+          aValue = a.descricao?.toLowerCase() || "";
+          bValue = b.descricao?.toLowerCase() || "";
+          break;
+        case "marca":
+          aValue = a.marca?.toLowerCase() || "";
+          bValue = b.marca?.toLowerCase() || "";
+          break;
+        case "modelo":
+          aValue = a.modelo?.toLowerCase() || "";
+          bValue = b.modelo?.toLowerCase() || "";
+          break;
+        case "quantidade":
+          aValue = selectedLoja
+            ? getQuantidadeLoja(a, selectedLoja)
+            : a.quantidade_total || 0;
+          bValue = selectedLoja
+            ? getQuantidadeLoja(b, selectedLoja)
+            : b.quantidade_total || 0;
+          break;
+        case "preco_compra":
+          aValue = a.preco_compra || 0;
+          bValue = b.preco_compra || 0;
+          break;
+        case "preco_venda":
+          aValue = a.preco_venda || 0;
+          bValue = b.preco_venda || 0;
+          break;
+        case "lucro":
+          aValue = calculateProfit(a);
+          bValue = calculateProfit(b);
+          break;
+        case "createdat":
+          aValue = new Date(a.createdat || 0);
+          bValue = new Date(b.createdat || 0);
+          break;
+        case "updatedat":
+          aValue = new Date(a.updatedat || 0);
+          bValue = new Date(b.updatedat || 0);
+          break;
+        default:
+          aValue = a.descricao?.toLowerCase() || "";
+          bValue = b.descricao?.toLowerCase() || "";
+      }
+
+      if (filters.orderDirection === "asc") {
+        return aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
+      } else {
+        return aValue > bValue ? -1 : aValue < bValue ? 1 : 0;
+      }
+    });
+
+  // Paginação
+  const totalPages = Math.ceil(
+    filteredAndSortedEstoque.length / ITEMS_PER_PAGE
+  );
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const endIndex = startIndex + ITEMS_PER_PAGE;
+  const currentItems = filteredAndSortedEstoque.slice(startIndex, endIndex);
+
+  // Verificação de loading - mostrar skeleton ou spinner mais específico
+  // Verificação de loading - mostrar skeleton ou spinner mais específico
+  if (loading && estoque.length === 0) {
     return (
-      <div className="flex justify-center items-center min-h-screen">
-        <Spinner size="lg" label="Carregando estoque..." />
+      <div className="container mx-auto p-6">
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-3xl font-bold">Controle de Estoque</h1>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          {[1, 2, 3, 4].map((i) => (
+            <Card key={i}>
+              <CardBody className="p-4">
+                <div className="animate-pulse">
+                  <div className="h-4 bg-gray-200 rounded mb-2"></div>
+                  <div className="h-6 bg-gray-200 rounded"></div>
+                </div>
+              </CardBody>
+            </Card>
+          ))}
+        </div>
+
+        <div className="flex justify-center items-center min-h-[400px]">
+          <Spinner size="lg" label="Carregando dados do estoque..." />
+        </div>
       </div>
     );
   }
@@ -845,7 +1225,41 @@ export default function EstoquePage() {
   return (
     <div className="container mx-auto p-6">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">Controle de Estoque</h1>
+        <div>
+          <h1 className="text-3xl font-bold">Controle de Estoque</h1>
+          {lojas.length > 0 && (
+            <div className="mt-2">
+              <Select
+                label="Selecionar Loja"
+                selectedKeys={
+                  selectedLoja
+                    ? new Set([selectedLoja.toString()])
+                    : new Set(["all"])
+                }
+                onSelectionChange={(keys) => {
+                  const selectedKey = Array.from(keys)[0] as string;
+                  if (selectedKey === "all") {
+                    setSelectedLoja(null);
+                  } else {
+                    setSelectedLoja(Number(selectedKey));
+                  }
+                }}
+                className="w-64"
+                size="sm"
+                placeholder="Selecione uma loja"
+                items={[
+                  { id: "all", nome: "Todas as Lojas" },
+                  ...lojas.map((loja) => ({
+                    id: loja.id.toString(),
+                    nome: loja.nome,
+                  })),
+                ]}
+              >
+                {(item) => <SelectItem key={item.id}>{item.nome}</SelectItem>}
+              </Select>
+            </div>
+          )}
+        </div>
         {canCreateEstoque && (
           <Button
             color="primary"
@@ -1220,13 +1634,42 @@ export default function EstoquePage() {
                           <Chip
                             size="sm"
                             variant="flat"
-                            color={isLowStock(item) ? "danger" : "success"}
+                            color={
+                              selectedLoja
+                                ? isLowStock(item, selectedLoja)
+                                  ? "danger"
+                                  : "success"
+                                : isLowStock(item)
+                                  ? "danger"
+                                  : "success"
+                            }
                           >
-                            Qtd: {item.quantidade || 0}
+                            Qtd:{" "}
+                            {selectedLoja
+                              ? getQuantidadeLoja(item, selectedLoja)
+                              : item.quantidade_total || 0}
                           </Chip>
-                          {isLowStock(item) && (
-                            <Chip size="sm" color="danger" variant="flat">
-                              <ExclamationTriangleIcon className="w-3 h-3 mr-1" />
+                          {selectedLoja && isLowStock(item, selectedLoja) && (
+                            <Chip
+                              size="sm"
+                              color="danger"
+                              variant="flat"
+                              startContent={
+                                <ExclamationTriangleIcon className="w-3 h-3 mr-1" />
+                              }
+                            >
+                              Estoque Baixo
+                            </Chip>
+                          )}
+                          {!selectedLoja && isLowStock(item) && (
+                            <Chip
+                              size="sm"
+                              color="danger"
+                              variant="flat"
+                              startContent={
+                                <ExclamationTriangleIcon className="w-3 h-3 mr-1" />
+                              }
+                            >
                               Estoque Baixo
                             </Chip>
                           )}
@@ -1406,30 +1849,20 @@ export default function EstoquePage() {
 
                 {/* Quantidade e Mínimo */}
                 <div className="grid grid-cols-2 gap-4">
-                  <Input
-                    label="Quantidade"
-                    type="number"
-                    placeholder="0"
-                    value={formData.quantidade?.toString() || ""}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        quantidade: Number(e.target.value) || 0,
-                      })
-                    }
-                  />
-                  <Input
-                    label="Estoque Mínimo"
-                    type="number"
-                    placeholder="0"
-                    value={formData.minimo?.toString() || ""}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        minimo: Number(e.target.value) || 0,
-                      })
-                    }
-                  />
+                  <>
+                    <Input
+                      label="Estoque Mínimo"
+                      type="number"
+                      placeholder="0"
+                      value={formData.minimo?.toString() || ""}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          minimo: Number(e.target.value) || 0,
+                        })
+                      }
+                    />
+                  </>
                 </div>
 
                 {/* Preços */}
@@ -1501,6 +1934,100 @@ export default function EstoquePage() {
                     title="Novas Fotos"
                   />
                 )}
+
+                {/* Estoque por Loja */}
+                {isEditing && selectedItem && (
+                  <div>
+                    <label className="block text-sm font-medium mb-2">
+                      Estoque por Loja
+                    </label>
+                    <div className="space-y-3 p-4  rounded-lg">
+                      {lojas.map((loja) => {
+                        // Buscar quantidade do formData primeiro, senão do item original
+                        const quantidadeFormData =
+                          formData[`quantidade_loja_${loja.id}`];
+                        const quantidadeOriginal = getQuantidadeLoja(
+                          selectedItem,
+                          loja.id
+                        );
+                        const quantidade =
+                          quantidadeFormData !== undefined
+                            ? quantidadeFormData
+                            : quantidadeOriginal;
+
+                        return (
+                          <div
+                            key={loja.id}
+                            className="flex items-center gap-3"
+                          >
+                            <div className="flex-1">
+                              <p className="font-medium">{loja.nome}</p>
+                              <p className="text-sm text-gray-500">
+                                {loja.endereco}
+                              </p>
+                            </div>
+                            <Input
+                              type="number"
+                              placeholder="0"
+                              value={quantidade.toString()}
+                              onChange={(e) => {
+                                const novaQuantidade =
+                                  Number(e.target.value) || 0;
+                                // Apenas atualizar o formData, não salvar no banco ainda
+                                setFormData({
+                                  ...formData,
+                                  [`quantidade_loja_${loja.id}`]:
+                                    novaQuantidade,
+                                });
+                              }}
+                              className="w-24"
+                              size="sm"
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Quantidade para novo item */}
+                {!isEditing && (
+                  <div>
+                    <label className="block text-sm font-medium mb-2">
+                      Quantidade Inicial por Loja
+                    </label>
+                    <div className="space-y-3 p-4  rounded-lg">
+                      {lojas.map((loja) => (
+                        <div key={loja.id} className="flex items-center gap-3">
+                          <div className="flex-1">
+                            <p className="font-medium">{loja.nome}</p>
+                            <p className="text-sm text-gray-500">
+                              {loja.endereco}
+                            </p>
+                          </div>
+                          <Input
+                            type="number"
+                            placeholder="0"
+                            value={
+                              formData[
+                                `quantidade_loja_${loja.id}`
+                              ]?.toString() || ""
+                            }
+                            onChange={(e) => {
+                              setFormData({
+                                ...formData,
+                                [`quantidade_loja_${loja.id}`]:
+                                  Number(e.target.value) || 0,
+                              });
+                            }}
+                            className="w-24"
+                            size="sm"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </ModalBody>
             <ModalFooter>
@@ -1516,4 +2043,18 @@ export default function EstoquePage() {
       )}
     </div>
   );
+}
+
+// Função utilitária para extrair mensagem de erro
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === "string") {
+    return error;
+  }
+  if (error && typeof error === "object") {
+    return JSON.stringify(error, null, 2);
+  }
+  return "Erro desconhecido";
 }

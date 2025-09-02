@@ -60,6 +60,20 @@ export interface PermissoesAcessos {
     editar_lojas: boolean;
     deletar_lojas: boolean;
   };
+  transferencias: {
+    criar_transferencias: boolean;
+    ver_transferencias: boolean;
+    editar_transferencias: boolean;
+    deletar_transferencias: boolean;
+    confirmar_transferencias: boolean;
+  };
+  devolucoes: {
+    criar_devolucoes: boolean;
+    ver_devolucoes: boolean;
+    editar_devolucoes: boolean;
+    deletar_devolucoes: boolean;
+    processar_creditos: boolean;
+  };
 }
 
 export interface AppUser {
@@ -128,6 +142,20 @@ function defaultPermissoes(): { acessos: PermissoesAcessos } {
         ver_lojas: false,
         editar_lojas: false,
         deletar_lojas: false,
+      },
+      transferencias: {
+        criar_transferencias: false,
+        ver_transferencias: false,
+        editar_transferencias: false,
+        deletar_transferencias: false,
+        confirmar_transferencias: false,
+      },
+      devolucoes: {
+        criar_devolucoes: false,
+        ver_devolucoes: false,
+        editar_devolucoes: false,
+        deletar_devolucoes: false,
+        processar_creditos: false,
       },
     },
   };

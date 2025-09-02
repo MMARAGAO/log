@@ -27,6 +27,10 @@ import {
   UserGroupIcon,
   ArrowLeftEndOnRectangleIcon,
   BuildingStorefrontIcon,
+  ArrowsUpDownIcon,
+  ArrowUturnLeftIcon,
+  CubeTransparentIcon,
+  CircleStackIcon,
 } from "@heroicons/react/24/outline";
 
 import { useAuthStore } from "@/store/authZustand";
@@ -53,12 +57,12 @@ export function Navbar() {
     {
       name: "Estoque",
       path: "/sistema/estoque",
-      icon: BuildingStorefrontIcon,
+      icon: CubeTransparentIcon,
     },
     {
       name: "Vendas",
       path: "/sistema/vendas",
-      icon: Square3Stack3DIcon,
+      icon: CircleStackIcon,
     },
     {
       name: "Fornecedores",
@@ -69,6 +73,16 @@ export function Navbar() {
     { name: "Usuários", path: "/sistema/usuarios", icon: UserGroupIcon },
     { name: "Logs", path: "/sistema/logs", icon: Cog6ToothIcon },
     { name: "Lojas", path: "/sistema/lojas", icon: BuildingStorefrontIcon },
+    {
+      name: "Transferência",
+      path: "/sistema/transferencia",
+      icon: ArrowsUpDownIcon,
+    },
+    {
+      name: "Devoluções",
+      path: "/sistema/devolucoes",
+      icon: ArrowUturnLeftIcon,
+    },
   ];
 
   const getButtonVariant = (href: string) => {

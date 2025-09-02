@@ -67,6 +67,7 @@ import {
   MinusIcon,
   ShoppingCartIcon,
   PrinterIcon,
+  BuildingStorefrontIcon,
 } from "@heroicons/react/24/outline";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -79,14 +80,25 @@ interface Cliente {
   doc?: string | null;
 }
 
+interface Loja {
+  id: number;
+  nome: string;
+  endereco?: string | null;
+  telefone?: string | null;
+  fotourl?: string[] | null;
+  descricao?: string | null;
+}
+
 interface EstoqueItem {
   id: number;
   descricao: string | null;
   modelo?: string | null;
   marca?: string | null;
   preco_venda?: number | null;
-  quantidade?: number | null;
   fotourl?: string[] | null;
+  // Campos do estoque_lojas
+  quantidade?: number | null;
+  loja_id?: number | null;
 }
 
 interface Usuario {
@@ -115,6 +127,7 @@ interface Venda {
   id_cliente?: number;
   cliente_nome?: string;
   id_usuario?: string;
+  loja_id?: number; // NOVO CAMPO
   itens: VendaItem[];
   total_bruto: number;
   desconto: number;
@@ -190,6 +203,7 @@ interface FilterState {
   pagamento: string;
   vencidas: boolean;
   cliente: string;
+  loja: string; // NOVO FILTRO
   orderBy: string;
   direction: "asc" | "desc";
   inicio: string;
@@ -218,6 +232,7 @@ export default function VendasPage() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [estoque, setEstoque] = useState<EstoqueItem[]>([]);
+  const [lojas, setLojas] = useState<Loja[]>([]); // NOVO
 
   const [loading, setLoading] = useState(false);
 
@@ -261,6 +276,7 @@ export default function VendasPage() {
     pagamento: "",
     vencidas: false,
     cliente: "",
+    loja: "", // NOVO
     orderBy: "data_venda",
     direction: "desc",
     inicio: "",
@@ -299,6 +315,7 @@ export default function VendasPage() {
   // Seleções auxiliares
   const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null);
   const [selectedUsuario, setSelectedUsuario] = useState<Usuario | null>(null);
+  const [selectedLoja, setSelectedLoja] = useState<Loja | null>(null); // NOVO
 
   // Adição de itens
   const [searchProduto, setSearchProduto] = useState("");
@@ -324,12 +341,12 @@ export default function VendasPage() {
   async function loadAll() {
     setLoading(true);
     try {
-      const [vendasData, clientesData, usuariosData, estoqueData] =
+      const [vendasData, clientesData, usuariosData, lojasData] =
         await Promise.all([
           fetchTable("vendas"),
           fetchTable("clientes"),
           fetchTable("usuarios"),
-          fetchTable("estoque"),
+          fetchTable("lojas"),
         ]);
       setVendas(
         (vendasData || []).map((v: any) => ({
@@ -339,10 +356,81 @@ export default function VendasPage() {
       );
       setClientes(clientesData || []);
       setUsuarios(usuariosData || []);
-      // Antes filtrava quantidade > 0. Agora mantém todos.
-      setEstoque(estoqueData || []);
+      setLojas(lojasData || []);
+
+      console.log("[VENDAS] Dados carregados:", {
+        vendas: vendasData?.length || 0,
+        clientes: clientesData?.length || 0,
+        usuarios: usuariosData?.length || 0,
+        lojas: lojasData?.length || 0,
+      });
     } catch (e) {
-      console.error(e);
+      console.error("[VENDAS] Erro ao carregar dados:", e);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // FUNÇÃO CORRIGIDA: Carregar estoque da loja selecionada
+  async function loadEstoquePorLoja(lojaId: number) {
+    if (!lojaId) {
+      setEstoque([]);
+      return;
+    }
+
+    console.log("[VENDAS] Carregando estoque da loja:", lojaId);
+    setLoading(true);
+    try {
+      // Query corrigida que junta estoque com estoque_lojas
+      const { data, error } = await supabase
+        .from("estoque")
+        .select(
+          `
+          id,
+          descricao,
+          modelo,
+          marca,
+          preco_venda,
+          fotourl,
+          estoque_lojas!inner(
+            quantidade,
+            loja_id
+          )
+        `
+        )
+        .eq("estoque_lojas.loja_id", lojaId)
+        .gt("estoque_lojas.quantidade", 0); // Só produtos com estoque
+
+      if (error) {
+        console.error("[VENDAS] Erro na query de estoque:", error);
+        throw error;
+      }
+
+      console.log("[VENDAS] Dados brutos do estoque:", data);
+
+      const estoqueComQuantidade = (data || []).map((item: any) => {
+        const quantidade = item.estoque_lojas?.[0]?.quantidade || 0;
+        console.log(
+          `[VENDAS] Produto ${item.id}: ${item.descricao} - Qtd: ${quantidade}`
+        );
+
+        return {
+          id: item.id,
+          descricao: item.descricao,
+          modelo: item.modelo,
+          marca: item.marca,
+          preco_venda: item.preco_venda,
+          fotourl: item.fotourl,
+          quantidade: quantidade,
+          loja_id: lojaId,
+        };
+      });
+
+      console.log("[VENDAS] Estoque processado:", estoqueComQuantidade);
+      setEstoque(estoqueComQuantidade);
+    } catch (e) {
+      console.error("[VENDAS] Erro ao carregar estoque da loja:", e);
+      setEstoque([]);
     } finally {
       setLoading(false);
     }
@@ -351,6 +439,21 @@ export default function VendasPage() {
   useEffect(() => {
     loadAll();
   }, []);
+
+  // EFEITO CORRIGIDO: Carregar estoque quando loja for selecionada
+  useEffect(() => {
+    if (selectedLoja?.id) {
+      console.log(
+        "[VENDAS] Loja selecionada mudou para:",
+        selectedLoja.id,
+        selectedLoja.nome
+      );
+      loadEstoquePorLoja(selectedLoja.id);
+    } else {
+      console.log("[VENDAS] Nenhuma loja selecionada, limpando estoque");
+      setEstoque([]);
+    }
+  }, [selectedLoja?.id]); // Observa apenas o ID da loja
 
   // Helpers -------------------------------------------------
 
@@ -389,6 +492,10 @@ export default function VendasPage() {
     return PAGAMENTO_OPTIONS.find((x) => x.key === p)?.icon || BanknotesIcon;
   }
 
+  function getNomeLoja(lojaId?: number) {
+    return lojas.find((l) => l.id === lojaId)?.nome || "Sem loja";
+  }
+
   // Filtros / ordenação -------------------------------------
   const filtered = useMemo(() => {
     return vendas
@@ -414,6 +521,8 @@ export default function VendasPage() {
           if (!(v.status_calc === "vencido")) return false;
         }
         if (filters.cliente && v.cliente_nome !== filters.cliente) return false;
+        if (filters.loja && v.loja_id?.toString() !== filters.loja)
+          return false; // NOVO FILTRO
         if (filters.inicio && v.data_venda < filters.inicio) return false;
         if (filters.fim && v.data_venda > filters.fim + "T23:59:59")
           return false;
@@ -446,7 +555,7 @@ export default function VendasPage() {
         if (av > bv) return 1 * dir;
         return 0;
       });
-  }, [vendas, filters]);
+  }, [vendas, filters, lojas]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageItems = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -490,6 +599,7 @@ export default function VendasPage() {
       data_vencimento: undefined,
     });
     setSelectedCliente(null);
+    setSelectedLoja(null);
     setSelectedUsuario(
       user
         ? {
@@ -501,6 +611,10 @@ export default function VendasPage() {
     setSelectedProduto(null);
     setProdutoQtd(1);
     setProdutoDesc(0);
+    setDescontoInput(numberToCurrencyInput(0));
+    setEstoque([]); // Limpa estoque ao resetar
+    setSearchProduto(""); // Limpa busca
+    setProductPage(1); // Reset página de produtos
   }
 
   function openNewVenda() {
@@ -521,6 +635,7 @@ export default function VendasPage() {
     });
     setSelectedCliente(clientes.find((c) => c.id === v.id_cliente) || null);
     setSelectedUsuario(usuarios.find((u) => u.uuid === v.id_usuario) || null);
+    setSelectedLoja(lojas.find((l) => l.id === v.loja_id) || null); // NOVO
     vendaModal.onOpen();
   }
 
@@ -565,33 +680,50 @@ export default function VendasPage() {
     setProdutoDesc(num);
   }
 
+  // FUNÇÃO CORRIGIDA: addProduto com validações melhoradas
   function addProduto() {
-    if (!selectedProduto) return;
+    if (!selectedProduto) {
+      alert("Selecione um produto.");
+      return;
+    }
+    if (!selectedLoja) {
+      alert("Selecione uma loja primeiro.");
+      return;
+    }
+
     const disponivel = Number(selectedProduto.quantidade) || 0;
+    console.log(
+      `[VENDAS] Tentando adicionar produto ${selectedProduto.id}: ${selectedProduto.descricao}, disponível: ${disponivel}, solicitado: ${produtoQtd}`
+    );
+
     if (disponivel === 0) {
-      alert("Produto sem estoque.");
+      alert("Produto sem estoque nesta loja.");
       return;
     }
     if (produtoQtd > disponivel) {
       alert(`Estoque insuficiente. Disponível: ${disponivel}`);
       return;
     }
+
     const itens = [...(formData.itens || [])];
     const idx = itens.findIndex((i) => i.id_estoque === selectedProduto.id);
     const preco = Number(selectedProduto.preco_venda) || 0;
+
     if (idx >= 0) {
+      // Produto já existe na lista
       const soma = itens[idx].quantidade + produtoQtd;
       if (soma > disponivel) {
         alert(
-          `Quantidade excede estoque. Atual: ${itens[idx].quantidade}, disponível total: ${disponivel}`
+          `Quantidade total excede estoque. Atual no carrinho: ${itens[idx].quantidade}, disponível: ${disponivel}`
         );
         return;
       }
       itens[idx].quantidade = soma;
-      itens[idx].desconto = itens[idx].desconto || 0;
       itens[idx].subtotal =
-        itens[idx].quantidade * itens[idx].preco_unitario - itens[idx].desconto;
+        itens[idx].quantidade * itens[idx].preco_unitario -
+        (itens[idx].desconto || 0);
     } else {
+      // Novo produto
       itens.push({
         id_estoque: selectedProduto.id,
         descricao: selectedProduto.descricao || "Produto",
@@ -604,10 +736,13 @@ export default function VendasPage() {
         foto: selectedProduto.fotourl?.[0],
       });
     }
+
     recalcTotals(itens);
     setSelectedProduto(null);
     setProdutoQtd(1);
     setProdutoDesc(0);
+
+    console.log("[VENDAS] Produto adicionado, itens atuais:", itens);
   }
 
   function updateItemQty(index: number, qty: number) {
@@ -617,11 +752,13 @@ export default function VendasPage() {
     }
     const itens = [...(formData.itens || [])];
     const item = itens[index];
-    // Descobre estoque disponível atual (busca na lista de estoque)
+    // Descobre estoque disponível atual (busca na lista de estoque da loja)
     const prod = estoque.find((p) => p.id === item.id_estoque);
     const disponivel = Number(prod?.quantidade) || 0;
     if (qty > disponivel) {
-      alert(`Quantidade solicitada (${qty}) excede o estoque (${disponivel}).`);
+      alert(
+        `Quantidade solicitada (${qty}) excede o estoque da loja (${disponivel}).`
+      );
       qty = disponivel;
     }
     item.quantidade = qty;
@@ -696,6 +833,11 @@ export default function VendasPage() {
         alert("Selecione o cliente.");
         return;
       }
+      if (!selectedLoja) {
+        // NOVA VALIDAÇÃO
+        alert("Selecione a loja.");
+        return;
+      }
       if (formData.fiado && !formData.data_vencimento) {
         alert("Defina data de vencimento para fiado.");
         return;
@@ -751,6 +893,7 @@ export default function VendasPage() {
         id_cliente: selectedCliente.id,
         cliente_nome: selectedCliente.nome,
         id_usuario: selectedUsuario?.uuid || null,
+        loja_id: selectedLoja.id, // NOVO CAMPO
         itens: itensLimpos,
         total_bruto,
         desconto,
@@ -809,34 +952,50 @@ export default function VendasPage() {
           insertedId = data?.id;
         }
 
-        // Ajuste de estoque (decremento)
-        if (insertedId) {
+        // NOVA LÓGICA: Ajuste de estoque na tabela estoque_lojas
+        if (insertedId && selectedLoja) {
           await Promise.all(
             itensLimpos.map(async (it) => {
               if (!it.id_estoque || !it.quantidade) return;
+
+              // Busca estoque atual da loja para este produto
               const { data: current, error: curErr } = await supabase
-                .from("estoque")
+                .from("estoque_lojas")
                 .select("quantidade")
-                .eq("id", it.id_estoque)
+                .eq("produto_id", it.id_estoque)
+                .eq("loja_id", selectedLoja.id)
                 .single();
+
               if (curErr) {
                 console.warn(
-                  "[VENDAS] Falha ao buscar estoque item",
+                  "[VENDAS] Falha ao buscar estoque da loja para produto",
                   it.id_estoque,
+                  "loja",
+                  selectedLoja.id,
                   curErr
                 );
                 return;
               }
+
               const atual = Number(current?.quantidade) || 0;
               const nova = Math.max(0, atual - it.quantidade);
+
+              // Atualiza estoque da loja
               const { error: updErr } = await supabase
-                .from("estoque")
-                .update({ quantidade: nova })
-                .eq("id", it.id_estoque);
+                .from("estoque_lojas")
+                .update({
+                  quantidade: nova,
+                  updatedat: new Date().toISOString(),
+                })
+                .eq("produto_id", it.id_estoque)
+                .eq("loja_id", selectedLoja.id);
+
               if (updErr) {
                 console.warn(
-                  "[VENDAS] Falha ao atualizar estoque item",
+                  "[VENDAS] Falha ao atualizar estoque da loja",
                   it.id_estoque,
+                  "loja",
+                  selectedLoja.id,
                   updErr
                 );
               }
@@ -992,8 +1151,6 @@ export default function VendasPage() {
   useEffect(() => {
     setProductPage(1);
   }, [searchProduto]);
-
-  // ...existing functions...
 
   // Verificação de loading/erro
   if (
@@ -1173,6 +1330,7 @@ export default function VendasPage() {
               pagamento: "",
               vencidas: false,
               cliente: "",
+              loja: "", // NOVO
               orderBy: "data_venda",
               direction: "desc",
               inicio: "",
@@ -1240,6 +1398,23 @@ export default function VendasPage() {
                 new Set(vendas.map((v) => v.cliente_nome).filter(Boolean))
               ).map((c) => (
                 <SelectItem key={c as string}>{c as string}</SelectItem>
+              ))}
+            </Select>
+
+            <Select
+              label="Loja" // NOVO
+              size="sm"
+              selectedKeys={filters.loja ? [filters.loja] : []}
+              onSelectionChange={(k) =>
+                setFilters((p) => ({
+                  ...p,
+                  loja: (Array.from(k)[0] as string) || "",
+                }))
+              }
+              placeholder="Todas"
+            >
+              {lojas.map((l) => (
+                <SelectItem key={l.id}>{l.nome}</SelectItem>
               ))}
             </Select>
 
@@ -1459,6 +1634,7 @@ export default function VendasPage() {
               {editingVenda ? "Editar Venda" : "Nova Venda"}
             </ModalHeader>
             <ModalBody className="space-y-6">
+              {/* Informações Básicas */}
               <div className="grid md:grid-cols-4 gap-4">
                 <Input
                   label="Data"
@@ -1551,16 +1727,18 @@ export default function VendasPage() {
 
               <Divider />
 
-              <div className="grid md:grid-cols-2 gap-4">
+              {/* Seleção de Cliente, Vendedor e Loja */}
+              <div className="grid md:grid-cols-3 gap-4">
                 <Autocomplete
                   label="Cliente"
-                  placeholder="Selecione"
+                  placeholder="Selecione o cliente"
                   selectedKey={selectedCliente?.id.toString()}
                   onSelectionChange={(k) =>
                     setSelectedCliente(
                       clientes.find((c) => c.id.toString() === k) || null
                     )
                   }
+                  isRequired
                 >
                   {clientes.map((c) => (
                     <AutocompleteItem key={c.id}>{c.nome}</AutocompleteItem>
@@ -1569,7 +1747,7 @@ export default function VendasPage() {
 
                 <Autocomplete
                   label="Vendedor"
-                  placeholder="Selecione"
+                  placeholder="Selecione o vendedor"
                   selectedKey={selectedUsuario?.uuid}
                   onSelectionChange={(k) =>
                     setSelectedUsuario(
@@ -1583,13 +1761,55 @@ export default function VendasPage() {
                     </AutocompleteItem>
                   ))}
                 </Autocomplete>
+
+                {/* LOJA - OBRIGATÓRIA */}
+                <Autocomplete
+                  label="Loja"
+                  placeholder="Selecione a loja"
+                  selectedKey={selectedLoja?.id.toString()}
+                  onSelectionChange={(k) => {
+                    const loja =
+                      lojas.find((l) => l.id.toString() === k) || null;
+                    console.log("[VENDAS] Loja selecionada:", loja);
+                    setSelectedLoja(loja);
+                  }}
+                  isRequired
+                  startContent={<BuildingStorefrontIcon className="w-4 h-4" />}
+                >
+                  {lojas.map((l) => (
+                    <AutocompleteItem key={l.id}>{l.nome}</AutocompleteItem>
+                  ))}
+                </Autocomplete>
               </div>
+
+              {/* Aviso sobre seleção de loja */}
+              {!selectedLoja && (
+                <Card className="border-warning-200 bg-warning-50">
+                  <CardBody className="p-4">
+                    <div className="flex items-center gap-3">
+                      <ExclamationTriangleIcon className="w-5 h-5 text-warning-600 shrink-0" />
+                      <p className="text-warning-700 text-sm">
+                        Selecione uma loja para visualizar os produtos
+                        disponíveis para venda.
+                      </p>
+                    </div>
+                  </CardBody>
+                </Card>
+              )}
 
               <Divider />
 
-              <div className="space-y-4">
-                {/* SUBSTITUIR dentro do Modal Venda: bloco onde estava a grid md:grid-cols-5 (buscar / select produto / qtd / desconto / botão) */}
+              {/* Seção de Produtos - só aparece se loja estiver selecionada */}
+              {selectedLoja && (
                 <div className="space-y-4">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-lg font-semibold">Produtos</h3>
+                    <Chip size="sm" variant="flat" color="primary">
+                      {estoque.length} disponíveis
+                    </Chip>
+                  </div>
+
+                  {/* Busca e Adição de Produtos */}
                   <div className="space-y-3">
                     <div className="flex flex-col lg:flex-row gap-3">
                       <Input
@@ -1603,18 +1823,19 @@ export default function VendasPage() {
                         placeholder="Descrição, marca ou modelo"
                       />
                       <Input
-                        label="Qtd"
+                        label="Quantidade"
                         type="number"
-                        className="w-28"
+                        className="w-32"
                         value={produtoQtd.toString()}
                         onChange={(e) =>
                           setProdutoQtd(
                             Math.max(1, Number(e.target.value) || 1)
                           )
                         }
+                        min="1"
                       />
                       <Input
-                        label="Desc. Item"
+                        label="Desconto Item"
                         className="w-40"
                         value={numberToCurrencyInput(produtoDesc || 0)}
                         onChange={(e) =>
@@ -1638,88 +1859,99 @@ export default function VendasPage() {
                       </Button>
                     </div>
 
-                    <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 pr-1">
-                      {paginatedProdutos.map((p) => {
-                        const selected = selectedProduto?.id === p.id;
-                        const disponivel = Number(p.quantidade) || 0;
-                        const out = disponivel === 0;
-                        return (
-                          <button
-                            key={p.id}
-                            type="button"
-                            onClick={() => setSelectedProduto(p)}
-                            className={`group relative text-left rounded-medium border p-3 transition
-                              ${
-                                selected
-                                  ? "border-primary bg-primary/10"
-                                  : out
-                                    ? "border-danger bg-danger/5 hover:border-danger"
-                                    : "border-default-200 hover:border-primary"
-                              } ${out ? "opacity-70" : ""}`}
-                          >
-                            <div className="flex items-start gap-2">
-                              {p.fotourl?.[0] ? (
-                                <Avatar
-                                  src={p.fotourl[0]}
-                                  size="sm"
-                                  radius="sm"
-                                  className="shrink-0"
-                                />
-                              ) : (
-                                <div className="w-9 h-9 rounded-md bg-default-200 flex items-center justify-center shrink-0">
-                                  <CubeIcon className="w-4 h-4 text-default-500" />
-                                </div>
-                              )}
-                              <div className="min-w-0">
-                                <p
-                                  className={`text-xs font-medium truncate leading-tight ${
-                                    out ? "text-danger-600" : ""
-                                  }`}
-                                  title={p.descricao || ""}
-                                >
-                                  {p.descricao || "Produto"}
-                                </p>
-                                <p className="text-[10px] text-default-500 truncate">
-                                  {[p.marca, p.modelo]
-                                    .filter(Boolean)
-                                    .join(" • ")}
-                                </p>
-                              </div>
-                            </div>
-                            <div className="mt-2 flex items-center justify-between">
-                              <span
-                                className={`text-[11px] font-semibold ${
-                                  out ? "text-danger-600" : "text-default-700"
-                                }`}
-                              >
-                                {new Intl.NumberFormat("pt-BR", {
-                                  style: "currency",
-                                  currency: "BRL",
-                                }).format(Number(p.preco_venda) || 0)}
-                              </span>
-                              <span
-                                className={`text-[10px] px-1.5 py-0.5 rounded-full border ${
-                                  out
-                                    ? "border-danger/40 text-danger"
-                                    : "border-success/30 text-success"
-                                }`}
-                              >
-                                {out ? "Sem estoque" : `${disponivel} un`}
-                              </span>
-                            </div>
-                            {selected && (
-                              <span className="absolute top-1.5 right-1.5 inline-block w-2 h-2 rounded-full bg-primary shadow ring-2 ring-background" />
-                            )}
-                          </button>
-                        );
-                      })}
-                      {paginatedProdutos.length === 0 && (
-                        <div className="col-span-full text-center py-8 text-xs text-default-500">
-                          Nenhum produto encontrado.
-                        </div>
-                      )}
-                    </div>
+                    {/* Grid de Produtos */}
+                    {estoque.length > 0 ? (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 max-h-60 overflow-y-auto pr-1">
+                        {paginatedProdutos.map((p) => {
+                          const selected = selectedProduto?.id === p.id;
+                          const disponivel = Number(p.quantidade) || 0;
+                          const out = disponivel === 0;
 
+                          return (
+                            <button
+                              key={p.id}
+                              type="button"
+                              onClick={() => {
+                                console.log("[VENDAS] Produto selecionado:", p);
+                                setSelectedProduto(p);
+                              }}
+                              className={`group relative text-left rounded-medium border p-3 transition
+                                ${
+                                  selected
+                                    ? "border-primary bg-primary/10"
+                                    : out
+                                      ? "border-danger bg-danger/5 hover:border-danger"
+                                      : "border-default-200 hover:border-primary"
+                                } ${out ? "opacity-70" : ""}`}
+                            >
+                              <div className="flex items-start gap-2">
+                                {p.fotourl?.[0] ? (
+                                  <Avatar
+                                    src={p.fotourl[0]}
+                                    size="sm"
+                                    radius="sm"
+                                    className="shrink-0"
+                                  />
+                                ) : (
+                                  <div className="w-9 h-9 rounded-md bg-default-200 flex items-center justify-center shrink-0">
+                                    <CubeIcon className="w-4 h-4 text-default-500" />
+                                  </div>
+                                )}
+                                <div className="min-w-0">
+                                  <p
+                                    className={`text-xs font-medium truncate leading-tight ${
+                                      out ? "text-danger-600" : ""
+                                    }`}
+                                    title={p.descricao || ""}
+                                  >
+                                    {p.descricao || "Produto"}
+                                  </p>
+                                  <p className="text-[10px] text-default-500 truncate">
+                                    {[p.marca, p.modelo]
+                                      .filter(Boolean)
+                                      .join(" • ")}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="mt-2 flex items-center justify-between">
+                                <span
+                                  className={`text-[11px] font-semibold ${
+                                    out ? "text-danger-600" : "text-default-700"
+                                  }`}
+                                >
+                                  {fmt(Number(p.preco_venda) || 0)}
+                                </span>
+                                <span
+                                  className={`text-[10px] px-1.5 py-0.5 rounded-full border ${
+                                    out
+                                      ? "border-danger/40 text-danger"
+                                      : "border-success/30 text-success"
+                                  }`}
+                                >
+                                  {out ? "Sem estoque" : `${disponivel} un`}
+                                </span>
+                              </div>
+                              {selected && (
+                                <span className="absolute top-1.5 right-1.5 inline-block w-2 h-2 rounded-full bg-primary shadow ring-2 ring-background" />
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 text-sm text-default-500">
+                        {loading ? (
+                          <div className="flex items-center justify-center gap-2">
+                            <Spinner size="sm" />
+                            <span>Carregando produtos...</span>
+                          </div>
+                        ) : (
+                          "Nenhum produto encontrado para esta loja."
+                        )}
+                      </div>
+                    )}
+
+                    {/* Paginação de produtos */}
                     {produtosFiltrados.length > PRODUCTS_PAGE_SIZE && (
                       <div className="flex items-center justify-between pt-1">
                         <span className="text-[11px] text-default-500">
@@ -1740,89 +1972,90 @@ export default function VendasPage() {
                     )}
                   </div>
 
-                  {/* Itens (mantido abaixo) */}
+                  {/* Lista de Itens no Carrinho */}
                   <div className="space-y-2">
-                    {(formData.itens || []).length === 0 && (
-                      <p className="text-xs text-default-500">
+                    <h4 className="font-medium">
+                      Itens no Carrinho ({(formData.itens || []).length})
+                    </h4>
+                    {(formData.itens || []).length === 0 ? (
+                      <p className="text-xs text-default-500 py-4 text-center border border-dashed border-default-200 rounded-md">
                         Nenhum item adicionado.
                       </p>
-                    )}
-                    {(formData.itens || []).map((it, idx) => (
-                      <div
-                        key={idx}
-                        className="flex flex-col sm:flex-row sm:items-center gap-3 rounded-md border border-default-200 p-3"
-                      >
-                        <div className="flex items-center gap-3 flex-1">
-                          {it.foto ? (
-                            <Avatar src={it.foto} size="sm" />
-                          ) : (
-                            <div className="w-8 h-8 bg-default-200 rounded-full flex items-center justify-center">
-                              <CubeIcon className="w-4 h-4 text-default-500" />
+                    ) : (
+                      (formData.itens || []).map((it, idx) => (
+                        <div
+                          key={idx}
+                          className="flex flex-col sm:flex-row sm:items-center gap-3 rounded-md border border-default-200 p-3"
+                        >
+                          <div className="flex items-center gap-3 flex-1">
+                            {it.foto ? (
+                              <Avatar src={it.foto} size="sm" />
+                            ) : (
+                              <div className="w-8 h-8 bg-default-200 rounded-full flex items-center justify-center">
+                                <CubeIcon className="w-4 h-4 text-default-500" />
+                              </div>
+                            )}
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium truncate">
+                                {it.descricao}
+                              </p>
+                              <p className="text-[11px] text-default-500 truncate">
+                                {[it.marca, it.modelo, fmt(it.preco_unitario)]
+                                  .filter(Boolean)
+                                  .join(" • ")}
+                              </p>
                             </div>
-                          )}
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium truncate">
-                              {it.descricao}
-                            </p>
-                            <p className="text-[11px] text-default-500 truncate">
-                              {[
-                                it.marca,
-                                it.modelo,
-                                "R$ " + it.preco_unitario.toFixed(2),
-                              ]
-                                .filter(Boolean)
-                                .join(" • ")}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              isIconOnly
+                              variant="flat"
+                              size="sm"
+                              onPress={() =>
+                                updateItemQty(idx, it.quantidade - 1)
+                              }
+                            >
+                              <MinusIcon className="w-4 h-4" />
+                            </Button>
+                            <Input
+                              size="sm"
+                              className="w-16"
+                              type="number"
+                              value={it.quantidade.toString()}
+                              onChange={(e) =>
+                                updateItemQty(idx, Number(e.target.value) || 1)
+                              }
+                              min="1"
+                            />
+                            <Button
+                              isIconOnly
+                              variant="flat"
+                              size="sm"
+                              onPress={() =>
+                                updateItemQty(idx, it.quantidade + 1)
+                              }
+                            >
+                              <PlusIcon className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              isIconOnly
+                              size="sm"
+                              variant="light"
+                              color="danger"
+                              onPress={() => removeItem(idx)}
+                            >
+                              <TrashIcon className="w-4 h-4" />
+                            </Button>
+                          </div>
+                          <div className="text-right w-32">
+                            <p className="text-xs text-default-500">Subtotal</p>
+                            <p className="text-sm font-semibold">
+                              {fmt(it.subtotal)}
                             </p>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            isIconOnly
-                            variant="flat"
-                            size="sm"
-                            onPress={() =>
-                              updateItemQty(idx, it.quantidade - 1)
-                            }
-                          >
-                            <MinusIcon className="w-4 h-4" />
-                          </Button>
-                          <Input
-                            size="sm"
-                            className="w-16"
-                            type="number"
-                            value={it.quantidade.toString()}
-                            onChange={(e) =>
-                              updateItemQty(idx, Number(e.target.value) || 1)
-                            }
-                          />
-                          <Button
-                            isIconOnly
-                            variant="flat"
-                            size="sm"
-                            onPress={() =>
-                              updateItemQty(idx, it.quantidade + 1)
-                            }
-                          >
-                            <PlusIcon className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            isIconOnly
-                            size="sm"
-                            variant="light"
-                            color="danger"
-                            onPress={() => removeItem(idx)}
-                          >
-                            <TrashIcon className="w-4 h-4" />
-                          </Button>
-                        </div>
-                        <div className="text-right w-32">
-                          <p className="text-xs text-default-500">Subtotal</p>
-                          <p className="text-sm font-semibold">
-                            {fmt(it.subtotal)}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
+                      ))
+                    )}
                   </div>
 
                   <Divider />
@@ -1836,6 +2069,7 @@ export default function VendasPage() {
                         handleDescontoTotalChange(e.target.value)
                       }
                       onBlur={handleDescontoTotalBlur}
+                      placeholder="R$ 0,00"
                     />
                     <Input
                       label="Total Bruto"
@@ -1871,9 +2105,10 @@ export default function VendasPage() {
                         observacoes: e.target.value,
                       }))
                     }
+                    placeholder="Observações sobre a venda..."
                   />
                 </div>
-              </div>
+              )}
             </ModalBody>
             <ModalFooter>
               <Button variant="flat" onPress={vendaModal.onClose}>
@@ -1884,10 +2119,12 @@ export default function VendasPage() {
                 onPress={saveVenda}
                 isLoading={loading}
                 isDisabled={
-                  !selectedCliente || (formData.itens || []).length === 0
+                  !selectedCliente ||
+                  !selectedLoja ||
+                  (formData.itens || []).length === 0
                 }
               >
-                Salvar
+                {editingVenda ? "Atualizar" : "Salvar Venda"}
               </Button>
             </ModalFooter>
           </ModalContent>

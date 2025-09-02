@@ -78,7 +78,8 @@ export default function UsuariosPage() {
 
   const { isOpen, onOpen, onClose } = useDisclosure();
   const { user } = useAuthStore();
-
+  // default permissions
+  // No arquivo onde você tem o defaultPermissoes do sistema de usuários
   const defaultPermissoes = useMemo(
     () => ({
       acessos: {
@@ -136,6 +137,20 @@ export default function UsuariosPage() {
           ver_lojas: false,
           editar_lojas: false,
           deletar_lojas: false,
+        },
+        transferencias: {
+          criar_transferencias: false,
+          ver_transferencias: false,
+          editar_transferencias: false,
+          deletar_transferencias: false,
+          confirmar_transferencias: false,
+        },
+        devolucoes: {
+          criar_devolucoes: false,
+          ver_devolucoes: false,
+          editar_devolucoes: false,
+          deletar_devolucoes: false,
+          processar_creditos: false,
         },
       },
     }),
@@ -738,55 +753,85 @@ export default function UsuariosPage() {
         <Modal
           isOpen={permissoesOpen}
           onClose={() => setPermissoesOpen(false)}
-          size="3xl"
+          size="4xl"
           scrollBehavior="outside"
         >
           <ModalContent>
-            <ModalHeader>
-              <h3>Permissões do Usuário</h3>
+            <ModalHeader className="flex items-center gap-3 pb-4">
+              <ShieldCheckIcon className="w-6 h-6 text-primary" />
+              <div>
+                <h3 className="text-xl font-semibold">Permissões do Usuário</h3>
+                <p className="text-sm text-default-500">
+                  Configure os acessos do sistema
+                </p>
+              </div>
             </ModalHeader>
+
             <ModalBody className="gap-6">
               {permLoading && (
-                <div className="flex justify-center py-10">
-                  <Spinner label="Carregando permissões..." />
+                <div className="flex justify-center py-12">
+                  <Spinner size="lg" label="Carregando permissões..." />
                 </div>
               )}
+
               {!permLoading && permissoes && (
                 <div className="space-y-6">
                   {Object.entries(permissoes.acessos).map(
-                    ([sec, perms]: any) => (
-                      <div
-                        key={sec}
-                        className="border rounded-md p-4 bg-content1/30"
-                      >
-                        <h4 className="font-semibold mb-3 capitalize">{sec}</h4>
-                        <div className="grid gap-2 grid-cols-1 sm:grid-cols-2 md:grid-cols-3">
-                          {Object.entries(perms).map(
-                            ([k, v]: [string, any]) => (
-                              <Checkbox
-                                key={k}
-                                isSelected={v}
-                                onChange={() => togglePerm(sec, k)}
-                                size="sm"
-                              >
-                                {k.replace(/_/g, " ")}
-                              </Checkbox>
-                            )
-                          )}
+                    ([sec, perms]: any) => {
+                      const permCount =
+                        Object.values(perms).filter(Boolean).length;
+                      const totalPerms = Object.keys(perms).length;
+
+                      return (
+                        <div
+                          key={sec}
+                          className="border border-divider rounded-lg p-4 bg-content1/50"
+                        >
+                          <div className="flex items-center justify-between mb-4">
+                            <h4 className="text-lg font-medium capitalize">
+                              {sec.replace(/_/g, " ")}
+                            </h4>
+                            <Chip
+                              size="sm"
+                              variant="flat"
+                              color={permCount > 0 ? "primary" : "default"}
+                            >
+                              {permCount}/{totalPerms}
+                            </Chip>
+                          </div>
+
+                          <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+                            {Object.entries(perms).map(
+                              ([k, v]: [string, any]) => (
+                                <Checkbox
+                                  key={k}
+                                  isSelected={v}
+                                  onChange={() => togglePerm(sec, k)}
+                                  size="sm"
+                                  classNames={{
+                                    label: "text-sm",
+                                  }}
+                                >
+                                  {k.replace(/_/g, " ")}
+                                </Checkbox>
+                              )
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    )
+                      );
+                    }
                   )}
                 </div>
               )}
             </ModalBody>
-            <ModalFooter>
+
+            <ModalFooter className="border-t border-divider pt-4">
               <Button
                 variant="flat"
                 onPress={() => setPermissoesOpen(false)}
                 isDisabled={permSaving}
               >
-                Fechar
+                Cancelar
               </Button>
               <Button
                 color="primary"
