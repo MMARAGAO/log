@@ -1,10 +1,10 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useAuthStore } from "@/store/authZustand";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button, Input, Card } from "@heroui/react";
 
-export default function LoginPage() {
+function LoginPageContent() {
   const { login, loading, error, user } = useAuthStore();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -68,5 +68,13 @@ export default function LoginPage() {
         </div>
       </Card>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginPageContent />
+    </Suspense>
   );
 }
