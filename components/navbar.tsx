@@ -100,10 +100,10 @@ export function Navbar() {
         >
           <div className="border-b dark:border-gray-800 border-gray-200 flex gap-2 items-center p-4">
             <div className="w-10 h-10 bg-black/50 rounded-lg flex items-center justify-center">
-              <h1 className="text-white text-2xl font-semibold">A</h1>
+              <img src="/logo.png" alt="LogSys Logo" className="w-6 h-6" />
             </div>
             <div className="flex flex-col">
-              <h1 className="font-semibold">Autorizada SYS</h1>
+              <h1 className="font-semibold">LogSys</h1>
               <h1 className="text-sm">Assistência Técnica</h1>
             </div>
           </div>
@@ -143,10 +143,10 @@ export function Navbar() {
       >
         <div className="border-b border-default flex gap-2 items-center p-4">
           <div className="w-10 h-10 bg-black rounded-lg flex items-center justify-center">
-            <h1 className="text-white text-2xl font-semibold">A</h1>
+            <img src="/logo.png" alt="LogSys Logo" className="w-6 h-6" />
           </div>
           <div className="flex flex-col">
-            <h1 className="font-semibold">Autorizada SYS</h1>
+            <h1 className="font-semibold">LogSys</h1>
             <h1 className="text-sm">Assistência Técnica</h1>
           </div>
         </div>
