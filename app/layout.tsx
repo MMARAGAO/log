@@ -18,11 +18,29 @@ export const metadata: Metadata = {
   icons: [
     {
       rel: "icon",
-      url: "/faviconDark.ico",
+      url: "/favicon.ico",
       media: "(prefers-color-scheme: light)",
     },
-    { rel: "icon", url: "/favicon.ico", media: "(prefers-color-scheme: dark)" },
+    {
+      rel: "icon",
+      url: "/faviconDark.ico",
+      media: "(prefers-color-scheme: dark)",
+    },
   ],
+  openGraph: {
+    images: [
+      {
+        url: "/social-share.png", // coloque sua imagem na pasta public
+        width: 1200,
+        height: 630,
+        alt: "Preview do sistema",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    images: ["/social-share.png"],
+  },
 };
 
 export const viewport: Viewport = {
