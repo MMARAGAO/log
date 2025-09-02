@@ -13,17 +13,14 @@ function LoginPageContent() {
 
   useEffect(() => {
     if (user) {
-      router.replace("/sistema/dashboard");
+      const from = params.get("from") || "/sistema/dashboard";
+      router.replace(from);
     }
-  }, [user, router]);
+  }, [user, router, params]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     await login(email.trim(), password);
-    if (!error) {
-      const from = params.get("from") || "/sistema/dashboard";
-      router.replace(from);
-    }
   };
 
   return (
