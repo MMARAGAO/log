@@ -68,6 +68,8 @@ import {
   ShoppingCartIcon,
   PrinterIcon,
   BuildingStorefrontIcon,
+  ArrowPathIcon,
+  CogIcon,
 } from "@heroicons/react/24/outline";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -127,12 +129,13 @@ interface Venda {
   id_cliente?: number;
   cliente_nome?: string;
   id_usuario?: string;
-  loja_id?: number; // NOVO CAMPO
+  loja_id?: number;
   itens: VendaItem[];
   total_bruto: number;
   desconto: number;
+  credito_usado?: number; // NOVO CAMPO
   total_liquido: number;
-  forma_pagamento: FormaPagamento;
+  forma_pagamento: string;
   status_pagamento: StatusPagamento;
   fiado: boolean;
   data_vencimento?: string | null;
@@ -143,23 +146,15 @@ interface Venda {
   updated_at?: string;
 }
 
-type StatusPagamento = "pago" | "pendente" | "cancelado" | "vencido" | "fiado";
-type FormaPagamento =
-  | "Dinheiro"
-  | "PIX"
-  | "Cartão de Débito"
-  | "Cartão de Crédito"
-  | "Transferência"
-  | "Boleto"
-  | "Crediário"
-  | "Fiado";
+type StatusPagamento =
+  | "pago"
+  | "pendente"
+  | "cancelado"
+  | "vencido"
+  | "fiado"
+  | "devolvido";
 
-const STATUS_OPTIONS: {
-  key: StatusPagamento;
-  label: string;
-  color: "success" | "warning" | "danger" | "default" | "secondary";
-  icon: any;
-}[] = [
+const STATUS_OPTIONS = [
   { key: "pendente", label: "Pendente", color: "warning", icon: ClockIcon },
   { key: "pago", label: "Pago", color: "success", icon: CheckCircleIcon },
   { key: "fiado", label: "Fiado", color: "secondary", icon: HandRaisedIcon },
@@ -170,10 +165,16 @@ const STATUS_OPTIONS: {
     icon: ExclamationTriangleIcon,
   },
   { key: "cancelado", label: "Cancelado", color: "default", icon: XMarkIcon },
+  {
+    key: "devolvido",
+    label: "Devolvido",
+    color: "danger",
+    icon: ArrowPathIcon,
+  },
 ];
 
 const PAGAMENTO_OPTIONS: {
-  key: FormaPagamento;
+  key: string;
   label: string;
   icon: any;
 }[] = [
@@ -203,7 +204,7 @@ interface FilterState {
   pagamento: string;
   vencidas: boolean;
   cliente: string;
-  loja: string; // NOVO FILTRO
+  loja: string;
   orderBy: string;
   direction: "asc" | "desc";
   inicio: string;
@@ -232,9 +233,36 @@ export default function VendasPage() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [estoque, setEstoque] = useState<EstoqueItem[]>([]);
-  const [lojas, setLojas] = useState<Loja[]>([]); // NOVO
+  const [lojas, setLojas] = useState<Loja[]>([]);
+
+  // NOVOS ESTADOS PARA CRÉDITO
+  const [clienteCredito, setClienteCredito] = useState(0);
+  const [creditoAplicado, setCreditoAplicado] = useState(0);
+  const [creditoInput, setCreditoInput] = useState(numberToCurrencyInput(0));
+  const [usarCredito, setUsarCredito] = useState(false);
 
   const [loading, setLoading] = useState(false);
+
+  // NOVA FUNÇÃO: Buscar crédito do cliente
+  async function buscarCreditoCliente(clienteId: number) {
+    try {
+      const { data, error } = await supabase
+        .from("clientes")
+        .select("credito")
+        .eq("id", clienteId)
+        .single();
+
+      if (error) throw error;
+
+      const credito = Number(data?.credito) || 0;
+      setClienteCredito(credito);
+      return credito;
+    } catch (e) {
+      console.error("[VENDAS] Erro ao buscar crédito do cliente:", e);
+      setClienteCredito(0);
+      return 0;
+    }
+  }
 
   // Handlers com verificação de permissão
   function safeOpenNewVenda() {
@@ -276,7 +304,7 @@ export default function VendasPage() {
     pagamento: "",
     vencidas: false,
     cliente: "",
-    loja: "", // NOVO
+    loja: "",
     orderBy: "data_venda",
     direction: "desc",
     inicio: "",
@@ -315,7 +343,7 @@ export default function VendasPage() {
   // Seleções auxiliares
   const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null);
   const [selectedUsuario, setSelectedUsuario] = useState<Usuario | null>(null);
-  const [selectedLoja, setSelectedLoja] = useState<Loja | null>(null); // NOVO
+  const [selectedLoja, setSelectedLoja] = useState<Loja | null>(null);
 
   // Adição de itens
   const [searchProduto, setSearchProduto] = useState("");
@@ -324,14 +352,15 @@ export default function VendasPage() {
   );
   const [produtoQtd, setProdutoQtd] = useState(1);
   const [produtoDesc, setProdutoDesc] = useState(0);
-  // Novo: estado de input do desconto total (string mascarada)
   const [descontoInput, setDescontoInput] = useState(numberToCurrencyInput(0));
-  // Novo: paginação dos produtos
+  const [valorPagoInput, setValorPagoInput] = useState(
+    numberToCurrencyInput(0)
+  );
   const [productPage, setProductPage] = useState(1);
   const PRODUCTS_PAGE_SIZE = 12;
 
   // Pagamento incremental
-  const [pagamentoValor, setPagamentoValor] = useState(""); // manter string mascarada
+  const [pagamentoValor, setPagamentoValor] = useState("");
   const [pagamentoObs, setPagamentoObs] = useState("");
 
   // Venda em foco (view / pagar / delete)
@@ -371,7 +400,7 @@ export default function VendasPage() {
     }
   }
 
-  // FUNÇÃO CORRIGIDA: Carregar estoque da loja selecionada
+  // Carregar estoque da loja selecionada
   async function loadEstoquePorLoja(lojaId: number) {
     if (!lojaId) {
       setEstoque([]);
@@ -381,7 +410,6 @@ export default function VendasPage() {
     console.log("[VENDAS] Carregando estoque da loja:", lojaId);
     setLoading(true);
     try {
-      // Query corrigida que junta estoque com estoque_lojas
       const { data, error } = await supabase
         .from("estoque")
         .select(
@@ -399,21 +427,15 @@ export default function VendasPage() {
         `
         )
         .eq("estoque_lojas.loja_id", lojaId)
-        .gt("estoque_lojas.quantidade", 0); // Só produtos com estoque
+        .gt("estoque_lojas.quantidade", 0);
 
       if (error) {
         console.error("[VENDAS] Erro na query de estoque:", error);
         throw error;
       }
 
-      console.log("[VENDAS] Dados brutos do estoque:", data);
-
       const estoqueComQuantidade = (data || []).map((item: any) => {
         const quantidade = item.estoque_lojas?.[0]?.quantidade || 0;
-        console.log(
-          `[VENDAS] Produto ${item.id}: ${item.descricao} - Qtd: ${quantidade}`
-        );
-
         return {
           id: item.id,
           descricao: item.descricao,
@@ -426,7 +448,6 @@ export default function VendasPage() {
         };
       });
 
-      console.log("[VENDAS] Estoque processado:", estoqueComQuantidade);
       setEstoque(estoqueComQuantidade);
     } catch (e) {
       console.error("[VENDAS] Erro ao carregar estoque da loja:", e);
@@ -440,23 +461,28 @@ export default function VendasPage() {
     loadAll();
   }, []);
 
-  // EFEITO CORRIGIDO: Carregar estoque quando loja for selecionada
+  // Carregar estoque quando loja for selecionada
   useEffect(() => {
     if (selectedLoja?.id) {
-      console.log(
-        "[VENDAS] Loja selecionada mudou para:",
-        selectedLoja.id,
-        selectedLoja.nome
-      );
       loadEstoquePorLoja(selectedLoja.id);
     } else {
-      console.log("[VENDAS] Nenhuma loja selecionada, limpando estoque");
       setEstoque([]);
     }
-  }, [selectedLoja?.id]); // Observa apenas o ID da loja
+  }, [selectedLoja?.id]);
 
-  // Helpers -------------------------------------------------
+  // NOVO USEEFFECT: Buscar crédito quando cliente for selecionado
+  useEffect(() => {
+    if (selectedCliente?.id) {
+      buscarCreditoCliente(selectedCliente.id);
+    } else {
+      setClienteCredito(0);
+      setCreditoAplicado(0);
+      setCreditoInput(numberToCurrencyInput(0));
+      setUsarCredito(false);
+    }
+  }, [selectedCliente?.id]);
 
+  // Helpers
   function fmt(v: number | undefined | null) {
     return new Intl.NumberFormat("pt-BR", {
       style: "currency",
@@ -470,17 +496,6 @@ export default function VendasPage() {
   }
 
   function computeStatus(v: Venda): StatusPagamento {
-    if (v.status_pagamento === "cancelado") return "cancelado";
-    if (v.valor_restante <= 0) return "pago";
-    if (v.fiado) {
-      if (
-        v.data_vencimento &&
-        new Date(v.data_vencimento) < new Date() &&
-        v.valor_restante > 0
-      )
-        return "vencido";
-      return "fiado";
-    }
     return v.status_pagamento;
   }
 
@@ -488,7 +503,7 @@ export default function VendasPage() {
     return STATUS_OPTIONS.find((s) => s.key === status) || STATUS_OPTIONS[0];
   }
 
-  function pagamentoIcon(p: FormaPagamento) {
+  function pagamentoIcon(p: string) {
     return PAGAMENTO_OPTIONS.find((x) => x.key === p)?.icon || BanknotesIcon;
   }
 
@@ -496,7 +511,7 @@ export default function VendasPage() {
     return lojas.find((l) => l.id === lojaId)?.nome || "Sem loja";
   }
 
-  // Filtros / ordenação -------------------------------------
+  // Filtros / ordenação
   const filtered = useMemo(() => {
     return vendas
       .map((v) => ({ ...v, status_calc: computeStatus(v) }))
@@ -522,7 +537,7 @@ export default function VendasPage() {
         }
         if (filters.cliente && v.cliente_nome !== filters.cliente) return false;
         if (filters.loja && v.loja_id?.toString() !== filters.loja)
-          return false; // NOVO FILTRO
+          return false;
         if (filters.inicio && v.data_venda < filters.inicio) return false;
         if (filters.fim && v.data_venda > filters.fim + "T23:59:59")
           return false;
@@ -564,7 +579,7 @@ export default function VendasPage() {
     setPage(1);
   }, [filters]);
 
-  // Estatísticas ---------------------------------------------
+  // Estatísticas
   const stats = useMemo(() => {
     const count = vendas.length;
     const faturamento = vendas.reduce(
@@ -582,7 +597,7 @@ export default function VendasPage() {
     return { count, faturamento, pagas, vencidas, receber, ticket };
   }, [vendas]);
 
-  // Form venda -----------------------------------------------
+  // Form venda
   function resetForm() {
     setEditingVenda(null);
     setFormData({
@@ -612,9 +627,17 @@ export default function VendasPage() {
     setProdutoQtd(1);
     setProdutoDesc(0);
     setDescontoInput(numberToCurrencyInput(0));
-    setEstoque([]); // Limpa estoque ao resetar
-    setSearchProduto(""); // Limpa busca
-    setProductPage(1); // Reset página de produtos
+    setValorPagoInput(numberToCurrencyInput(0));
+
+    // NOVOS RESETS PARA CRÉDITO
+    setClienteCredito(0);
+    setCreditoAplicado(0);
+    setCreditoInput(numberToCurrencyInput(0));
+    setUsarCredito(false);
+
+    setEstoque([]);
+    setSearchProduto("");
+    setProductPage(1);
   }
 
   function openNewVenda() {
@@ -635,22 +658,29 @@ export default function VendasPage() {
     });
     setSelectedCliente(clientes.find((c) => c.id === v.id_cliente) || null);
     setSelectedUsuario(usuarios.find((u) => u.uuid === v.id_usuario) || null);
-    setSelectedLoja(lojas.find((l) => l.id === v.loja_id) || null); // NOVO
+    setSelectedLoja(lojas.find((l) => l.id === v.loja_id) || null);
     vendaModal.onOpen();
   }
 
+  // FUNÇÃO MODIFICADA: recalcTotals agora considera crédito
   function recalcTotals(
     itens: VendaItem[],
     desconto?: number,
     valor_pago?: number,
-    fiado?: boolean
+    fiado?: boolean,
+    credito_aplicado?: number
   ) {
     const totalBruto = itens.reduce((acc, i) => acc + i.subtotal, 0);
     const desc = desconto ?? formData.desconto ?? 0;
-    const liquido = Math.max(0, totalBruto - desc);
+    const credito = credito_aplicado ?? creditoAplicado ?? 0;
+
+    // Total líquido considerando desconto e crédito
+    const liquido = Math.max(0, totalBruto - desc - credito);
+
     const pago = valor_pago ?? formData.valor_pago ?? 0;
     const isFiado = fiado ?? formData.fiado ?? false;
     const restante = Math.max(0, liquido - pago);
+
     setFormData((prev) => ({
       ...prev,
       itens,
@@ -660,27 +690,72 @@ export default function VendasPage() {
     }));
   }
 
-  // Novo: aplicar desconto total usando máscara
+  // NOVAS FUNÇÕES PARA GERENCIAR CRÉDITO
+  function handleCreditoChange(raw: string) {
+    const masked = currencyMask(raw);
+    setCreditoInput(masked);
+    const num = currencyToNumber(masked);
+
+    // CORREÇÃO: Adicionar fallback para undefined
+    const maxCredito = Math.min(
+      clienteCredito,
+      (formData.total_bruto || 0) - (formData.desconto || 0)
+    );
+    const creditoFinal = Math.min(num, maxCredito);
+
+    setCreditoAplicado(creditoFinal);
+    recalcTotals(
+      formData.itens || [],
+      formData.desconto,
+      formData.valor_pago,
+      formData.fiado,
+      creditoFinal
+    );
+  }
+
+  function handleCreditoBlur() {
+    setCreditoInput(numberToCurrencyInput(creditoAplicado || 0));
+  }
+
+  function toggleUsarCredito(usar: boolean) {
+    setUsarCredito(usar);
+    if (!usar) {
+      setCreditoAplicado(0);
+      setCreditoInput(numberToCurrencyInput(0));
+      recalcTotals(
+        formData.itens || [],
+        formData.desconto,
+        formData.valor_pago,
+        formData.fiado,
+        0
+      );
+    }
+  }
+
   function handleDescontoTotalChange(raw: string) {
     const masked = currencyMask(raw);
     setDescontoInput(masked);
     const num = currencyToNumber(masked);
     setFormData((p) => ({ ...p, desconto: num }));
-    recalcTotals(formData.itens || [], num);
+    recalcTotals(
+      formData.itens || [],
+      num,
+      undefined,
+      undefined,
+      creditoAplicado
+    );
   }
 
   function handleDescontoTotalBlur() {
     setDescontoInput(numberToCurrencyInput(formData.desconto || 0));
   }
 
-  // Ajuste desconto por item (já tínhamos produtoDesc numérico)
   function handleProdutoDescontoChange(raw: string) {
     const masked = currencyMask(raw);
     const num = currencyToNumber(masked);
     setProdutoDesc(num);
   }
 
-  // FUNÇÃO CORRIGIDA: addProduto com validações melhoradas
   function addProduto() {
     if (!selectedProduto) {
       alert("Selecione um produto.");
@@ -692,9 +767,6 @@ export default function VendasPage() {
     }
 
     const disponivel = Number(selectedProduto.quantidade) || 0;
-    console.log(
-      `[VENDAS] Tentando adicionar produto ${selectedProduto.id}: ${selectedProduto.descricao}, disponível: ${disponivel}, solicitado: ${produtoQtd}`
-    );
 
     if (disponivel === 0) {
       alert("Produto sem estoque nesta loja.");
@@ -710,7 +782,6 @@ export default function VendasPage() {
     const preco = Number(selectedProduto.preco_venda) || 0;
 
     if (idx >= 0) {
-      // Produto já existe na lista
       const soma = itens[idx].quantidade + produtoQtd;
       if (soma > disponivel) {
         alert(
@@ -723,7 +794,6 @@ export default function VendasPage() {
         itens[idx].quantidade * itens[idx].preco_unitario -
         (itens[idx].desconto || 0);
     } else {
-      // Novo produto
       itens.push({
         id_estoque: selectedProduto.id,
         descricao: selectedProduto.descricao || "Produto",
@@ -737,12 +807,10 @@ export default function VendasPage() {
       });
     }
 
-    recalcTotals(itens);
+    recalcTotals(itens, undefined, undefined, undefined, creditoAplicado);
     setSelectedProduto(null);
     setProdutoQtd(1);
     setProdutoDesc(0);
-
-    console.log("[VENDAS] Produto adicionado, itens atuais:", itens);
   }
 
   function updateItemQty(index: number, qty: number) {
@@ -752,7 +820,6 @@ export default function VendasPage() {
     }
     const itens = [...(formData.itens || [])];
     const item = itens[index];
-    // Descobre estoque disponível atual (busca na lista de estoque da loja)
     const prod = estoque.find((p) => p.id === item.id_estoque);
     const disponivel = Number(prod?.quantidade) || 0;
     if (qty > disponivel) {
@@ -763,17 +830,23 @@ export default function VendasPage() {
     }
     item.quantidade = qty;
     item.subtotal = item.quantidade * item.preco_unitario - item.desconto;
-    recalcTotals(itens);
+    recalcTotals(itens, undefined, undefined, undefined, creditoAplicado);
   }
 
   function removeItem(index: number) {
     const itens = (formData.itens || []).filter((_, i) => i !== index);
-    recalcTotals(itens);
+    recalcTotals(itens, undefined, undefined, undefined, creditoAplicado);
   }
 
   function applyDesconto(valor: string) {
     const num = currencyToNumber(valor);
-    recalcTotals(formData.itens || [], num);
+    recalcTotals(
+      formData.itens || [],
+      num,
+      undefined,
+      undefined,
+      creditoAplicado
+    );
     setFormData((p) => ({ ...p, desconto: num }));
   }
 
@@ -788,14 +861,6 @@ export default function VendasPage() {
       ...p,
       valor_pago: num,
       valor_restante: restante,
-      status_pagamento:
-        restante === 0
-          ? "pago"
-          : fiado
-            ? "fiado"
-            : p.status_pagamento === "cancelado"
-              ? "cancelado"
-              : "pendente",
     }));
   }
 
@@ -803,16 +868,9 @@ export default function VendasPage() {
     setFormData((p) => ({
       ...p,
       fiado: on,
-      status_pagamento:
-        on && (p.valor_restante || 0) > 0
-          ? "fiado"
-          : (p.valor_restante || 0) === 0
-            ? "pago"
-            : "pendente",
     }));
   }
 
-  // Helper para remover undefined e garantir tipos simples
   function sanitizeObject<T extends Record<string, any>>(obj: T): T {
     const out: Record<string, any> = {};
     Object.entries(obj).forEach(([k, v]) => {
@@ -823,6 +881,7 @@ export default function VendasPage() {
     return out as T;
   }
 
+  // FUNÇÃO MODIFICADA: saveVenda com funcionalidade de crédito
   async function saveVenda() {
     try {
       if (!formData.itens || formData.itens.length === 0) {
@@ -834,7 +893,6 @@ export default function VendasPage() {
         return;
       }
       if (!selectedLoja) {
-        // NOVA VALIDAÇÃO
         alert("Selecione a loja.");
         return;
       }
@@ -843,7 +901,6 @@ export default function VendasPage() {
         return;
       }
 
-      // Verificação de permissão
       if (editingVenda && !canEditVendas) {
         alert("Você não possui permissão para editar vendas.");
         return;
@@ -853,7 +910,6 @@ export default function VendasPage() {
         return;
       }
 
-      // Recalcula para garantir consistência
       const itensLimpos: VendaItem[] = (formData.itens || []).map((i) => ({
         id_estoque: i.id_estoque,
         descricao: i.descricao,
@@ -873,18 +929,16 @@ export default function VendasPage() {
         0
       );
       const desconto = Number(formData.desconto) || 0;
-      const total_liquido = Math.max(0, total_bruto - desconto);
+      const credito_usado = Number(creditoAplicado) || 0; // NOVO
+
+      // MODIFICADO: total líquido agora considera crédito
+      const total_liquido = Math.max(0, total_bruto - desconto - credito_usado);
       const valor_pago = Number(formData.valor_pago) || 0;
       const valor_restante = Math.max(0, total_liquido - valor_pago);
 
-      // Ajusta status coerente
-      let status_pagamento = formData.status_pagamento || "pendente";
-      if (status_pagamento !== "cancelado") {
-        if (valor_restante === 0) status_pagamento = "pago";
-        else if (formData.fiado) status_pagamento = "fiado";
-        else status_pagamento = "pendente";
-      }
+      const status_pagamento = formData.status_pagamento || "pendente";
 
+      // MODIFICADO: payload agora inclui informações de crédito
       const payloadRaw = {
         data_venda: new Date(formData.data_venda + "T00:00:00").toISOString(),
         data_vencimento: formData.data_vencimento
@@ -893,132 +947,170 @@ export default function VendasPage() {
         id_cliente: selectedCliente.id,
         cliente_nome: selectedCliente.nome,
         id_usuario: selectedUsuario?.uuid || null,
-        loja_id: selectedLoja.id, // NOVO CAMPO
+        loja_id: selectedLoja.id,
         itens: itensLimpos,
         total_bruto,
         desconto,
+        credito_usado, // NOVO: salva o crédito usado
         total_liquido,
         forma_pagamento: formData.forma_pagamento,
         status_pagamento,
         fiado: !!formData.fiado,
         valor_pago,
         valor_restante,
-        observacoes: formData.observacoes || null,
+        observacoes:
+          [
+            formData.observacoes || "",
+            credito_usado > 0 ? `Crédito aplicado: ${fmt(credito_usado)}` : "",
+          ]
+            .filter(Boolean)
+            .join("\n")
+            .trim() || null, // NOVO: adiciona info do crédito nas observações
         updated_at: new Date().toISOString(),
       };
 
       const payload = sanitizeObject(payloadRaw);
 
+      console.log("Payload final para o DB:", payload);
+
       setLoading(true);
-      console.log(
-        "[VENDAS] Salvando",
-        editingVenda ? "UPDATE" : "INSERT",
-        payload
-      );
+
+      let vendaId: number | undefined;
 
       if (editingVenda) {
-        // Tenta via wrapper
+        vendaId = editingVenda.id;
         try {
           await updateTable("vendas", editingVenda.id, payload);
         } catch (errWrapper) {
-          console.warn(
-            "[VENDAS] Falha no wrapper updateTable, tentando fallback Supabase direto",
-            errWrapper
-          );
           const { error } = await supabase
             .from("vendas")
             .update(payload)
             .eq("id", editingVenda.id);
           if (error) throw error;
         }
-        // TODO: Ajustar estoque caso itens tenham sido alterados (diferença entre antigo e novo)
       } else {
-        // Inserção
-        let insertedId: number | undefined;
         try {
           const inserted = await insertTable("vendas", payload);
-          insertedId = inserted?.[0]?.id;
+          vendaId = inserted?.[0]?.id;
         } catch (errWrapper) {
-          console.warn(
-            "[VENDAS] Falha no wrapper insertTable, fallback Supabase direto",
-            errWrapper
-          );
           const { data, error } = await supabase
             .from("vendas")
             .insert(payload)
             .select("id")
             .single();
           if (error) throw error;
-          insertedId = data?.id;
+          vendaId = data?.id;
         }
+      }
 
-        // NOVA LÓGICA: Ajuste de estoque na tabela estoque_lojas
-        if (insertedId && selectedLoja) {
-          await Promise.all(
-            itensLimpos.map(async (it) => {
-              if (!it.id_estoque || !it.quantidade) return;
+      // Ajuste de estoque (apenas para vendas novas)
+      if (!editingVenda && vendaId && selectedLoja) {
+        await Promise.all(
+          itensLimpos.map(async (it) => {
+            if (!it.id_estoque || !it.quantidade) return;
 
-              // Busca estoque atual da loja para este produto
-              const { data: current, error: curErr } = await supabase
-                .from("estoque_lojas")
-                .select("quantidade")
-                .eq("produto_id", it.id_estoque)
-                .eq("loja_id", selectedLoja.id)
-                .single();
+            const { data: current, error: curErr } = await supabase
+              .from("estoque_lojas")
+              .select("quantidade")
+              .eq("produto_id", it.id_estoque)
+              .eq("loja_id", selectedLoja.id)
+              .single();
 
-              if (curErr) {
-                console.warn(
-                  "[VENDAS] Falha ao buscar estoque da loja para produto",
-                  it.id_estoque,
-                  "loja",
-                  selectedLoja.id,
-                  curErr
-                );
-                return;
-              }
+            if (curErr) {
+              console.warn(
+                "[VENDAS] Falha ao buscar estoque da loja para produto",
+                it.id_estoque,
+                "loja",
+                selectedLoja.id,
+                curErr
+              );
+              return;
+            }
 
-              const atual = Number(current?.quantidade) || 0;
-              const nova = Math.max(0, atual - it.quantidade);
+            const atual = Number(current?.quantidade) || 0;
+            const nova = Math.max(0, atual - it.quantidade);
 
-              // Atualiza estoque da loja
-              const { error: updErr } = await supabase
-                .from("estoque_lojas")
-                .update({
-                  quantidade: nova,
-                  updatedat: new Date().toISOString(),
-                })
-                .eq("produto_id", it.id_estoque)
-                .eq("loja_id", selectedLoja.id);
+            const { error: updErr } = await supabase
+              .from("estoque_lojas")
+              .update({
+                quantidade: nova,
+                updatedat: new Date().toISOString(),
+              })
+              .eq("produto_id", it.id_estoque)
+              .eq("loja_id", selectedLoja.id);
 
-              if (updErr) {
-                console.warn(
-                  "[VENDAS] Falha ao atualizar estoque da loja",
-                  it.id_estoque,
-                  "loja",
-                  selectedLoja.id,
-                  updErr
-                );
-              }
+            if (updErr) {
+              console.warn(
+                "[VENDAS] Falha ao atualizar estoque da loja",
+                it.id_estoque,
+                "loja",
+                selectedLoja.id,
+                updErr
+              );
+            }
+          })
+        );
+      }
+
+      // NOVA FUNCIONALIDADE: Atualizar crédito do cliente
+      if (credito_usado > 0 && selectedCliente) {
+        try {
+          const novoCredito = Math.max(0, clienteCredito - credito_usado);
+
+          console.log(
+            `[VENDAS] Atualizando crédito do cliente ${selectedCliente.id}: ${fmt(clienteCredito)} → ${fmt(novoCredito)}`
+          );
+
+          const { error: creditoError } = await supabase
+            .from("clientes")
+            .update({
+              credito: novoCredito,
+              updated_at: new Date().toISOString(),
             })
+            .eq("id", selectedCliente.id);
+
+          if (creditoError) {
+            console.warn(
+              "[VENDAS] Erro ao atualizar crédito do cliente:",
+              creditoError
+            );
+            alert(
+              `Venda salva com sucesso, mas houve erro ao atualizar o crédito do cliente: ${creditoError.message}`
+            );
+          } else {
+            console.log(
+              `[VENDAS] Crédito atualizado com sucesso: ${fmt(clienteCredito)} → ${fmt(novoCredito)}`
+            );
+
+            // Atualiza o estado local para refletir o novo saldo
+            setClienteCredito(novoCredito);
+
+            // Se não há mais crédito, desativa o uso
+            if (novoCredito === 0) {
+              setUsarCredito(false);
+              setCreditoAplicado(0);
+              setCreditoInput(numberToCurrencyInput(0));
+            }
+          }
+        } catch (e) {
+          console.error("[VENDAS] Erro ao processar crédito:", e);
+          alert(
+            `Venda salva com sucesso, mas houve erro ao processar o crédito: ${e}`
           );
         }
       }
 
       await loadAll();
       vendaModal.onClose();
+
+      // Feedback de sucesso
+      if (credito_usado > 0) {
+        alert(
+          `Venda salva com sucesso! Crédito de ${fmt(credito_usado)} foi aplicado.`
+        );
+      }
     } catch (e: any) {
-      console.error(
-        "[VENDAS] Erro ao salvar:",
-        e,
-        "serializado=",
-        (() => {
-          try {
-            return JSON.stringify(e);
-          } catch {
-            return "N/A";
-          }
-        })()
-      );
+      console.error("[VENDAS] Erro ao salvar:", e);
       alert(
         "Erro ao salvar: " +
           (e?.message ||
@@ -1032,7 +1124,7 @@ export default function VendasPage() {
     }
   }
 
-  // Pagamento incremental ------------------------------------
+  // Pagamento incremental
   function openPagamento(v: Venda) {
     setTargetVenda(v);
     setPagamentoValor("");
@@ -1043,7 +1135,6 @@ export default function VendasPage() {
   async function confirmarPagamento() {
     if (!targetVenda) return;
 
-    // Verificação de permissão
     if (!canProcessarPagamentos) {
       alert("Você não possui permissão para processar pagamentos.");
       return;
@@ -1058,8 +1149,7 @@ export default function VendasPage() {
     }
     const novoPago = Number(targetVenda.valor_pago || 0) + valor;
     const restante = Math.max(0, Number(targetVenda.total_liquido) - novoPago);
-    const status: StatusPagamento =
-      restante === 0 ? "pago" : targetVenda.fiado ? "fiado" : "pendente";
+
     const obsConcat = [
       targetVenda.observacoes || "",
       `${new Date().toLocaleDateString("pt-BR")}: Pagamento ${fmt(valor)}${
@@ -1073,7 +1163,6 @@ export default function VendasPage() {
       await updateTable("vendas", targetVenda.id, {
         valor_pago: novoPago,
         valor_restante: restante,
-        status_pagamento: status,
         observacoes: obsConcat,
       });
       await loadAll();
@@ -1089,15 +1178,15 @@ export default function VendasPage() {
     }
   }
 
-  // Exclusão -------------------------------------------------
+  // Exclusão
   function openDelete(v: Venda) {
     setTargetVenda(v);
     deleteModal.onOpen();
   }
+
   async function confirmarDelete() {
     if (!targetVenda) return;
 
-    // Verificação de permissão
     if (!canDeleteVendas) {
       alert("Você não possui permissão para deletar vendas.");
       return;
@@ -1123,7 +1212,7 @@ export default function VendasPage() {
     }
   }
 
-  // View -----------------------------------------------------
+  // View
   function openView(v: Venda) {
     setTargetVenda(v);
     viewModal.onOpen();
@@ -1141,18 +1230,15 @@ export default function VendasPage() {
     );
   }, [estoque, searchProduto]);
 
-  // Novo: slice paginado
   const paginatedProdutos = useMemo(() => {
     const start = (productPage - 1) * PRODUCTS_PAGE_SIZE;
     return produtosFiltrados.slice(start, start + PRODUCTS_PAGE_SIZE);
   }, [produtosFiltrados, productPage]);
 
-  // Reset página ao alterar busca
   useEffect(() => {
     setProductPage(1);
   }, [searchProduto]);
 
-  // Verificação de loading/erro
   if (
     loading &&
     !vendaModal.isOpen &&
@@ -1201,7 +1287,7 @@ export default function VendasPage() {
 
   // UI -------------------------------------------------------
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto">
+    <div className="p-6 space-y-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold flex items-center gap-2">
@@ -1232,7 +1318,7 @@ export default function VendasPage() {
         </div>
       </div>
 
-      {/* Estatísticas - sempre visível se pode ver vendas */}
+      {/* Estatísticas */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardBody className="p-4">
@@ -1330,7 +1416,7 @@ export default function VendasPage() {
               pagamento: "",
               vencidas: false,
               cliente: "",
-              loja: "", // NOVO
+              loja: "",
               orderBy: "data_venda",
               direction: "desc",
               inicio: "",
@@ -1402,7 +1488,7 @@ export default function VendasPage() {
             </Select>
 
             <Select
-              label="Loja" // NOVO
+              label="Loja"
               size="sm"
               selectedKeys={filters.loja ? [filters.loja] : []}
               onSelectionChange={(k) =>
@@ -1529,11 +1615,10 @@ export default function VendasPage() {
                       <TableCell>
                         <Chip
                           size="sm"
-                          color={info.color}
                           variant="flat"
                           startContent={<Icon className="w-3.5 h-3.5" />}
                         >
-                          {info.label}
+                          {v.status_pagamento}
                         </Chip>
                       </TableCell>
                       <TableCell>
@@ -1620,7 +1705,7 @@ export default function VendasPage() {
         )}
       </div>
 
-      {/* Modal Venda - só abre se tiver permissão */}
+      {/* Modal Venda */}
       {(canCreateVendas || canEditVendas) && (
         <Modal
           isOpen={vendaModal.isOpen}
@@ -1644,6 +1729,7 @@ export default function VendasPage() {
                     setFormData((p) => ({ ...p, data_venda: e.target.value }))
                   }
                 />
+
                 <Select
                   label="Pagamento"
                   selectedKeys={
@@ -1652,20 +1738,12 @@ export default function VendasPage() {
                       : ["Dinheiro"]
                   }
                   onSelectionChange={(k) => {
-                    const key = Array.from(k)[0] as FormaPagamento;
+                    const key = Array.from(k)[0] as string;
                     const isFiado = key === "Fiado";
                     setFormData((p) => ({
                       ...p,
                       forma_pagamento: key,
                       fiado: isFiado,
-                      status_pagamento:
-                        isFiado && (p.valor_restante || 0) > 0
-                          ? "fiado"
-                          : p.status_pagamento === "cancelado"
-                            ? "cancelado"
-                            : (p.valor_restante || 0) === 0
-                              ? "pago"
-                              : "pendente",
                     }));
                   }}
                 >
@@ -1676,25 +1754,18 @@ export default function VendasPage() {
                 <Select
                   label="Status"
                   selectedKeys={[formData.status_pagamento || "pendente"]}
-                  onSelectionChange={(k) =>
+                  onSelectionChange={(k) => {
+                    const selectedStatus = Array.from(k)[0] as StatusPagamento;
                     setFormData((p) => ({
                       ...p,
-                      status_pagamento: Array.from(k)[0] as StatusPagamento,
-                    }))
-                  }
+                      status_pagamento: selectedStatus,
+                    }));
+                  }}
                 >
                   {STATUS_OPTIONS.map((s) => (
                     <SelectItem key={s.key}>{s.label}</SelectItem>
                   ))}
                 </Select>
-                <div className="flex items-center gap-2 mt-5">
-                  <Switch
-                    isSelected={formData.fiado}
-                    onValueChange={(v) => toggleFiado(v)}
-                  >
-                    Fiado
-                  </Switch>
-                </div>
               </div>
 
               {formData.fiado && (
@@ -1711,16 +1782,22 @@ export default function VendasPage() {
                     }
                     min={new Date().toISOString().slice(0, 10)}
                   />
+
                   <Input
                     label="Valor Pago"
-                    value={numberToCurrencyInput(formData.valor_pago || 0)}
-                    onChange={(e) => applyValorPago(e.target.value)}
+                    value={valorPagoInput}
+                    onChange={(e) => {
+                      const masked = currencyMask(e.target.value);
+                      setValorPagoInput(masked);
+                      applyValorPago(masked);
+                    }}
+                    onBlur={() => {
+                      setValorPagoInput(
+                        numberToCurrencyInput(formData.valor_pago || 0)
+                      );
+                    }}
                     placeholder="R$ 0,00"
-                  />
-                  <Input
-                    label="Restante"
-                    isReadOnly
-                    value={numberToCurrencyInput(formData.valor_restante || 0)}
+                    startContent={<CurrencyDollarIcon className="w-4 h-4" />}
                   />
                 </div>
               )}
@@ -1762,7 +1839,6 @@ export default function VendasPage() {
                   ))}
                 </Autocomplete>
 
-                {/* LOJA - OBRIGATÓRIA */}
                 <Autocomplete
                   label="Loja"
                   placeholder="Selecione a loja"
@@ -1770,7 +1846,6 @@ export default function VendasPage() {
                   onSelectionChange={(k) => {
                     const loja =
                       lojas.find((l) => l.id.toString() === k) || null;
-                    console.log("[VENDAS] Loja selecionada:", loja);
                     setSelectedLoja(loja);
                   }}
                   isRequired
@@ -1799,7 +1874,7 @@ export default function VendasPage() {
 
               <Divider />
 
-              {/* Seção de Produtos - só aparece se loja estiver selecionada */}
+              {/* Seção de Produtos */}
               {selectedLoja && (
                 <div className="space-y-4">
                   <div className="flex items-center gap-2">
@@ -1871,10 +1946,7 @@ export default function VendasPage() {
                             <button
                               key={p.id}
                               type="button"
-                              onClick={() => {
-                                console.log("[VENDAS] Produto selecionado:", p);
-                                setSelectedProduto(p);
-                              }}
+                              onClick={() => setSelectedProduto(p)}
                               className={`group relative text-left rounded-medium border p-3 transition
                                 ${
                                   selected
@@ -2060,10 +2132,63 @@ export default function VendasPage() {
 
                   <Divider />
 
-                  {/* Totais */}
-                  <div className="grid md:grid-cols-4 gap-4">
+                  {/* NOVA SEÇÃO: Crédito do Cliente */}
+                  {selectedCliente && clienteCredito > 0 && (
+                    <Card className="border-success-200 bg-success-50">
+                      <CardBody className="p-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            <CurrencyDollarIcon className="w-5 h-5 text-success-600" />
+                            <span className="text-sm font-medium text-success-700">
+                              Crédito Disponível: {fmt(clienteCredito)}
+                            </span>
+                          </div>
+                          <Switch
+                            size="sm"
+                            isSelected={usarCredito}
+                            onValueChange={toggleUsarCredito}
+                            color="success"
+                          >
+                            Usar Crédito
+                          </Switch>
+                        </div>
+
+                        {usarCredito && (
+                          <div className="space-y-3">
+                            <Input
+                              label="Valor do Crédito a Usar"
+                              value={creditoInput}
+                              onChange={(e) =>
+                                handleCreditoChange(e.target.value)
+                              }
+                              onBlur={handleCreditoBlur}
+                              placeholder="R$ 0,00"
+                              startContent={
+                                <CurrencyDollarIcon className="w-4 h-4" />
+                              }
+                              description={`Máximo disponível: ${fmt(Math.min(clienteCredito, (formData.total_bruto || 0) - (formData.desconto || 0)))}`}
+                              color={
+                                creditoAplicado > 0 ? "success" : "default"
+                              }
+                            />
+
+                            {creditoAplicado > 0 && (
+                              <div className="text-xs text-success-600 bg-success-100 p-2 rounded-md">
+                                <CogIcon className="w-4 h-4 inline-block mr-1" />
+                                Crédito de {fmt(creditoAplicado)} será aplicado
+                                nesta venda
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </CardBody>
+                    </Card>
+                  )}
+
+                  {/* Totais Atualizados */}
+                  <div className="grid md:grid-cols-5 gap-4">
                     <Input
-                      label="Desconto Total"
+                      label="Desconto"
                       value={descontoInput}
                       onChange={(e) =>
                         handleDescontoTotalChange(e.target.value)
@@ -2071,6 +2196,19 @@ export default function VendasPage() {
                       onBlur={handleDescontoTotalBlur}
                       placeholder="R$ 0,00"
                     />
+
+                    {usarCredito && creditoAplicado > 0 && (
+                      <Input
+                        label="Crédito Aplicado"
+                        isReadOnly
+                        value={numberToCurrencyInput(creditoAplicado)}
+                        color="success"
+                        startContent={
+                          <CurrencyDollarIcon className="w-4 h-4" />
+                        }
+                      />
+                    )}
+
                     <Input
                       label="Total Bruto"
                       isReadOnly
@@ -2080,6 +2218,7 @@ export default function VendasPage() {
                       label="Total Líquido"
                       isReadOnly
                       value={numberToCurrencyInput(formData.total_liquido || 0)}
+                      color={creditoAplicado > 0 ? "success" : "default"}
                     />
                     <Input
                       label="Valor Restante"
@@ -2131,7 +2270,7 @@ export default function VendasPage() {
         </Modal>
       )}
 
-      {/* Modal Detalhes - sempre visível se pode ver vendas */}
+      {/* Modal Detalhes */}
       <Modal
         isOpen={viewModal.isOpen}
         onOpenChange={viewModal.onOpenChange}
@@ -2169,6 +2308,15 @@ export default function VendasPage() {
                     <p className="text-default-500">Restante</p>
                     <p>{fmt(Number(targetVenda.valor_restante))}</p>
                   </div>
+                  {targetVenda.credito_usado &&
+                    targetVenda.credito_usado > 0 && (
+                      <div>
+                        <p className="text-default-500">Crédito Usado</p>
+                        <p className="text-success-600 font-medium">
+                          {fmt(Number(targetVenda.credito_usado))}
+                        </p>
+                      </div>
+                    )}
                   {targetVenda.fiado && (
                     <div>
                       <p className="text-default-500">Vencimento</p>
@@ -2221,7 +2369,7 @@ export default function VendasPage() {
         </ModalContent>
       </Modal>
 
-      {/* Modal Pagamento - só abre se tiver permissão */}
+      {/* Modal Pagamento */}
       {canProcessarPagamentos && (
         <Modal isOpen={payModal.isOpen} onOpenChange={payModal.onOpenChange}>
           <ModalContent>
@@ -2300,7 +2448,7 @@ export default function VendasPage() {
         </Modal>
       )}
 
-      {/* Modal Delete - só abre se tiver permissão */}
+      {/* Modal Delete */}
       {canDeleteVendas && (
         <Modal
           isOpen={deleteModal.isOpen}

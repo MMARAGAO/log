@@ -40,6 +40,8 @@ import {
   Tooltip,
   Divider,
   Spinner,
+  Listbox,
+  ListboxItem,
 } from "@heroui/react";
 import {
   PlusIcon,
@@ -61,6 +63,7 @@ import {
   ArrowPathIcon,
   ShoppingCartIcon,
   PrinterIcon,
+  CalendarIcon,
 } from "@heroicons/react/24/outline";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -82,7 +85,7 @@ interface Venda {
   data_venda: string;
   id_cliente?: number;
   cliente_nome?: string;
-  loja_id?: number; // ADICIONAR ESTA LINHA
+  loja_id?: number;
   id_usuario?: string;
   itens: VendaItem[];
   total_bruto: number;
@@ -113,7 +116,6 @@ interface ItemDevolucao {
   foto?: string;
 }
 
-// 2. Adicionar interface para Loja
 interface Loja {
   id: number;
   nome: string;
@@ -149,7 +151,6 @@ interface Usuario {
   fotourl?: string[] | null;
 }
 
-// Interface para clientes
 interface Cliente {
   id: number;
   nome: string | null;
@@ -163,6 +164,16 @@ interface Cliente {
   updatedat?: string;
   fotourl?: string[] | null;
   credito?: number | null;
+}
+
+// Interface para sugestões de vendas
+interface VendaSugestao {
+  id: number;
+  cliente_nome?: string;
+  data_venda: string;
+  total_liquido: number;
+  status_pagamento: string;
+  forma_pagamento: string;
 }
 
 const MOTIVOS_DEVOLUCAO = [
@@ -216,7 +227,6 @@ interface FilterState {
 const PAGE_SIZE = 15;
 
 export default function DevolucoesPagina() {
-  // 3. Adicionar estado para lojas
   const [lojas, setLojas] = useState<Loja[]>([]);
   const [lojaDevolucao, setLojaDevolucao] = useState<number | null>(null);
 
@@ -238,6 +248,11 @@ export default function DevolucoesPagina() {
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [loading, setLoading] = useState(false);
+
+  // Estados para busca de vendas com sugestões
+  const [buscarVendaId, setBuscarVendaId] = useState("");
+  const [showSugestoes, setShowSugestoes] = useState(false);
+  const [loadingSugestoes, setLoadingSugestoes] = useState(false);
 
   // Filtros
   const [filters, setFilters] = useState<FilterState>({
@@ -273,12 +288,54 @@ export default function DevolucoesPagina() {
   );
   const [motivoDevolucao, setMotivoDevolucao] = useState("");
   const [observacoesDevolucao, setObservacoesDevolucao] = useState("");
-  const [buscarVendaId, setBuscarVendaId] = useState("");
 
   // Estados auxiliares
   const [targetDevolucao, setTargetDevolucao] = useState<Devolucao | null>(
     null
   );
+
+  // Sugestões de vendas filtradas
+  const vendasSugeridas = useMemo(() => {
+    if (!buscarVendaId.trim() || buscarVendaId.length < 1) return [];
+
+    const termo = buscarVendaId.toLowerCase();
+
+    return vendas
+      .filter((venda) => {
+        // Buscar por ID da venda
+        if (venda.id.toString().includes(termo)) return true;
+
+        // Buscar por nome do cliente
+        if (venda.cliente_nome?.toLowerCase().includes(termo)) return true;
+
+        // Buscar por data (formato dd/mm/yyyy)
+        const dataFormatada = new Date(venda.data_venda).toLocaleDateString(
+          "pt-BR"
+        );
+        if (dataFormatada.includes(termo)) return true;
+
+        return false;
+      })
+      .filter(
+        (venda) =>
+          venda.status_pagamento !== "cancelado" &&
+          venda.status_pagamento !== "devolvido" // Excluir vendas já devolvidas
+      )
+      .sort((a, b) => {
+        // Priorizar correspondência exata do ID
+        const aIdMatch = a.id.toString() === termo;
+        const bIdMatch = b.id.toString() === termo;
+
+        if (aIdMatch && !bIdMatch) return -1;
+        if (!aIdMatch && bIdMatch) return 1;
+
+        // Depois ordenar por data mais recente
+        return (
+          new Date(b.data_venda).getTime() - new Date(a.data_venda).getTime()
+        );
+      })
+      .slice(0, 10); // Limitar a 10 sugestões
+  }, [buscarVendaId, vendas]);
 
   // Handlers com verificação de permissão
   function safeOpenNewDevolucao() {
@@ -292,6 +349,10 @@ export default function DevolucoesPagina() {
   function safeOpenEditDevolucao(d: Devolucao) {
     if (!canEditDevolucoes) {
       alert("Você não possui permissão para editar devoluções.");
+      return;
+    }
+    if (d.credito_aplicado) {
+      alert("Crédito já aplicado. Não é possível editar esta devolução.");
       return;
     }
     openEditDevolucao(d);
@@ -328,7 +389,7 @@ export default function DevolucoesPagina() {
         fetchTable("vendas"),
         fetchTable("usuarios"),
         fetchTable("clientes"),
-        fetchTable("lojas"), // ADICIONAR ESTA LINHA
+        fetchTable("lojas"),
       ]);
 
       setDevolucoes(
@@ -349,7 +410,7 @@ export default function DevolucoesPagina() {
 
       setUsuarios(usuariosData || []);
       setClientes(clientesData || []);
-      setLojas(lojasData || []); // ADICIONAR ESTA LINHA
+      setLojas(lojasData || []);
     } catch (e) {
       console.error(e);
     } finally {
@@ -435,7 +496,7 @@ export default function DevolucoesPagina() {
         let av: any = a[filters.orderBy as keyof Devolucao];
         let bv: any = b[filters.orderBy as keyof Devolucao];
 
-        if (filters.orderBy === "data_devolucao") {
+        if (filters.orderBy === "data_venda") {
           av = av ? new Date(av).getTime() : 0;
           bv = bv ? new Date(bv).getTime() : 0;
         }
@@ -482,31 +543,19 @@ export default function DevolucoesPagina() {
     };
   }, [devolucoes]);
 
-  // Buscar venda para devolução
-  async function buscarVenda() {
-    if (!buscarVendaId) return;
+  // Buscar venda específica por ID
+  async function buscarVendaPorId(vendaId: string) {
+    if (!vendaId) return;
 
     try {
-      setLoading(true);
+      setLoadingSugestoes(true);
 
-      console.log("[DEVOLUCAO] Buscando venda ID:", buscarVendaId);
-      console.log(
-        "[DEVOLUCAO] Vendas disponíveis:",
-        vendas.map((v) => ({ id: v.id, cliente: v.cliente_nome }))
-      );
-
-      const venda = vendas.find((v) => v.id.toString() === buscarVendaId);
+      const venda = vendas.find((v) => v.id.toString() === vendaId);
 
       if (!venda) {
-        // Se não encontrou nas vendas carregadas, tentar recarregar
-        console.log(
-          "[DEVOLUCAO] Venda não encontrada no cache, recarregando..."
-        );
         await loadAll();
-
-        // Tentar novamente após recarregar
         const vendaRecarregada = vendas.find(
-          (v) => v.id.toString() === buscarVendaId
+          (v) => v.id.toString() === vendaId
         );
 
         if (!vendaRecarregada) {
@@ -514,29 +563,38 @@ export default function DevolucoesPagina() {
           return;
         }
 
-        setVendaSelecionada(vendaRecarregada);
-        prepararItensDevolucao(vendaRecarregada.itens);
-        console.log(
-          "[DEVOLUCAO] Venda encontrada após recarregar:",
-          vendaRecarregada
-        );
+        selecionarVenda(vendaRecarregada);
         return;
       }
 
-      if (venda.status_pagamento === "cancelado") {
-        alert("Não é possível devolver itens de uma venda cancelada");
-        return;
-      }
-
-      console.log("[DEVOLUCAO] Venda encontrada:", venda);
-      setVendaSelecionada(venda);
-      prepararItensDevolucao(venda.itens);
+      selecionarVenda(venda);
     } catch (error) {
       console.error("Erro ao buscar venda:", error);
       alert("Erro ao buscar venda");
     } finally {
-      setLoading(false);
+      setLoadingSugestoes(false);
     }
+  }
+
+  // Selecionar uma venda das sugestões ou busca
+  function selecionarVenda(venda: Venda) {
+    if (venda.status_pagamento === "cancelado") {
+      alert("Não é possível devolver itens de uma venda cancelada");
+      return;
+    }
+
+    if (venda.status_pagamento === "devolvido") {
+      alert(
+        "Esta venda já foi devolvida. Não é possível fazer nova devolução."
+      );
+      return;
+    }
+
+    console.log("[DEVOLUCAO] Venda selecionada:", venda);
+    setVendaSelecionada(venda);
+    prepararItensDevolucao(venda.itens);
+    setBuscarVendaId(venda.id.toString());
+    setShowSugestoes(false);
   }
 
   function prepararItensDevolucao(itens: VendaItem[]) {
@@ -586,7 +644,6 @@ export default function DevolucoesPagina() {
   }
 
   // Form handlers
-
   function openNewDevolucao() {
     resetForm();
     devolucaoModal.onOpen();
@@ -653,59 +710,29 @@ export default function DevolucoesPagina() {
     try {
       setLoading(true);
 
-      // 1. Salvar a devolução
-      // Corrigir esta parte no salvarDevolucao:
       let devolucaoId;
       if (editingDevolucao) {
         await updateTable("devolucoes", editingDevolucao.id, dadosDevolucao);
         devolucaoId = editingDevolucao.id;
       } else {
-        try {
-          const resultado: any = await insertTable(
-            "devolucoes",
-            dadosDevolucao
-          );
-          console.log("[DEVOLUCAO] Resultado do insert:", resultado);
-
-          // Tratar diferentes formatos de retorno
-          if (Array.isArray(resultado)) {
-            devolucaoId = resultado[0]?.id;
-          } else {
-            devolucaoId = resultado?.id;
-          }
-
-          if (!devolucaoId) {
-            console.warn(
-              "[DEVOLUCAO] ID não encontrado no resultado:",
-              resultado
-            );
-          }
-        } catch (error) {
-          console.error("[DEVOLUCAO] Erro no insert:", error);
-          throw error;
+        const resultado: any = await insertTable("devolucoes", dadosDevolucao);
+        if (Array.isArray(resultado)) devolucaoId = resultado[0]?.id;
+        else devolucaoId = resultado?.id;
+        if (!devolucaoId) {
+          console.warn("[DEVOLUCAO] ID da devolução não retornado:", resultado);
         }
       }
 
-      // 2. NOVO: Devolver produtos para o estoque da loja
-      // Primeiro, precisamos descobrir qual loja foi usada na venda
-      const lojaId = lojaDevolucao || 1; // Usar loja selecionada ou padrão
+      const lojaId =
+        lojaDevolucao || (vendaSelecionada.loja_id as number) || null;
 
       if (!lojaId) {
         console.warn(
-          "Venda não possui loja_id, não será possível devolver ao estoque"
-        );
-        alert(
-          "Aviso: Venda não possui loja associada. Estoque não será atualizado."
+          "[DEVOLUCAO] Loja não informada; pular atualização de estoque."
         );
       } else {
-        console.log(
-          `[DEVOLUCAO] Devolvendo itens para loja ${lojaId}:`,
-          itensComDevolucao
-        );
-
         for (const item of itensComDevolucao) {
           try {
-            // Buscar o registro atual do estoque_lojas
             const { data: estoqueAtual, error: estoqueError } = await supabase
               .from("estoque_lojas")
               .select("quantidade")
@@ -713,27 +740,27 @@ export default function DevolucoesPagina() {
               .eq("loja_id", lojaId)
               .single();
 
-            if (estoqueError) {
-              console.error(
-                `Erro ao buscar estoque do produto ${item.id_estoque}:`,
-                estoqueError
+            if (estoqueError && estoqueError.code !== "PGRST116") {
+              console.warn(
+                `[DEVOLUCAO] Erro ao buscar estoque (produto ${item.id_estoque}):`,
+                estoqueError.message || estoqueError
               );
-              // Se não existe, criar um novo registro
+            }
+
+            if (!estoqueAtual) {
               await supabase.from("estoque_lojas").insert({
                 produto_id: item.id_estoque,
                 loja_id: lojaId,
                 quantidade: item.quantidade_devolver,
                 updatedat: new Date().toISOString(),
               });
-
               console.log(
-                `[DEVOLUCAO] Criado novo registro de estoque para produto ${item.id_estoque}: +${item.quantidade_devolver}`
+                `[DEVOLUCAO] Inserido estoque para produto ${item.id_estoque}: +${item.quantidade_devolver}`
               );
             } else {
-              // Atualizar quantidade existente
               const novaQuantidade =
-                (estoqueAtual.quantidade || 0) + item.quantidade_devolver;
-
+                (Number(estoqueAtual.quantidade) || 0) +
+                item.quantidade_devolver;
               await supabase
                 .from("estoque_lojas")
                 .update({
@@ -742,28 +769,93 @@ export default function DevolucoesPagina() {
                 })
                 .eq("produto_id", item.id_estoque)
                 .eq("loja_id", lojaId);
-
               console.log(
-                `[DEVOLUCAO] Produto ${item.id_estoque}: ${estoqueAtual.quantidade} + ${item.quantidade_devolver} = ${novaQuantidade}`
+                `[DEVOLUCAO] Atualizado estoque produto ${item.id_estoque}: ${estoqueAtual.quantidade} -> ${novaQuantidade}`
               );
             }
-          } catch (error) {
+          } catch (err) {
             console.error(
-              `Erro ao devolver produto ${item.id_estoque} ao estoque:`,
-              error
+              `[DEVOLUCAO] Falha ao devolver produto ${item.id_estoque} ao estoque:`,
+              err
             );
-            // Continua com os outros produtos mesmo se um falhar
           }
         }
+      }
+
+      try {
+        if (vendaSelecionada?.id) {
+          try {
+            await updateTable("vendas", vendaSelecionada.id, {
+              status_pagamento: "devolvido",
+              updated_at: new Date().toISOString(),
+            });
+            console.log(
+              "[DEVOLUCAO] Venda marcada como 'devolvido' via updateTable:",
+              vendaSelecionada.id
+            );
+          } catch (helperErr) {
+            console.warn(
+              "[DEVOLUCAO] updateTable falhou, tentando supabase direto:",
+              helperErr
+            );
+            const { error: vendaError } = await supabase
+              .from("vendas")
+              .update({
+                status_pagamento: "devolvido",
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", vendaSelecionada.id);
+
+            if (vendaError) {
+              console.warn(
+                "[DEVOLUCAO] Falha ao atualizar status_pagamento para 'devolvido':",
+                vendaError.message || vendaError
+              );
+
+              const vendaAtual = vendas.find(
+                (v) => v.id === vendaSelecionada.id
+              );
+              const marca = `[[devolucao_aplicada:id=${devolucaoId};ts=${new Date().toISOString()}]]`;
+              const novaObservacao = (vendaAtual?.observacoes || "").trim()
+                ? `${vendaAtual?.observacoes}\n${marca}`
+                : marca;
+
+              const { error: obsError } = await supabase
+                .from("vendas")
+                .update({
+                  observacoes: novaObservacao,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq("id", vendaSelecionada.id);
+
+              if (obsError) {
+                console.error(
+                  "[DEVOLUCAO] Falha ao aplicar fallback nas observacoes da venda:",
+                  obsError
+                );
+              } else {
+                console.log(
+                  "[DEVOLUCAO] Fallback: observacoes da venda atualizadas com marca de devolucao."
+                );
+              }
+            } else {
+              console.log(
+                "[DEVOLUCAO] Venda marcada como 'devolvido' via supabase:",
+                vendaSelecionada.id
+              );
+            }
+          }
+        }
+      } catch (err) {
+        console.error("[DEVOLUCAO] Erro ao marcar venda como devolvido:", err);
       }
 
       await loadAll();
       devolucaoModal.onClose();
 
-      // Mostrar mensagem de sucesso
       alert(
         `Devolução processada com sucesso!\n` +
-          `${itensComDevolucao.length} itens foram devolvidos ao estoque.`
+          `${itensComDevolucao.length} itens devolvidos${lojaId ? ` para a loja ${lojaId}` : ""}.`
       );
     } catch (e: any) {
       console.error("Erro ao salvar devolução:", e);
@@ -784,7 +876,8 @@ export default function DevolucoesPagina() {
     setMotivoDevolucao("");
     setObservacoesDevolucao("");
     setBuscarVendaId("");
-    setLojaDevolucao(null); // ADICIONAR ESTA LINHA
+    setLojaDevolucao(null);
+    setShowSugestoes(false);
   }
 
   // Aplicar crédito
@@ -799,7 +892,6 @@ export default function DevolucoesPagina() {
     try {
       setLoading(true);
 
-      // Atualizar crédito do cliente (não do usuário)
       if (targetDevolucao.id_cliente) {
         const cliente = clientes.find(
           (c) => c.id === targetDevolucao.id_cliente
@@ -823,11 +915,48 @@ export default function DevolucoesPagina() {
         return;
       }
 
-      // Marcar crédito como aplicado
       await updateTable("devolucoes", targetDevolucao.id, {
         credito_aplicado: true,
         updated_at: new Date().toISOString(),
       });
+
+      const vendaId = targetDevolucao.id_venda;
+      const { error: vendaError } = await supabase
+        .from("vendas")
+        .update({
+          status_pagamento: "devolvido",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", vendaId);
+
+      if (vendaError) {
+        console.warn(
+          "[DEVOLUCAO] Falha ao atualizar status_pagamento para 'devolvido' (provável CHECK constraint):",
+          vendaError.message
+        );
+
+        const vendaAtual = vendas.find((v) => v.id === vendaId);
+        const marca = `[[devolucao_aplicada:id=${targetDevolucao.id};ts=${new Date().toISOString()}]]`;
+        const novaObservacao = (vendaAtual?.observacoes || "").trim()
+          ? `${vendaAtual?.observacoes}\n${marca}`
+          : marca;
+
+        const { error: obsError } = await supabase
+          .from("vendas")
+          .update({
+            observacoes: novaObservacao,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", vendaId);
+
+        if (obsError) {
+          console.error(
+            "[DEVOLUCAO] Falha ao aplicar fallback nas observacoes da venda:",
+            obsError
+          );
+          throw obsError;
+        }
+      }
 
       await loadAll();
       creditoModal.onClose();
@@ -1209,15 +1338,24 @@ export default function DevolucoesPagina() {
                           </Tooltip>
 
                           {canEditDevolucoes && (
-                            <Tooltip content="Editar">
-                              <Button
-                                isIconOnly
-                                size="sm"
-                                variant="light"
-                                onPress={() => safeOpenEditDevolucao(d)}
-                              >
-                                <PencilIcon className="w-4 h-4" />
-                              </Button>
+                            <Tooltip
+                              content={
+                                d.credito_aplicado
+                                  ? "Crédito aplicado — edição não permitida"
+                                  : "Editar"
+                              }
+                            >
+                              <span>
+                                <Button
+                                  isIconOnly
+                                  size="sm"
+                                  variant="light"
+                                  onPress={() => safeOpenEditDevolucao(d)}
+                                  isDisabled={d.credito_aplicado}
+                                >
+                                  <PencilIcon className="w-4 h-4" />
+                                </Button>
+                              </span>
                             </Tooltip>
                           )}
 
@@ -1288,21 +1426,145 @@ export default function DevolucoesPagina() {
               {editingDevolucao ? "Editar Devolução" : "Nova Devolução"}
             </ModalHeader>
             <ModalBody className="space-y-6">
-              {/* Buscar Venda */}
-              <div className="space-y-4">
+              {/* Buscar Venda com Sugestões */}
+              <div className="space-y-4 ">
                 <h3 className="text-lg font-semibold">Buscar Venda</h3>
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Digite o ID da venda"
-                    value={buscarVendaId}
-                    onChange={(e) => setBuscarVendaId(e.target.value)}
-                    onKeyPress={(e) => e.key === "Enter" && buscarVenda()}
-                    className="flex-1"
-                  />
-                  <Button onPress={buscarVenda} isLoading={loading}>
-                    <MagnifyingGlassIcon className="w-4 h-4" />
-                    Buscar
-                  </Button>
+                <div className="relative">
+                  <div className="flex gap-2">
+                    <div className="flex-1 relative">
+                      <Input
+                        placeholder="Digite o ID, nome do cliente ou data da venda"
+                        value={buscarVendaId}
+                        onChange={(e) => {
+                          setBuscarVendaId(e.target.value);
+                          setShowSugestoes(e.target.value.length > 0);
+                        }}
+                        onKeyPress={(e) => {
+                          if (e.key === "Enter") {
+                            // Se há sugestões, selecionar a primeira
+                            if (vendasSugeridas.length > 0) {
+                              selecionarVenda(vendasSugeridas[0]);
+                            } else {
+                              buscarVendaPorId(buscarVendaId);
+                            }
+                          }
+                        }}
+                        onFocus={() =>
+                          setShowSugestoes(buscarVendaId.length > 0)
+                        }
+                        startContent={
+                          <MagnifyingGlassIcon className="w-4 h-4" />
+                        }
+                        endContent={loadingSugestoes && <Spinner size="sm" />}
+                      />
+
+                      {/* Lista de Sugestões */}
+                      {showSugestoes && vendasSugeridas.length > 0 && (
+                        <Card className="">
+                          <CardBody className="p-0">
+                            <Listbox
+                              aria-label="Sugestões de vendas"
+                              onAction={(key) => {
+                                const venda = vendasSugeridas.find(
+                                  (v) => v.id.toString() === key
+                                );
+                                if (venda) {
+                                  selecionarVenda(venda);
+                                }
+                              }}
+                            >
+                              {vendasSugeridas.map((venda) => (
+                                <ListboxItem
+                                  key={venda.id.toString()}
+                                  className="px-3 py-2 hover:bg-default-100"
+                                  startContent={
+                                    <div className="flex items-center justify-center w-8 h-8 bg-primary-100 rounded-full">
+                                      <ShoppingCartIcon className="w-4 h-4 text-primary" />
+                                    </div>
+                                  }
+                                >
+                                  <div className="flex flex-col">
+                                    <div className="flex items-center justify-between">
+                                      <span className="font-medium">
+                                        Venda #{venda.id}
+                                      </span>
+                                      <Chip
+                                        size="sm"
+                                        variant="flat"
+                                        color={
+                                          venda.status_pagamento === "pago"
+                                            ? "success"
+                                            : venda.status_pagamento ===
+                                                "pendente"
+                                              ? "warning"
+                                              : "default"
+                                        }
+                                      >
+                                        {venda.status_pagamento}
+                                      </Chip>
+                                    </div>
+                                    <div className="flex items-center gap-4 text-sm text-default-500">
+                                      <span className="flex items-center gap-1">
+                                        <UserIcon className="w-3 h-3" />
+                                        {venda.cliente_nome ||
+                                          "Cliente não informado"}
+                                      </span>
+                                      <span className="flex items-center gap-1">
+                                        <CalendarIcon className="w-3 h-3" />
+                                        {fmtDate(venda.data_venda)}
+                                      </span>
+                                      <span className="font-medium text-primary">
+                                        {fmt(venda.total_liquido)}
+                                      </span>
+                                    </div>
+                                    <div className="text-xs text-default-400">
+                                      {venda.forma_pagamento}
+                                    </div>
+                                  </div>
+                                </ListboxItem>
+                              ))}
+                            </Listbox>
+                          </CardBody>
+                        </Card>
+                      )}
+
+                      {/* Mensagem quando não há sugestões */}
+                      {showSugestoes &&
+                        buscarVendaId.length > 0 &&
+                        vendasSugeridas.length === 0 && (
+                          <Card className="">
+                            <CardBody className="p-3 text-center text-sm text-default-500">
+                              Nenhuma venda encontrada para "{buscarVendaId}"
+                            </CardBody>
+                          </Card>
+                        )}
+                    </div>
+
+                    <Button
+                      onPress={() => buscarVendaPorId(buscarVendaId)}
+                      isLoading={loadingSugestoes}
+                      color="primary"
+                    >
+                      Buscar
+                    </Button>
+
+                    {/* Botão para fechar sugestões */}
+                    {showSugestoes && (
+                      <Button
+                        isIconOnly
+                        variant="flat"
+                        onPress={() => setShowSugestoes(false)}
+                      >
+                        <XMarkIcon className="w-4 h-4" />
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* Dica de uso */}
+                  <p className="text-xs text-default-400 mt-2">
+                    💡 Digite o ID da venda, nome do cliente ou data para ver
+                    sugestões
+                  </p>
                 </div>
               </div>
 
@@ -1310,14 +1572,15 @@ export default function DevolucoesPagina() {
               {vendaSelecionada && (
                 <Card>
                   <CardBody>
-                    <h4 className="font-semibold mb-3">
-                      Venda #{vendaSelecionada.id}
+                    <h4 className="font-semibold mb-3 flex items-center gap-2">
+                      <CheckCircleIcon className="w-5 h-5 text-success" />
+                      Venda #{vendaSelecionada.id} Selecionada
                     </h4>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                       <div>
                         <p className="text-default-500">Cliente</p>
                         <p className="font-medium">
-                          {vendaSelecionada.cliente_nome}
+                          {vendaSelecionada.cliente_nome || "Não informado"}
                         </p>
                       </div>
                       <div>
@@ -1332,7 +1595,23 @@ export default function DevolucoesPagina() {
                       </div>
                       <div>
                         <p className="text-default-500">Pagamento</p>
-                        <p>{vendaSelecionada.forma_pagamento}</p>
+                        <div className="flex items-center gap-1">
+                          <span>{vendaSelecionada.forma_pagamento}</span>
+                          <Chip
+                            size="sm"
+                            variant="flat"
+                            color={
+                              vendaSelecionada.status_pagamento === "pago"
+                                ? "success"
+                                : vendaSelecionada.status_pagamento ===
+                                    "pendente"
+                                  ? "warning"
+                                  : "default"
+                            }
+                          >
+                            {vendaSelecionada.status_pagamento}
+                          </Chip>
+                        </div>
                       </div>
                     </div>
                   </CardBody>
@@ -1463,6 +1742,7 @@ export default function DevolucoesPagina() {
                       </SelectItem>
                     ))}
                   </Select>
+
                   <Select
                     label="Motivo da Devolução"
                     placeholder="Selecione o motivo"
@@ -1499,7 +1779,8 @@ export default function DevolucoesPagina() {
                   !vendaSelecionada ||
                   !motivoDevolucao ||
                   itensParaDevolucao.filter((i) => i.quantidade_devolver > 0)
-                    .length === 0
+                    .length === 0 ||
+                  (editingDevolucao?.credito_aplicado ?? false)
                 }
               >
                 {editingDevolucao ? "Atualizar" : "Processar Devolução"}
