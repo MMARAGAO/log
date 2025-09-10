@@ -66,6 +66,7 @@ import {
   CalendarIcon,
 } from "@heroicons/react/24/outline";
 import { supabase } from "@/lib/supabaseClient";
+import toast from "react-hot-toast";
 
 // Tipos baseados no schema
 interface VendaItem {
@@ -90,6 +91,7 @@ interface Venda {
   itens: VendaItem[];
   total_bruto: number;
   desconto: number;
+  credito_usado: number;
   total_liquido: number;
   forma_pagamento: string;
   status_pagamento: string;
@@ -114,6 +116,7 @@ interface ItemDevolucao {
   subtotal_original: number;
   subtotal_devolucao: number;
   foto?: string;
+  motivo_devolucao?: string;
 }
 
 interface Loja {
@@ -340,7 +343,7 @@ export default function DevolucoesPagina() {
   // Handlers com verificação de permissão
   function safeOpenNewDevolucao() {
     if (!canCreateDevolucoes) {
-      alert("Você não possui permissão para criar devoluções.");
+      toast.error("Você não possui permissão para criar devoluções.");
       return;
     }
     openNewDevolucao();
@@ -348,11 +351,11 @@ export default function DevolucoesPagina() {
 
   function safeOpenEditDevolucao(d: Devolucao) {
     if (!canEditDevolucoes) {
-      alert("Você não possui permissão para editar devoluções.");
+      toast.error("Você não possui permissão para editar devoluções.");
       return;
     }
     if (d.credito_aplicado) {
-      alert("Crédito já aplicado. Não é possível editar esta devolução.");
+      toast.error("Crédito já aplicado. Não é possível editar esta devolução.");
       return;
     }
     openEditDevolucao(d);
@@ -360,15 +363,24 @@ export default function DevolucoesPagina() {
 
   function safeOpenDelete(d: Devolucao) {
     if (!canDeleteDevolucoes) {
-      alert("Você não possui permissão para deletar devoluções.");
+      toast.error("Você não possui permissão para deletar devoluções.");
       return;
     }
+
+    // NOVA VALIDAÇÃO: Impedir exclusão se crédito já foi aplicado
+    if (d.credito_aplicado) {
+      toast.error(
+        "Não é possível excluir uma devolução que já teve o crédito aplicado ao cliente."
+      );
+      return;
+    }
+
     openDelete(d);
   }
 
   function safeOpenCredito(d: Devolucao) {
     if (!canProcessarCreditos) {
-      alert("Você não possui permissão para processar créditos.");
+      toast.error("Você não possui permissão para processar créditos.");
       return;
     }
     openCredito(d);
@@ -559,7 +571,7 @@ export default function DevolucoesPagina() {
         );
 
         if (!vendaRecarregada) {
-          alert("Venda não encontrada");
+          toast.error("Venda não encontrada");
           return;
         }
 
@@ -570,21 +582,22 @@ export default function DevolucoesPagina() {
       selecionarVenda(venda);
     } catch (error) {
       console.error("Erro ao buscar venda:", error);
-      alert("Erro ao buscar venda");
+      toast.error("Erro ao buscar venda");
     } finally {
       setLoadingSugestoes(false);
     }
   }
 
   // Selecionar uma venda das sugestões ou busca
+  // Selecionar uma venda das sugestões ou busca
   function selecionarVenda(venda: Venda) {
     if (venda.status_pagamento === "cancelado") {
-      alert("Não é possível devolver itens de uma venda cancelada");
+      toast.error("Não é possível devolver itens de uma venda cancelada");
       return;
     }
 
     if (venda.status_pagamento === "devolvido") {
-      alert(
+      toast.error(
         "Esta venda já foi devolvida. Não é possível fazer nova devolução."
       );
       return;
@@ -592,25 +605,70 @@ export default function DevolucoesPagina() {
 
     console.log("[DEVOLUCAO] Venda selecionada:", venda);
     setVendaSelecionada(venda);
-    prepararItensDevolucao(venda.itens);
+    prepararItensDevolucao(venda.itens, venda); // CORREÇÃO: Passar a venda como parâmetro
     setBuscarVendaId(venda.id.toString());
     setShowSugestoes(false);
+    toast.success(`Venda #${venda.id} selecionada com sucesso!`);
   }
 
-  function prepararItensDevolucao(itens: VendaItem[]) {
-    const itensDevolucao = itens.map((item) => ({
-      id_estoque: item.id_estoque,
-      descricao: item.descricao,
-      modelo: item.modelo,
-      marca: item.marca,
-      quantidade_original: item.quantidade,
-      quantidade_devolver: 0,
-      preco_unitario: item.preco_unitario,
-      desconto: item.desconto,
-      subtotal_original: item.subtotal,
-      subtotal_devolucao: 0,
-      foto: item.foto,
-    }));
+  function prepararItensDevolucao(itens: VendaItem[], venda?: Venda) {
+    console.log("Itens da venda para devolução:", itens);
+    console.log("Venda recebida:", venda);
+
+    const itensDevolucao = itens.map((item) => {
+      // Calcular o subtotal real considerando desconto e crédito usado
+      let subtotalReal = item.subtotal;
+
+      // Usar a venda passada como parâmetro
+      const vendaAtual = venda || vendaSelecionada;
+
+      // Se há desconto ou crédito usado na venda
+      if (
+        vendaAtual &&
+        vendaAtual.total_bruto !== undefined &&
+        vendaAtual.total_bruto > 0
+      ) {
+        const desconto = vendaAtual.desconto || 0;
+        const creditoUsado = vendaAtual.credito_usado || 0;
+        const totalDescontoECredito = desconto + creditoUsado;
+
+        // Se há desconto ou crédito aplicado
+        if (totalDescontoECredito > 0) {
+          // Calcular a proporção do desconto+crédito para este item
+          const proporcaoItem = item.subtotal / vendaAtual.total_bruto;
+          const descontoECreditoItem = totalDescontoECredito * proporcaoItem;
+          subtotalReal = item.subtotal - descontoECreditoItem;
+
+          console.log(`Item ${item.descricao}:`, {
+            subtotalOriginal: item.subtotal,
+            proporcaoItem,
+            desconto,
+            creditoUsado,
+            totalDescontoECredito,
+            descontoECreditoItem,
+            subtotalReal,
+          });
+        }
+      }
+
+      const itemDevolucao = {
+        id_estoque: item.id_estoque,
+        descricao: item.descricao,
+        modelo: item.modelo,
+        marca: item.marca,
+        quantidade_original: item.quantidade,
+        quantidade_devolver: 0,
+        preco_unitario: item.preco_unitario,
+        desconto: item.desconto,
+        subtotal_original: subtotalReal, // Usar o subtotal com desconto e crédito aplicados
+        subtotal_devolucao: 0,
+        foto: item.foto,
+      };
+
+      console.log("Item preparado:", itemDevolucao);
+      return itemDevolucao;
+    });
+
     setItensParaDevolucao(itensDevolucao);
   }
 
@@ -623,9 +681,11 @@ export default function DevolucoesPagina() {
           0,
           Math.min(quantidade, item.quantidade_original)
         );
-        const subtotalDevolucao =
-          qtdDevolver * item.preco_unitario -
-          (item.desconto / item.quantidade_original) * qtdDevolver;
+
+        // CORREÇÃO: Calcular o valor unitário já com desconto aplicado
+        const valorUnitarioComDesconto =
+          item.subtotal_original / item.quantidade_original;
+        const subtotalDevolucao = qtdDevolver * valorUnitarioComDesconto;
 
         return {
           ...item,
@@ -655,6 +715,7 @@ export default function DevolucoesPagina() {
     const venda = vendas.find((v) => v.id === d.id_venda);
     if (venda) {
       setVendaSelecionada(venda);
+      // Para edição, usar os itens já salvos na devolução, não recalcular
       setItensParaDevolucao(d.itens_devolvidos);
     }
     setMotivoDevolucao(d.motivo_devolucao || "");
@@ -665,7 +726,7 @@ export default function DevolucoesPagina() {
 
   async function salvarDevolucao() {
     if (!vendaSelecionada) {
-      alert("Selecione uma venda");
+      toast.error("Selecione uma venda");
       return;
     }
 
@@ -674,16 +735,19 @@ export default function DevolucoesPagina() {
     );
 
     if (itensComDevolucao.length === 0) {
-      alert("Selecione pelo menos um item para devolução");
+      toast.error("Selecione pelo menos um item para devolução");
       return;
     }
 
     if (!motivoDevolucao) {
-      alert("Selecione o motivo da devolução");
+      toast.error("Selecione o motivo da devolução");
       return;
     }
 
     const valorTotalDevolvido = calcularTotalDevolucao();
+    const creditoUsadoOriginal = vendaSelecionada.credito_usado || 0;
+    const valorCreditoGerado = valorTotalDevolvido + creditoUsadoOriginal;
+
     const tipoDevolucao =
       itensComDevolucao.length === vendaSelecionada.itens.length &&
       itensComDevolucao.every(
@@ -701,7 +765,7 @@ export default function DevolucoesPagina() {
       valor_total_devolvido: valorTotalDevolvido,
       tipo_devolucao: tipoDevolucao,
       motivo_devolucao: motivoDevolucao,
-      valor_credito_gerado: valorTotalDevolvido,
+      valor_credito_gerado: valorCreditoGerado,
       credito_aplicado: false,
       observacoes: observacoesDevolucao,
       updated_at: new Date().toISOString(),
@@ -853,13 +917,15 @@ export default function DevolucoesPagina() {
       await loadAll();
       devolucaoModal.onClose();
 
-      alert(
+      toast.success(
         `Devolução processada com sucesso!\n` +
           `${itensComDevolucao.length} itens devolvidos${lojaId ? ` para a loja ${lojaId}` : ""}.`
       );
     } catch (e: any) {
       console.error("Erro ao salvar devolução:", e);
-      alert("Erro ao salvar devolução: " + (e?.message || "erro desconhecido"));
+      toast.error(
+        "Erro ao salvar devolução: " + (e?.message || "erro desconhecido")
+      );
     } finally {
       setLoading(false);
     }
@@ -907,11 +973,11 @@ export default function DevolucoesPagina() {
             updatedat: new Date().toISOString(),
           });
         } else {
-          alert("Cliente não encontrado");
+          toast.error("Cliente não encontrado");
           return;
         }
       } else {
-        alert("ID do cliente não encontrado na devolução");
+        toast.error("ID do cliente não encontrado na devolução");
         return;
       }
 
@@ -962,7 +1028,9 @@ export default function DevolucoesPagina() {
       creditoModal.onClose();
     } catch (e: any) {
       console.error("Erro ao aplicar crédito:", e);
-      alert("Erro ao aplicar crédito: " + (e?.message || "erro desconhecido"));
+      toast.error(
+        "Erro ao aplicar crédito: " + (e?.message || "erro desconhecido")
+      );
     } finally {
       setLoading(false);
     }
@@ -990,7 +1058,7 @@ export default function DevolucoesPagina() {
       deleteModal.onClose();
     } catch (e: any) {
       console.error("Erro ao excluir devolução:", e);
-      alert(
+      toast.error(
         "Erro ao excluir devolução: " + (e?.message || "erro desconhecido")
       );
     } finally {
@@ -1374,16 +1442,26 @@ export default function DevolucoesPagina() {
                           )}
 
                           {canDeleteDevolucoes && (
-                            <Tooltip content="Excluir" color="danger">
-                              <Button
-                                isIconOnly
-                                size="sm"
-                                variant="light"
-                                color="danger"
-                                onPress={() => safeOpenDelete(d)}
-                              >
-                                <TrashIcon className="w-4 h-4" />
-                              </Button>
+                            <Tooltip
+                              content={
+                                d.credito_aplicado
+                                  ? "Crédito aplicado — exclusão não permitida"
+                                  : "Excluir"
+                              }
+                              color={d.credito_aplicado ? "warning" : "danger"}
+                            >
+                              <span>
+                                <Button
+                                  isIconOnly
+                                  size="sm"
+                                  variant="light"
+                                  color="danger"
+                                  onPress={() => safeOpenDelete(d)}
+                                  isDisabled={d.credito_aplicado}
+                                >
+                                  <TrashIcon className="w-4 h-4" />
+                                </Button>
+                              </span>
                             </Tooltip>
                           )}
                         </div>
@@ -1644,10 +1722,52 @@ export default function DevolucoesPagina() {
                             {[item.marca, item.modelo]
                               .filter(Boolean)
                               .join(" • ")}{" "}
-                            • {fmt(item.preco_unitario)}
+                            •{" "}
+                            {fmt(
+                              item.subtotal_original / item.quantidade_original
+                            )}
                           </p>
                           <p className="text-xs text-default-400">
                             Qtd. original: {item.quantidade_original}
+                            {/* Mostrar detalhes do desconto e crédito se houver */}
+                            {vendaSelecionada &&
+                              vendaSelecionada.total_bruto !== undefined &&
+                              vendaSelecionada.total_bruto > 0 &&
+                              ((vendaSelecionada.desconto !== undefined &&
+                                vendaSelecionada.desconto > 0) ||
+                                (vendaSelecionada.credito_usado !== undefined &&
+                                  vendaSelecionada.credito_usado > 0)) && (
+                                <span className="ml-2 text-default-500">
+                                  (Preço original: {fmt(item.preco_unitario)}
+                                  {vendaSelecionada.desconto > 0 && (
+                                    <span>
+                                      {" "}
+                                      - Desconto:{" "}
+                                      {fmt(
+                                        (vendaSelecionada.desconto *
+                                          ((item.preco_unitario *
+                                            item.quantidade_original) /
+                                            vendaSelecionada.total_bruto)) /
+                                          item.quantidade_original
+                                      )}
+                                    </span>
+                                  )}
+                                  {vendaSelecionada.credito_usado > 0 && (
+                                    <span>
+                                      {" "}
+                                      - Crédito:{" "}
+                                      {fmt(
+                                        (vendaSelecionada.credito_usado *
+                                          ((item.preco_unitario *
+                                            item.quantidade_original) /
+                                            vendaSelecionada.total_bruto)) /
+                                          item.quantidade_original
+                                      )}
+                                    </span>
+                                  )}
+                                  )
+                                </span>
+                              )}
                           </p>
                         </div>
 
@@ -1715,6 +1835,29 @@ export default function DevolucoesPagina() {
                       Total da Devolução: {fmt(calcularTotalDevolucao())}
                     </p>
                   </div>
+                  {vendaSelecionada && vendaSelecionada.credito_usado > 0 && (
+                    <div className="flex justify-between items-center">
+                      <p className="text-sm text-default-600">
+                        + Crédito usado na compra:
+                      </p>
+                      <p className="text-sm font-medium text-primary">
+                        {fmt(vendaSelecionada.credito_usado)}
+                      </p>
+                    </div>
+                  )}
+                  {vendaSelecionada && vendaSelecionada.credito_usado > 0 && (
+                    <div className="flex justify-between items-center border-t pt-2">
+                      <p className="text-lg font-semibold text-success">
+                        Total de Crédito a Gerar:
+                      </p>
+                      <p className="text-lg font-semibold text-success">
+                        {fmt(
+                          calcularTotalDevolucao() +
+                            (vendaSelecionada.credito_usado || 0)
+                        )}
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1791,10 +1934,12 @@ export default function DevolucoesPagina() {
       )}
 
       {/* Modal Visualizar */}
+      {/* Modal Visualizar */}
       <Modal
         isOpen={viewModal.isOpen}
         onOpenChange={viewModal.onOpenChange}
         size="lg"
+        scrollBehavior="outside"
       >
         <ModalContent>
           <ModalHeader>
@@ -1826,9 +1971,29 @@ export default function DevolucoesPagina() {
                       {fmt(targetDevolucao.valor_total_devolvido)}
                     </p>
                   </div>
+
+                  {/* ADICIONADO: Crédito usado na compra original */}
+                  {(() => {
+                    const vendaOriginal = vendas.find(
+                      (v) => v.id === targetDevolucao.id_venda
+                    );
+                    const creditoUsado = vendaOriginal?.credito_usado || 0;
+
+                    return creditoUsado > 0 ? (
+                      <div>
+                        <p className="text-default-500">
+                          Crédito Usado na Compra
+                        </p>
+                        <p className="font-medium text-primary">
+                          {fmt(creditoUsado)}
+                        </p>
+                      </div>
+                    ) : null;
+                  })()}
+
                   <div>
                     <p className="text-default-500">Crédito Gerado</p>
-                    <p className="font-medium">
+                    <p className="font-medium text-success">
                       {fmt(targetDevolucao.valor_credito_gerado)}
                     </p>
                   </div>
@@ -1846,6 +2011,47 @@ export default function DevolucoesPagina() {
                     <p>{motivoLabel(targetDevolucao.motivo_devolucao || "")}</p>
                   </div>
                 </div>
+
+                {/* ADICIONADO: Resumo financeiro se houver crédito usado */}
+                {(() => {
+                  const vendaOriginal = vendas.find(
+                    (v) => v.id === targetDevolucao.id_venda
+                  );
+                  const creditoUsado = vendaOriginal?.credito_usado || 0;
+
+                  return creditoUsado > 0 ? (
+                    <>
+                      <Divider />
+                      <Card className=" rounded-md p-3">
+                        <p className="font-semibold  mb-2">Resumo Financeiro</p>
+                        <div className="space-y-1 text-sm">
+                          <div className="flex justify-between">
+                            <span className="">
+                              Valor devolvido (pago em dinheiro):
+                            </span>
+                            <span className="font-medium">
+                              {fmt(targetDevolucao.valor_total_devolvido)}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="">+ Crédito usado na compra:</span>
+                            <span className="font-medium">
+                              {fmt(creditoUsado)}
+                            </span>
+                          </div>
+                          <div className="flex justify-between border-t border-blue-200 pt-1">
+                            <span className="font-semibold">
+                              Total de crédito gerado:
+                            </span>
+                            <span className="font-bold text-success">
+                              {fmt(targetDevolucao.valor_credito_gerado)}
+                            </span>
+                          </div>
+                        </div>
+                      </Card>
+                    </>
+                  ) : null;
+                })()}
 
                 <Divider />
 

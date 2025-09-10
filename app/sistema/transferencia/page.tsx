@@ -1273,7 +1273,7 @@ export default function TransferenciasPage() {
             <div className="p-6 rounded-t-2xl border-b border-blue-200 dark:border-slate-600">
               <div className="flex items-center justify-between ">
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center hidden lg:block">
+                  <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center hidden lg:flex">
                     <PlusIcon className="w-6 h-6 text-white" />
                   </div>
                   <div>
