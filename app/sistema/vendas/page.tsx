@@ -240,6 +240,142 @@ export default function VendasPage() {
   const [creditoAplicado, setCreditoAplicado] = useState(0);
   const [creditoInput, setCreditoInput] = useState(numberToCurrencyInput(0));
   const [usarCredito, setUsarCredito] = useState(false);
+  const [pagamentoFormaPagamento, setPagamentoFormaPagamento] = useState("");
+
+  // Adicionar novos estados para controle do tipo de desconto
+  const [tipoDesconto, setTipoDesconto] = useState<"valor" | "porcentagem">(
+    "valor"
+  );
+  const [descontoPercentual, setDescontoPercentual] = useState(0);
+
+  // Função para calcular desconto baseado no tipo
+  function calcularDesconto(
+    tipo: "valor" | "porcentagem",
+    valor: number,
+    totalBruto: number
+  ) {
+    if (tipo === "porcentagem") {
+      return (totalBruto * valor) / 100;
+    }
+    return valor;
+  }
+
+  // Função modificada para lidar com desconto por porcentagem
+  function handleDescontoTotalChange(
+    raw: string,
+    tipo?: "valor" | "porcentagem"
+  ) {
+    const tipoAtual = tipo || tipoDesconto;
+
+    if (tipoAtual === "porcentagem") {
+      // Para porcentagem, não usar máscara de moeda
+      const num = Math.min(100, Math.max(0, Number(raw) || 0));
+      setDescontoPercentual(num);
+      const descontoEmValor = calcularDesconto(
+        "porcentagem",
+        num,
+        formData.total_bruto || 0
+      );
+      setFormData((p) => ({ ...p, desconto: descontoEmValor }));
+      recalcTotals(
+        formData.itens || [],
+        descontoEmValor,
+        undefined,
+        undefined,
+        creditoAplicado
+      );
+    } else {
+      // Para valor, usar máscara de moeda
+      const masked = currencyMask(raw);
+      setDescontoInput(masked);
+      const num = currencyToNumber(masked);
+      setFormData((p) => ({ ...p, desconto: num }));
+      recalcTotals(
+        formData.itens || [],
+        num,
+        undefined,
+        undefined,
+        creditoAplicado
+      );
+    }
+  }
+
+  function handleDescontoTotalBlur() {
+    if (tipoDesconto === "valor") {
+      setDescontoInput(numberToCurrencyInput(formData.desconto || 0));
+    }
+  }
+
+  // Função para alternar tipo de desconto
+  function alternarTipoDesconto(novoTipo: "valor" | "porcentagem") {
+    setTipoDesconto(novoTipo);
+
+    // Limpar valores ao trocar tipo
+    if (novoTipo === "porcentagem") {
+      setDescontoPercentual(0);
+      setDescontoInput(numberToCurrencyInput(0));
+    } else {
+      setDescontoInput(numberToCurrencyInput(0));
+      setDescontoPercentual(0);
+    }
+
+    // Resetar desconto
+    setFormData((p) => ({ ...p, desconto: 0 }));
+    recalcTotals(
+      formData.itens || [],
+      0,
+      undefined,
+      undefined,
+      creditoAplicado
+    );
+  }
+
+  // Atualizar função resetForm
+  function resetForm() {
+    setEditingVenda(null);
+    setFormData({
+      data_venda: new Date().toISOString().slice(0, 10),
+      itens: [],
+      total_bruto: 0,
+      desconto: 0,
+      total_liquido: 0,
+      forma_pagamento: "Dinheiro",
+      status_pagamento: "pendente",
+      fiado: false,
+      valor_pago: 0,
+      valor_restante: 0,
+      data_vencimento: undefined,
+    });
+    setSelectedCliente(null);
+    setSelectedLoja(null);
+    setSelectedUsuario(
+      user
+        ? {
+            uuid: user.id,
+            nome: user.nome || user.email || "Usuário",
+          }
+        : null
+    );
+    setSelectedProduto(null);
+    setProdutoQtd(1);
+    setProdutoDesc(0);
+    setDescontoInput(numberToCurrencyInput(0));
+    setValorPagoInput(numberToCurrencyInput(0));
+
+    // NOVOS RESETS PARA DESCONTO
+    setTipoDesconto("valor");
+    setDescontoPercentual(0);
+
+    // RESETS PARA CRÉDITO
+    setClienteCredito(0);
+    setCreditoAplicado(0);
+    setCreditoInput(numberToCurrencyInput(0));
+    setUsarCredito(false);
+
+    setEstoque([]);
+    setSearchProduto("");
+    setProductPage(1);
+  }
 
   const [loading, setLoading] = useState(false);
 
@@ -597,49 +733,6 @@ export default function VendasPage() {
     return { count, faturamento, pagas, vencidas, receber, ticket };
   }, [vendas]);
 
-  // Form venda
-  function resetForm() {
-    setEditingVenda(null);
-    setFormData({
-      data_venda: new Date().toISOString().slice(0, 10),
-      itens: [],
-      total_bruto: 0,
-      desconto: 0,
-      total_liquido: 0,
-      forma_pagamento: "Dinheiro",
-      status_pagamento: "pendente",
-      fiado: false,
-      valor_pago: 0,
-      valor_restante: 0,
-      data_vencimento: undefined,
-    });
-    setSelectedCliente(null);
-    setSelectedLoja(null);
-    setSelectedUsuario(
-      user
-        ? {
-            uuid: user.id,
-            nome: user.nome || user.email || "Usuário",
-          }
-        : null
-    );
-    setSelectedProduto(null);
-    setProdutoQtd(1);
-    setProdutoDesc(0);
-    setDescontoInput(numberToCurrencyInput(0));
-    setValorPagoInput(numberToCurrencyInput(0));
-
-    // NOVOS RESETS PARA CRÉDITO
-    setClienteCredito(0);
-    setCreditoAplicado(0);
-    setCreditoInput(numberToCurrencyInput(0));
-    setUsarCredito(false);
-
-    setEstoque([]);
-    setSearchProduto("");
-    setProductPage(1);
-  }
-
   function openNewVenda() {
     resetForm();
     vendaModal.onOpen();
@@ -730,24 +823,6 @@ export default function VendasPage() {
         0
       );
     }
-  }
-
-  function handleDescontoTotalChange(raw: string) {
-    const masked = currencyMask(raw);
-    setDescontoInput(masked);
-    const num = currencyToNumber(masked);
-    setFormData((p) => ({ ...p, desconto: num }));
-    recalcTotals(
-      formData.itens || [],
-      num,
-      undefined,
-      undefined,
-      creditoAplicado
-    );
-  }
-
-  function handleDescontoTotalBlur() {
-    setDescontoInput(numberToCurrencyInput(formData.desconto || 0));
   }
 
   function handleProdutoDescontoChange(raw: string) {
@@ -1129,6 +1204,7 @@ export default function VendasPage() {
     setTargetVenda(v);
     setPagamentoValor("");
     setPagamentoObs("");
+    setPagamentoFormaPagamento(v.forma_pagamento || ""); // Inicializa com a forma atual
     payModal.onOpen();
   }
 
@@ -1154,17 +1230,34 @@ export default function VendasPage() {
       targetVenda.observacoes || "",
       `${new Date().toLocaleDateString("pt-BR")}: Pagamento ${fmt(valor)}${
         pagamentoObs ? " - " + pagamentoObs : ""
+      }${
+        pagamentoFormaPagamento &&
+        pagamentoFormaPagamento !== targetVenda.forma_pagamento
+          ? ` (${pagamentoFormaPagamento})`
+          : ""
       }`,
     ]
       .join("\n")
       .trim();
+
     setLoading(true);
     try {
-      await updateTable("vendas", targetVenda.id, {
+      // MODIFICADO: Agora inclui a forma de pagamento na atualização
+      const updateData: any = {
         valor_pago: novoPago,
         valor_restante: restante,
         observacoes: obsConcat,
-      });
+      };
+
+      // Se a forma de pagamento foi alterada, atualiza também
+      if (
+        pagamentoFormaPagamento &&
+        pagamentoFormaPagamento !== targetVenda.forma_pagamento
+      ) {
+        updateData.forma_pagamento = pagamentoFormaPagamento;
+      }
+
+      await updateTable("vendas", targetVenda.id, updateData);
       await loadAll();
       payModal.onClose();
     } catch (e: any) {
@@ -2185,53 +2278,182 @@ export default function VendasPage() {
                     </Card>
                   )}
 
-                  {/* Totais Atualizados */}
-                  <div className="grid md:grid-cols-5 gap-4">
-                    <Input
-                      label="Desconto"
-                      value={descontoInput}
-                      onChange={(e) =>
-                        handleDescontoTotalChange(e.target.value)
-                      }
-                      onBlur={handleDescontoTotalBlur}
-                      placeholder="R$ 0,00"
-                    />
+                  {/* Seção de Totais com Desconto Melhorado */}
+                  <div className="space-y-4">
+                    {/* Tipo de Desconto */}
+                    <div className="flex items-center gap-4">
+                      <span className="text-sm font-medium">
+                        Tipo de Desconto:
+                      </span>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant={tipoDesconto === "valor" ? "solid" : "flat"}
+                          color={
+                            tipoDesconto === "valor" ? "primary" : "default"
+                          }
+                          onPress={() => alternarTipoDesconto("valor")}
+                        >
+                          Valor (R$)
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={
+                            tipoDesconto === "porcentagem" ? "solid" : "flat"
+                          }
+                          color={
+                            tipoDesconto === "porcentagem"
+                              ? "primary"
+                              : "default"
+                          }
+                          onPress={() => alternarTipoDesconto("porcentagem")}
+                        >
+                          Porcentagem (%)
+                        </Button>
+                      </div>
+                    </div>
 
-                    {usarCredito && creditoAplicado > 0 && (
+                    {/* Campos de Desconto e Totais */}
+                    <div className="grid md:grid-cols-5 gap-4">
+                      {/* Campo de Desconto */}
+                      {tipoDesconto === "valor" ? (
+                        <Input
+                          label="Desconto"
+                          value={descontoInput}
+                          onChange={(e) =>
+                            handleDescontoTotalChange(e.target.value, "valor")
+                          }
+                          onBlur={handleDescontoTotalBlur}
+                          placeholder="R$ 0,00"
+                          startContent={
+                            <CurrencyDollarIcon className="w-4 h-4" />
+                          }
+                          description={`Valor atual: ${fmt(formData.desconto || 0)}`}
+                        />
+                      ) : (
+                        <Input
+                          label="Desconto (%)"
+                          type="number"
+                          value={descontoPercentual.toString()}
+                          onChange={(e) =>
+                            handleDescontoTotalChange(
+                              e.target.value,
+                              "porcentagem"
+                            )
+                          }
+                          placeholder="0"
+                          min="0"
+                          max="100"
+                          endContent={
+                            <span className="text-default-400">%</span>
+                          }
+                          description={`Valor: ${fmt(formData.desconto || 0)}`}
+                        />
+                      )}
+
+                      {/* Crédito Aplicado (se houver) */}
+                      {usarCredito && creditoAplicado > 0 && (
+                        <Input
+                          label="Crédito Aplicado"
+                          isReadOnly
+                          value={numberToCurrencyInput(creditoAplicado)}
+                          color="success"
+                          startContent={
+                            <CurrencyDollarIcon className="w-4 h-4" />
+                          }
+                        />
+                      )}
+
+                      {/* Total Bruto */}
                       <Input
-                        label="Crédito Aplicado"
+                        label="Total Bruto"
                         isReadOnly
-                        value={numberToCurrencyInput(creditoAplicado)}
-                        color="success"
+                        value={numberToCurrencyInput(formData.total_bruto || 0)}
                         startContent={
                           <CurrencyDollarIcon className="w-4 h-4" />
                         }
                       />
-                    )}
 
-                    <Input
-                      label="Total Bruto"
-                      isReadOnly
-                      value={numberToCurrencyInput(formData.total_bruto || 0)}
-                    />
-                    <Input
-                      label="Total Líquido"
-                      isReadOnly
-                      value={numberToCurrencyInput(formData.total_liquido || 0)}
-                      color={creditoAplicado > 0 ? "success" : "default"}
-                    />
-                    <Input
-                      label="Valor Restante"
-                      isReadOnly
-                      value={numberToCurrencyInput(
-                        formData.valor_restante || 0
-                      )}
-                      color={
-                        (formData.valor_restante || 0) === 0
-                          ? "success"
-                          : "warning"
-                      }
-                    />
+                      {/* Total Líquido */}
+                      <Input
+                        label="Total Líquido"
+                        isReadOnly
+                        value={numberToCurrencyInput(
+                          formData.total_liquido || 0
+                        )}
+                        color={
+                          creditoAplicado > 0 || (formData.desconto || 0) > 0
+                            ? "success"
+                            : "default"
+                        }
+                        startContent={
+                          <CurrencyDollarIcon className="w-4 h-4" />
+                        }
+                      />
+
+                      {/* Valor Restante */}
+                      <Input
+                        label="Valor Restante"
+                        isReadOnly
+                        value={numberToCurrencyInput(
+                          formData.valor_restante || 0
+                        )}
+                        color={
+                          (formData.valor_restante || 0) === 0
+                            ? "success"
+                            : "warning"
+                        }
+                        startContent={
+                          <CurrencyDollarIcon className="w-4 h-4" />
+                        }
+                      />
+                    </div>
+
+                    {/* Resumo Visual dos Descontos (se houver) */}
+                    {((formData.desconto || 0) > 0 || creditoAplicado > 0) && (
+                      <Card className="border-success-200 bg-success-50">
+                        <CardBody className="p-3">
+                          <div className="text-sm space-y-1">
+                            <div className="flex justify-between">
+                              <span>Subtotal dos itens:</span>
+                              <span className="font-medium">
+                                {fmt(formData.total_bruto || 0)}
+                              </span>
+                            </div>
+
+                            {(formData.desconto || 0) > 0 && (
+                              <div className="flex justify-between text-primary">
+                                <span>
+                                  - Desconto{" "}
+                                  {tipoDesconto === "porcentagem"
+                                    ? `(${descontoPercentual}%)`
+                                    : ""}
+                                  :
+                                </span>
+                                <span className="font-medium">
+                                  -{fmt(formData.desconto || 0)}
+                                </span>
+                              </div>
+                            )}
+
+                            {creditoAplicado > 0 && (
+                              <div className="flex justify-between text-success-600">
+                                <span>- Crédito aplicado:</span>
+                                <span className="font-medium">
+                                  -{fmt(creditoAplicado)}
+                                </span>
+                              </div>
+                            )}
+
+                            <Divider className="my-1" />
+                            <div className="flex justify-between text-success-700 font-semibold">
+                              <span>Total a pagar:</span>
+                              <span>{fmt(formData.total_liquido || 0)}</span>
+                            </div>
+                          </div>
+                        </CardBody>
+                      </Card>
+                    )}
                   </div>
 
                   <Textarea
@@ -2271,6 +2493,7 @@ export default function VendasPage() {
       )}
 
       {/* Modal Detalhes */}
+      {/* Modal Detalhes */}
       <Modal
         isOpen={viewModal.isOpen}
         onOpenChange={viewModal.onOpenChange}
@@ -2301,22 +2524,63 @@ export default function VendasPage() {
                     <p>{statusInfo(computeStatus(targetVenda)).label}</p>
                   </div>
                   <div>
-                    <p className="text-default-500">Total</p>
-                    <p>{fmt(Number(targetVenda.total_liquido))}</p>
+                    <p className="text-default-500">Total Bruto</p>
+                    <p>{fmt(Number(targetVenda.total_bruto))}</p>
                   </div>
-                  <div>
-                    <p className="text-default-500">Restante</p>
-                    <p>{fmt(Number(targetVenda.valor_restante))}</p>
-                  </div>
-                  {targetVenda.credito_usado &&
+                  {targetVenda.desconto && targetVenda.desconto > 0 && (
+                    <div>
+                      <p className="text-default-500">Desconto</p>
+                      <p className="text-orange-600 font-medium">
+                        -{fmt(Number(targetVenda.desconto))}
+                      </p>
+                    </div>
+                  )}
+                  {/* desconto em porcentagem */}
+                  {targetVenda.desconto && targetVenda.desconto > 0 && (
+                    <div>
+                      <p className="text-default-500">Desconto (%)</p>
+                      <p className="text-orange-600 font-medium">
+                        -
+                        {(
+                          (targetVenda.desconto / targetVenda.total_bruto) *
+                          100
+                        ).toFixed(2)}
+                        %
+                      </p>
+                    </div>
+                  )}
+
+                  {targetVenda.credito_usado !== undefined &&
                     targetVenda.credito_usado > 0 && (
                       <div>
                         <p className="text-default-500">Crédito Usado</p>
                         <p className="text-success-600 font-medium">
-                          {fmt(Number(targetVenda.credito_usado))}
+                          -{fmt(Number(targetVenda.credito_usado))}
                         </p>
                       </div>
                     )}
+                  <div>
+                    <p className="text-default-500">Total Líquido</p>
+                    <p className="font-semibold text-primary">
+                      {fmt(Number(targetVenda.total_liquido))}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-default-500">Valor Pago</p>
+                    <p>{fmt(Number(targetVenda.valor_pago))}</p>
+                  </div>
+                  <div>
+                    <p className="text-default-500">Restante</p>
+                    <p
+                      className={
+                        targetVenda.valor_restante > 0
+                          ? "text-orange-600 font-medium"
+                          : "text-success-600"
+                      }
+                    >
+                      {fmt(Number(targetVenda.valor_restante))}
+                    </p>
+                  </div>
                   {targetVenda.fiado && (
                     <div>
                       <p className="text-default-500">Vencimento</p>
@@ -2324,6 +2588,53 @@ export default function VendasPage() {
                     </div>
                   )}
                 </div>
+
+                {/* Resumo Financeiro (se houver desconto ou crédito) */}
+                {((targetVenda.desconto && targetVenda.desconto > 0) ||
+                  (targetVenda.credito_usado !== undefined &&
+                    targetVenda.credito_usado > 0)) && (
+                  <>
+                    <Divider />
+                    <Card className="rounded-md p-3">
+                      <p className="font-semibold mb-2 text-xs">
+                        Resumo Financeiro
+                      </p>
+                      <div className="space-y-1 text-xs">
+                        <div className="flex justify-between">
+                          <span className="">Subtotal dos itens:</span>
+                          <span className="font-medium">
+                            {fmt(targetVenda.total_bruto)}
+                          </span>
+                        </div>
+                        {targetVenda.desconto && targetVenda.desconto > 0 && (
+                          <div className="flex justify-between">
+                            <span className="">- Desconto aplicado:</span>
+                            <span className="font-medium text-orange-600">
+                              -{fmt(targetVenda.desconto)}
+                            </span>
+                          </div>
+                        )}
+
+                        {targetVenda.credito_usado !== undefined &&
+                          targetVenda.credito_usado > 0 && (
+                            <div className="flex justify-between">
+                              <span className="">- Crédito usado:</span>
+                              <span className="font-medium text-success-600">
+                                -{fmt(targetVenda.credito_usado)}
+                              </span>
+                            </div>
+                          )}
+                        <div className="flex justify-between border-t border-blue-200 pt-1">
+                          <span className="font-semibold ">Total final:</span>
+                          <span className="font-bold text-primary">
+                            {fmt(targetVenda.total_liquido)}
+                          </span>
+                        </div>
+                      </div>
+                    </Card>
+                  </>
+                )}
+
                 <Divider />
                 <div className="space-y-2">
                   <p className="text-xs font-semibold">
@@ -2371,77 +2682,350 @@ export default function VendasPage() {
 
       {/* Modal Pagamento */}
       {canProcessarPagamentos && (
-        <Modal isOpen={payModal.isOpen} onOpenChange={payModal.onOpenChange}>
+        <Modal
+          isOpen={payModal.isOpen}
+          onOpenChange={payModal.onOpenChange}
+          size="lg"
+          scrollBehavior="outside"
+        >
           <ModalContent>
-            <ModalHeader>Registrar Pagamento</ModalHeader>
-            <ModalBody className="space-y-4">
+            <ModalHeader className="flex items-center gap-2">
+              <CurrencyDollarIcon className="w-5 h-5" />
+              Registrar Pagamento - Venda #{targetVenda?.id}
+            </ModalHeader>
+            <ModalBody className="space-y-6">
               {targetVenda && (
                 <>
-                  <div className="text-xs space-y-1">
-                    <p>
-                      Total: <strong>{fmt(targetVenda.total_liquido)}</strong>
-                    </p>
-                    <p>
-                      Pago: <strong>{fmt(targetVenda.valor_pago)}</strong>
-                    </p>
-                    <p>
-                      Restante:{" "}
-                      <strong>{fmt(targetVenda.valor_restante)}</strong>
-                    </p>
-                  </div>
-                  <Input
-                    label="Valor"
-                    placeholder="R$ 0,00"
-                    value={pagamentoValor}
-                    color={
-                      currencyToNumber(pagamentoValor) >
-                      Number(targetVenda?.valor_restante || 0)
-                        ? "danger"
-                        : "default"
-                    }
-                    description={
-                      currencyToNumber(pagamentoValor) >
-                      Number(targetVenda?.valor_restante || 0)
-                        ? "Não pode exceder o valor restante."
-                        : ""
-                    }
-                    onChange={(e) => {
-                      const masked = currencyMask(e.target.value);
-                      const valNum = currencyToNumber(masked);
-                      const restante = Number(targetVenda?.valor_restante) || 0;
-                      if (valNum > restante) {
-                        setPagamentoValor(numberToCurrencyInput(restante));
-                      } else {
-                        setPagamentoValor(masked);
-                      }
-                    }}
-                  />
-                  <Textarea
-                    label="Observação"
-                    minRows={2}
-                    value={pagamentoObs}
-                    onChange={(e) => setPagamentoObs(e.target.value)}
-                  />
+                  {/* Aviso se venda já está paga */}
+                  {Number(targetVenda.valor_restante) === 0 && (
+                    <Card className="border-success-200 bg-success-100">
+                      <CardBody className="p-4">
+                        <div className="flex items-center gap-3">
+                          <CheckCircleIcon className="w-6 h-6 text-success-600" />
+                          <div>
+                            <p className="font-semibold text-success-700">
+                              Venda Totalmente Paga
+                            </p>
+                            <p className="text-sm text-success-600">
+                              Esta venda já foi quitada completamente. Não é
+                              possível adicionar mais pagamentos.
+                            </p>
+                          </div>
+                        </div>
+                      </CardBody>
+                    </Card>
+                  )}
+
+                  {/* Resumo da Venda */}
+                  <Card className="border-primary-200 bg-primary-50">
+                    <CardBody className="p-4">
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                          <p className="text-primary-600 font-medium">
+                            Cliente:
+                          </p>
+                          <p className="font-semibold">
+                            {targetVenda.cliente_nome}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-primary-600 font-medium">Data:</p>
+                          <p className="font-semibold">
+                            {fmtDate(targetVenda.data_venda)}
+                          </p>
+                        </div>
+                      </div>
+
+                      <Divider className="my-3" />
+
+                      <div className="grid grid-cols-3 gap-4 text-sm">
+                        <div className="text-center">
+                          <p className="text-primary-600 font-medium">
+                            Total da Venda
+                          </p>
+                          <p className="text-xl font-bold text-primary">
+                            {fmt(targetVenda.total_liquido)}
+                          </p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-success-600 font-medium">
+                            Já Pago
+                          </p>
+                          <p className="text-xl font-bold text-success">
+                            {fmt(targetVenda.valor_pago)}
+                          </p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-warning-600 font-medium">
+                            Restante
+                          </p>
+                          <p className="text-xl font-bold text-warning">
+                            {fmt(targetVenda.valor_restante)}
+                          </p>
+                        </div>
+                      </div>
+                    </CardBody>
+                  </Card>
+
+                  {/* Valor do Pagamento - Só mostra se há valor restante */}
+                  {Number(targetVenda.valor_restante) > 0 && (
+                    <>
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <label className="text-sm font-medium">
+                            Valor do Pagamento
+                          </label>
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              variant="flat"
+                              color="primary"
+                              onPress={() => {
+                                if (!targetVenda) return;
+                                const restante =
+                                  Number(targetVenda.valor_restante) || 0;
+                                const valor25 =
+                                  Math.round(restante * 0.25 * 100) / 100;
+                                setPagamentoValor(
+                                  numberToCurrencyInput(valor25)
+                                );
+                              }}
+                              isDisabled={
+                                Number(targetVenda.valor_restante) === 0
+                              }
+                            >
+                              25%
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="flat"
+                              color="primary"
+                              onPress={() => {
+                                if (!targetVenda) return;
+                                const restante =
+                                  Number(targetVenda.valor_restante) || 0;
+                                const valor50 =
+                                  Math.round(restante * 0.5 * 100) / 100;
+                                setPagamentoValor(
+                                  numberToCurrencyInput(valor50)
+                                );
+                              }}
+                              isDisabled={
+                                Number(targetVenda.valor_restante) === 0
+                              }
+                            >
+                              50%
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="flat"
+                              color="success"
+                              onPress={() => {
+                                if (!targetVenda) return;
+                                const restante =
+                                  Number(targetVenda.valor_restante) || 0;
+                                setPagamentoValor(
+                                  numberToCurrencyInput(restante)
+                                );
+                              }}
+                              isDisabled={
+                                Number(targetVenda.valor_restante) === 0
+                              }
+                              startContent={
+                                <CheckCircleIcon className="w-4 h-4" />
+                              }
+                            >
+                              Valor Total
+                            </Button>
+                          </div>
+                        </div>
+
+                        <Input
+                          label="Valor a Pagar"
+                          placeholder="R$ 0,00"
+                          value={pagamentoValor}
+                          size="lg"
+                          startContent={
+                            <CurrencyDollarIcon className="w-5 h-5" />
+                          }
+                          isDisabled={Number(targetVenda.valor_restante) === 0}
+                          color={
+                            currencyToNumber(pagamentoValor) >
+                            Number(targetVenda.valor_restante || 0)
+                              ? "danger"
+                              : currencyToNumber(pagamentoValor) ===
+                                  Number(targetVenda.valor_restante || 0)
+                                ? "success"
+                                : "primary"
+                          }
+                          description={
+                            Number(targetVenda.valor_restante) === 0
+                              ? "Esta venda já foi totalmente paga"
+                              : currencyToNumber(pagamentoValor) >
+                                  Number(targetVenda.valor_restante || 0)
+                                ? "⚠️ Valor não pode exceder o restante"
+                                : currencyToNumber(pagamentoValor) ===
+                                    Number(targetVenda.valor_restante || 0)
+                                  ? "✅ Venda será totalmente quitada"
+                                  : currencyToNumber(pagamentoValor) > 0
+                                    ? `Restará: ${fmt(Number(targetVenda.valor_restante || 0) - currencyToNumber(pagamentoValor))}`
+                                    : `Máximo permitido: ${fmt(targetVenda.valor_restante)}`
+                          }
+                          onChange={(e) => {
+                            const masked = currencyMask(e.target.value);
+                            const valNum = currencyToNumber(masked);
+                            const restante =
+                              Number(targetVenda?.valor_restante) || 0;
+
+                            // GARANTIR que nunca exceda o valor restante
+                            if (valNum > restante) {
+                              setPagamentoValor(
+                                numberToCurrencyInput(restante)
+                              );
+                            } else {
+                              setPagamentoValor(masked);
+                            }
+                          }}
+                          onBlur={() => {
+                            // Revalidar no blur para garantir consistência
+                            const valNum = currencyToNumber(pagamentoValor);
+                            const restante =
+                              Number(targetVenda?.valor_restante) || 0;
+                            if (valNum > restante) {
+                              setPagamentoValor(
+                                numberToCurrencyInput(restante)
+                              );
+                            }
+                          }}
+                        />
+                      </div>
+
+                      {/* Forma de Pagamento */}
+                      <Select
+                        label="Forma de Pagamento"
+                        placeholder="Selecione a forma de pagamento"
+                        startContent={<CreditCardIcon className="w-4 h-4" />}
+                        selectedKeys={
+                          pagamentoFormaPagamento
+                            ? [pagamentoFormaPagamento]
+                            : []
+                        }
+                        isDisabled={Number(targetVenda.valor_restante) === 0}
+                        onSelectionChange={(keys) => {
+                          const selected = Array.from(keys)[0] as string;
+                          setPagamentoFormaPagamento(selected); // Atualiza o estado
+                        }}
+                      >
+                        {PAGAMENTO_OPTIONS.map((option) => {
+                          const Icon = option.icon;
+                          return (
+                            <SelectItem
+                              key={option.key}
+                              startContent={<Icon className="w-4 h-4" />}
+                            >
+                              {option.label}
+                            </SelectItem>
+                          );
+                        })}
+                      </Select>
+
+                      {/* Observações */}
+                      <Textarea
+                        label="Observação do Pagamento"
+                        placeholder="Ex: Pagamento via PIX, Troco para R$ 100,00, etc..."
+                        minRows={2}
+                        value={pagamentoObs}
+                        onChange={(e) => setPagamentoObs(e.target.value)}
+                        startContent={<DocumentTextIcon className="w-4 h-4" />}
+                        isDisabled={Number(targetVenda.valor_restante) === 0}
+                      />
+
+                      {/* Preview do Resultado */}
+                      {currencyToNumber(pagamentoValor) > 0 &&
+                        Number(targetVenda.valor_restante) > 0 && (
+                          <Card className="border-success-200 bg-success-50">
+                            <CardBody className="p-3">
+                              <p className="text-success-700 font-medium text-sm mb-2">
+                                📋 Resumo do Pagamento
+                              </p>
+                              <div className="space-y-1 text-sm">
+                                <div className="flex justify-between">
+                                  <span>Valor atual pago:</span>
+                                  <span className="font-medium">
+                                    {fmt(targetVenda.valor_pago)}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span>+ Este pagamento:</span>
+                                  <span className="font-medium text-primary">
+                                    {fmt(currencyToNumber(pagamentoValor))}
+                                  </span>
+                                </div>
+                                <Divider className="my-1" />
+                                <div className="flex justify-between font-semibold">
+                                  <span>Total pago após:</span>
+                                  <span className="text-success">
+                                    {fmt(
+                                      targetVenda.valor_pago +
+                                        currencyToNumber(pagamentoValor)
+                                    )}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span>Restante:</span>
+                                  <span
+                                    className={
+                                      targetVenda.valor_restante -
+                                        currencyToNumber(pagamentoValor) ===
+                                      0
+                                        ? "text-success font-semibold"
+                                        : "text-warning"
+                                    }
+                                  >
+                                    {fmt(
+                                      Math.max(
+                                        0,
+                                        targetVenda.valor_restante -
+                                          currencyToNumber(pagamentoValor)
+                                      )
+                                    )}
+                                  </span>
+                                </div>
+                              </div>
+                            </CardBody>
+                          </Card>
+                        )}
+                    </>
+                  )}
                 </>
               )}
             </ModalBody>
             <ModalFooter>
-              <Button variant="flat" onPress={payModal.onClose}>
+              <Button
+                variant="flat"
+                onPress={payModal.onClose}
+                startContent={<XMarkIcon className="w-4 h-4" />}
+              >
                 Cancelar
               </Button>
               <Button
                 color="primary"
                 onPress={confirmarPagamento}
                 isLoading={loading}
+                startContent={<CheckCircleIcon className="w-4 h-4" />}
                 isDisabled={
                   currencyToNumber(pagamentoValor) <= 0 ||
-                  (targetVenda
-                    ? currencyToNumber(pagamentoValor) >
-                      Number(targetVenda.valor_restante || 0)
-                    : true)
+                  Number(targetVenda?.valor_restante || 0) === 0 ||
+                  currencyToNumber(pagamentoValor) >
+                    Number(targetVenda?.valor_restante || 0)
                 }
               >
-                Confirmar
+                {Number(targetVenda?.valor_restante || 0) === 0
+                  ? "Venda Já Paga"
+                  : currencyToNumber(pagamentoValor) ===
+                      Number(targetVenda?.valor_restante || 0)
+                    ? "Finalizar Venda"
+                    : "Registrar Pagamento"}
               </Button>
             </ModalFooter>
           </ModalContent>
