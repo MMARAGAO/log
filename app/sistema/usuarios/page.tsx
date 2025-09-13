@@ -152,6 +152,12 @@ export default function UsuariosPage() {
           deletar_devolucoes: false,
           processar_creditos: false,
         },
+        rma: {
+          ver_rma: false,
+          criar_rma: false,
+          editar_rma: false,
+          deletar_rma: false,
+        },
       },
     }),
     []

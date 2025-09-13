@@ -670,7 +670,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="p-4 space-y-6 max-w-8xl mx-auto">
+    <div className="container mx-auto p-6 flex flex-col gap-6">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>

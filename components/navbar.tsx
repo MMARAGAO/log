@@ -28,6 +28,7 @@ import {
   ArrowUturnLeftIcon,
   CubeTransparentIcon,
   CircleStackIcon,
+  CpuChipIcon
 } from "@heroicons/react/24/outline";
 
 import { useAuthStore } from "@/store/authZustand";
@@ -80,6 +81,11 @@ export function Navbar() {
       path: "/sistema/devolucoes",
       icon: ArrowUturnLeftIcon,
     },
+    {
+      name: "RMA",
+      path: "/sistema/rma",
+      icon: CpuChipIcon,
+    }
   ];
 
   const getButtonVariant = (href: string) => {
@@ -150,6 +156,10 @@ export function Navbar() {
 
         {/* Menu items */}
         <div className="p-4 space-y-1">
+          <div>
+          <h1 className="text-sm font-semibold dark:text-white text-gray-500 
+          ">Navegação Principal</h1>
+          </div>
           {routes.map((route) => (
             <Button
               key={route.name}

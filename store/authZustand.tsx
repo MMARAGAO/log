@@ -74,6 +74,12 @@ export interface PermissoesAcessos {
     deletar_devolucoes: boolean;
     processar_creditos: boolean;
   };
+    rma: {
+    ver_rma: boolean;
+    criar_rma: boolean;
+    editar_rma?: boolean;
+    deletar_rma?: boolean;
+  };
 }
 
 export interface AppUser {
@@ -156,6 +162,12 @@ function defaultPermissoes(): { acessos: PermissoesAcessos } {
         editar_devolucoes: false,
         deletar_devolucoes: false,
         processar_creditos: false,
+      },
+            rma: {
+        ver_rma: false,
+        criar_rma: false,
+        editar_rma: false,
+        deletar_rma: false,
       },
     },
   };

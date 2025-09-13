@@ -1116,7 +1116,7 @@ export default function DevolucoesPagina() {
 
   // UI
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto">
+    <div className="container mx-auto p-6 gap-6 flex flex-col">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold flex items-center gap-2">

@@ -752,7 +752,7 @@ export default function TransferenciasPage() {
 
   // Renderização principal
   return (
-    <div className="min-h-screen ">
+    <div className="container mx-auto p-6">
       <div className="container mx-auto p-4 md:p-6 lg:p-8">
         {/* Cabeçalho Moderno */}
         <div className="mb-8">
