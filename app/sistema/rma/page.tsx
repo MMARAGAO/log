@@ -96,6 +96,7 @@ export default function RmaPage() {
     setIsEditing(false);
     setIsOpen(true);
   }
+  
 
   async function handleSave() {
     if (!formData.produto_id || !formData.loja_id) {
@@ -140,7 +141,7 @@ export default function RmaPage() {
           
           toast.success("RMA atualizado com sucesso!");
         } catch (updateError) {
-          console.error("❌ Erro ao atualizar RMA:", updateError);
+          
           throw new Error(
             `Erro ao atualizar RMA: ${getErrorMessage(updateError)}`
           );
@@ -547,9 +548,9 @@ export default function RmaPage() {
 
       {/* Modal de cadastro/edição */}
       {(canCreateRma || isEditing) && (
-        <Modal isOpen={isOpen} onClose={handleClose} size="3xl" scrollBehavior="inside">
+        <Modal isOpen={isOpen} onClose={handleClose} size="3xl" scrollBehavior="outside">
           <ModalContent>
-            <ModalHeader className="flex flex-col gap-1 bg-gradient-to-r from-primary-50 to-secondary-50 rounded-t-lg">
+            <ModalHeader className="flex flex-col gap-1 rounded-t-lg">
               <h2 className="text-xl font-bold">
                 {isEditing ? "Editar RMA" : "Novo RMA"}
               </h2>
@@ -562,14 +563,14 @@ export default function RmaPage() {
             <ModalBody className="py-6">
               <div className="space-y-6">
                 {/* Seção 1 - Seleção de Produto */}
-                <div className="p-4 bg-default-50 rounded-lg border">
+                <div className="p-4 bg-default-50 rounded-lg ">
                   <h3 className="text-lg font-semibold mb-3 text-primary">
                     Selecionar Produto
                   </h3>
 
                   {/* Produto selecionado ou botão para buscar */}
                   {selectedProduct || formData.produto_id ? (
-                    <div className="p-4 bg-success-50 rounded-lg border border-success-200 mb-3">
+                    <div className="p-4 bg-success-50 rounded-lg  mb-3">
                       <div className="flex justify-between items-start">
                         <div>
                           <h4 className="font-semibold text-success-800">
@@ -714,7 +715,7 @@ export default function RmaPage() {
                 {/* Seção 2 - Loja e Detalhes da RMA */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {/* Seleção de loja */}
-                  <div className="p-4 bg-default-50 rounded-lg border">
+                  <div className="p-4 bg-default-50 rounded-lg ">
                     <h3 className="text-lg font-semibold mb-3 text-primary">Loja</h3>
                     <Select
                       label="Loja de Origem"
@@ -745,7 +746,7 @@ export default function RmaPage() {
                   </div>
 
                   {/* Detalhes da RMA */}
-                  <div className="p-4 bg-warning-50 rounded-lg border border-warning-200">
+                  <div className="p-4 bg-warning-50 rounded-lg ">
                     <h3 className="text-lg font-semibold mb-3 text-warning-700">
                       Detalhes da RMA
                     </h3>
@@ -791,7 +792,7 @@ export default function RmaPage() {
                 </div>
 
                 {/* Seção 3 - Status e Motivo */}
-                <div className="p-4 bg-success-50 rounded-lg border border-success-200">
+                <div className="p-4 bg-success-50 rounded-lg ">
                   <h3 className="text-lg font-semibold mb-3 text-success-700">
                     Status e Motivo
                   </h3>
@@ -849,7 +850,7 @@ export default function RmaPage() {
                 </div>
 
                 {/* Seção 4 - Observações */}
-                <div className="p-4 bg-primary-50 rounded-lg border border-primary-200">
+                <div className="p-4 bg-primary-50 rounded-lg ">
                   <h3 className="text-lg font-semibold mb-3 text-primary-700">
                     Observações
                   </h3>
@@ -943,7 +944,7 @@ export default function RmaPage() {
               >
                 {saving 
                   ? (isEditing ? "Atualizando..." : "Salvando...") 
-                  : (isEditing ? "💾 Atualizar" : " Salvar")
+                  : (isEditing ? " Atualizar" : " Salvar")
                 }
               </Button>
             </ModalFooter>
@@ -969,7 +970,7 @@ export default function RmaPage() {
           </ModalHeader>
           <ModalBody className="py-6">
             <div className="text-center space-y-4">
-              <div className="p-4 bg-danger-50 rounded-lg border border-danger-200">
+              <div className="p-4 bg-danger-50 rounded-lg ">
                 <p className="text-lg font-semibold text-danger-800 mb-2">
                   Tem certeza que deseja excluir este RMA?
                 </p>
@@ -978,7 +979,7 @@ export default function RmaPage() {
                 </p>
               </div>
               
-              <div className="bg-warning-50 rounded-lg p-4 border border-warning-200">
+              <div className="bg-warning-50 rounded-lg p-4 ">
                 <div className="flex items-start gap-2">
                   <span className="text-warning-600 text-xl">⚠️</span>
                   <div className="text-left">

@@ -70,8 +70,10 @@ import {
   BuildingStorefrontIcon,
   ArrowPathIcon,
   CogIcon,
+  TagIcon,
 } from "@heroicons/react/24/outline";
 import { supabase } from "@/lib/supabaseClient";
+import toast, { Toaster } from 'react-hot-toast';
 
 // Tipos baseados no schema
 interface Cliente {
@@ -227,6 +229,9 @@ export default function VendasPage() {
   const canEditVendas = !!permVendas?.editar_vendas;
   const canDeleteVendas = !!permVendas?.deletar_vendas;
   const canProcessarPagamentos = !!permVendas?.processar_pagamentos;
+   // NOVAS PERMISSÕES DE DESCONTO
+  const canAplicarDesconto = !!permVendas?.aplicar_desconto;
+  const descontoMaximo = Number(permVendas?.desconto_maximo) || 0;
 
   // Dados
   const [vendas, setVendas] = useState<Venda[]>([]);
@@ -260,22 +265,60 @@ export default function VendasPage() {
     return valor;
   }
 
-  // Função modificada para lidar com desconto por porcentagem
+    // FUNÇÃO MODIFICADA: validarDesconto agora usa toast
+    function validarDesconto(valor: number, totalBruto: number): { valido: boolean } {
+    if (!canAplicarDesconto) {
+      toast.error("Você não possui permissão para aplicar descontos.");
+      return { valido: false };
+    }
+
+    if (valor <= 0) {
+      return { valido: true };
+    }
+
+    // Calcular porcentagem do desconto
+    const porcentagem = (valor / totalBruto) * 100;
+    
+    if (porcentagem > descontoMaximo) {
+      // MUDANÇA: Agora usa toast ao invés de retornar erro
+      toast.error(
+        `Desconto máximo permitido: ${descontoMaximo}% (R$ ${fmt((totalBruto * descontoMaximo) / 100)})`,
+        {
+          duration: 4000,
+          icon: '🏷️',
+          style: {
+            background: '#fee2e2',
+            color: '#dc2626',
+            border: '1px solid #fca5a5',
+          }
+        }
+      );
+      return { valido: false };
+    }
+
+    return { valido: true };
+  }
+
+  // FUNÇÃO MODIFICADA: handleDescontoTotalChange com bloqueio de ultrapassagem
   function handleDescontoTotalChange(
     raw: string,
     tipo?: "valor" | "porcentagem"
   ) {
     const tipoAtual = tipo || tipoDesconto;
+    const totalBruto = formData.total_bruto || 0;
 
     if (tipoAtual === "porcentagem") {
-      // Para porcentagem, não usar máscara de moeda
-      const num = Math.min(100, Math.max(0, Number(raw) || 0));
+      // Para porcentagem, verificar limite máximo
+      let num = Math.min(100, Math.max(0, Number(raw) || 0));
+      
+      // Aplicar limite de permissão
+      if (canAplicarDesconto && descontoMaximo > 0) {
+        num = Math.min(num, descontoMaximo);
+      }
+      
       setDescontoPercentual(num);
-      const descontoEmValor = calcularDesconto(
-        "porcentagem",
-        num,
-        formData.total_bruto || 0
-      );
+      const descontoEmValor = calcularDesconto("porcentagem", num, totalBruto);
+      
       setFormData((p) => ({ ...p, desconto: descontoEmValor }));
       recalcTotals(
         formData.itens || [],
@@ -287,8 +330,44 @@ export default function VendasPage() {
     } else {
       // Para valor, usar máscara de moeda
       const masked = currencyMask(raw);
-      setDescontoInput(masked);
       const num = currencyToNumber(masked);
+      
+      // NOVA VALIDAÇÃO: Calcular porcentagem do valor inserido
+      const porcentagem = totalBruto > 0 ? (num / totalBruto) * 100 : 0;
+      
+      // Se ultrapassar o limite máximo, aplicar apenas o valor máximo permitido
+      if (canAplicarDesconto && descontoMaximo > 0 && porcentagem > descontoMaximo) {
+        const valorMaximoPermitido = (totalBruto * descontoMaximo) / 100;
+        
+        // Mostrar toast informativo
+        toast.error(
+          `Desconto limitado a ${descontoMaximo}% (${fmt(valorMaximoPermitido)})`,
+          {
+            duration: 3000,
+            icon: '🏷️',
+            style: {
+              background: '#fef3c7',
+              color: '#d97706',
+              border: '1px solid #fcd34d',
+            }
+          }
+        );
+        
+        // Aplicar o valor máximo permitido
+        setDescontoInput(numberToCurrencyInput(valorMaximoPermitido));
+        setFormData((p) => ({ ...p, desconto: valorMaximoPermitido }));
+        recalcTotals(
+          formData.itens || [],
+          valorMaximoPermitido,
+          undefined,
+          undefined,
+          creditoAplicado
+        );
+        return;
+      }
+      
+      // Se não exceder o limite, aplicar normalmente
+      setDescontoInput(masked);
       setFormData((p) => ({ ...p, desconto: num }));
       recalcTotals(
         formData.itens || [],
@@ -828,27 +907,72 @@ export default function VendasPage() {
   function handleProdutoDescontoChange(raw: string) {
     const masked = currencyMask(raw);
     const num = currencyToNumber(masked);
+    
+    // NOVA VALIDAÇÃO: Para desconto individual por produto
+    if (selectedProduto && canAplicarDesconto && descontoMaximo > 0) {
+      const preco = Number(selectedProduto.preco_venda) || 0;
+      const subtotalSemDesconto = produtoQtd * preco;
+      const porcentagem = subtotalSemDesconto > 0 ? (num / subtotalSemDesconto) * 100 : 0;
+      
+      // Se tentar digitar um valor que excede o limite, bloquear
+      if (porcentagem > descontoMaximo) {
+        const valorMaximoPermitido = (subtotalSemDesconto * descontoMaximo) / 100;
+        
+        toast.error(
+          `Desconto no produto limitado a ${descontoMaximo}% (${fmt(valorMaximoPermitido)})`,
+          {
+            duration: 3000,
+            icon: '🏷️',
+            style: {
+              background: '#fef3c7',
+              color: '#d97706',
+              border: '1px solid #fcd34d',
+            }
+          }
+        );
+        
+        setProdutoDesc(valorMaximoPermitido);
+        return;
+      }
+    }
+    
     setProdutoDesc(num);
   }
 
   function addProduto() {
     if (!selectedProduto) {
-      alert("Selecione um produto.");
+      toast.error("Selecione um produto.");
       return;
     }
     if (!selectedLoja) {
-      alert("Selecione uma loja primeiro.");
+      toast.error("Selecione uma loja primeiro.");
       return;
+    }
+
+    // MODIFICADO: Validação com toast
+    if (produtoDesc > 0) {
+      const preco = Number(selectedProduto.preco_venda) || 0;
+      const subtotalSemDesconto = produtoQtd * preco;
+      const validacao = validarDesconto(produtoDesc, subtotalSemDesconto);
+      
+      if (!validacao.valido) {
+        // Toast já foi exibido na função validarDesconto
+        return;
+      }
     }
 
     const disponivel = Number(selectedProduto.quantidade) || 0;
 
     if (disponivel === 0) {
-      alert("Produto sem estoque nesta loja.");
+      toast.error("Produto sem estoque nesta loja.", {
+        icon: '📦'
+      });
       return;
     }
     if (produtoQtd > disponivel) {
-      alert(`Estoque insuficiente. Disponível: ${disponivel}`);
+      toast.error(`Estoque insuficiente. Disponível: ${disponivel}`, {
+        icon: '⚠️'
+      });
       return;
     }
 
@@ -859,8 +983,12 @@ export default function VendasPage() {
     if (idx >= 0) {
       const soma = itens[idx].quantidade + produtoQtd;
       if (soma > disponivel) {
-        alert(
-          `Quantidade total excede estoque. Atual no carrinho: ${itens[idx].quantidade}, disponível: ${disponivel}`
+        toast.error(
+          `Quantidade total excede estoque. Atual no carrinho: ${itens[idx].quantidade}, disponível: ${disponivel}`,
+          {
+            duration: 4000,
+            icon: '📊'
+          }
         );
         return;
       }
@@ -886,6 +1014,12 @@ export default function VendasPage() {
     setSelectedProduto(null);
     setProdutoQtd(1);
     setProdutoDesc(0);
+    
+    // Toast de sucesso
+    toast.success(`${selectedProduto.descricao} adicionado ao carrinho!`, {
+      icon: '🛒',
+      duration: 2000
+    });
   }
 
   function updateItemQty(index: number, qty: number) {
@@ -2003,14 +2137,23 @@ export default function VendasPage() {
                         min="1"
                       />
                       <Input
-                        label="Desconto Item"
-                        className="w-40"
-                        value={numberToCurrencyInput(produtoDesc || 0)}
-                        onChange={(e) =>
-                          handleProdutoDescontoChange(e.target.value)
-                        }
-                        placeholder="R$ 0,00"
-                      />
+        label="Desconto Item"
+        className="w-40"
+        value={numberToCurrencyInput(produtoDesc || 0)}
+        onChange={(e) =>
+          handleProdutoDescontoChange(e.target.value)
+        }
+        placeholder="R$ 0,00"
+        isDisabled={!canAplicarDesconto} // NOVA VALIDAÇÃO
+        description={
+          !canAplicarDesconto 
+            ? "Sem permissão para desconto" 
+            : canAplicarDesconto && descontoMaximo > 0 
+              ? `Máx: ${descontoMaximo}%` 
+              : undefined
+        }
+        color={!canAplicarDesconto ? "default" : undefined}
+      />
                       <Button
                         color="primary"
                         onPress={addProduto}
@@ -2026,6 +2169,30 @@ export default function VendasPage() {
                         Adicionar
                       </Button>
                     </div>
+                        {canAplicarDesconto && descontoMaximo > 0 && (
+      <Card className="border-warning-200 bg-warning-50">
+        <CardBody className="p-3">
+          <div className="flex items-center gap-2 text-warning-700">
+            <TagIcon className="w-4 h-4" />
+            <span className="text-sm">
+              Seu limite de desconto: <strong>{descontoMaximo}%</strong> por item/venda
+            </span>
+          </div>
+        </CardBody>
+      </Card>
+    )}
+        {!canAplicarDesconto && (
+      <Card className="border-danger-200 bg-danger-50">
+        <CardBody className="p-3">
+          <div className="flex items-center gap-2 text-danger-700">
+            <ExclamationTriangleIcon className="w-4 h-4" />
+            <span className="text-sm">
+              Você não possui permissão para aplicar descontos nesta venda.
+            </span>
+          </div>
+        </CardBody>
+      </Card>
+    )}
 
                     {/* Grid de Produtos */}
                     {estoque.length > 0 ? (
@@ -2280,76 +2447,125 @@ export default function VendasPage() {
 
                   {/* Seção de Totais com Desconto Melhorado */}
                   <div className="space-y-4">
-                    {/* Tipo de Desconto */}
-                    <div className="flex items-center gap-4">
-                      <span className="text-sm font-medium">
-                        Tipo de Desconto:
-                      </span>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant={tipoDesconto === "valor" ? "solid" : "flat"}
-                          color={
-                            tipoDesconto === "valor" ? "primary" : "default"
-                          }
-                          onPress={() => alternarTipoDesconto("valor")}
-                        >
-                          Valor (R$)
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant={
-                            tipoDesconto === "porcentagem" ? "solid" : "flat"
-                          }
-                          color={
-                            tipoDesconto === "porcentagem"
-                              ? "primary"
-                              : "default"
-                          }
-                          onPress={() => alternarTipoDesconto("porcentagem")}
-                        >
-                          Porcentagem (%)
-                        </Button>
-                      </div>
-                    </div>
+    {/* Tipo de Desconto */}
+    <div className="flex items-center gap-4">
+      <span className="text-sm font-medium">
+        Tipo de Desconto:
+      </span>
+      <div className="flex gap-2">
+        <Button
+          size="sm"
+          variant={tipoDesconto === "valor" ? "solid" : "flat"}
+          color={
+            tipoDesconto === "valor" ? "primary" : "default"
+          }
+          onPress={() => alternarTipoDesconto("valor")}
+          isDisabled={!canAplicarDesconto} // NOVA VALIDAÇÃO
+        >
+          Valor (R$)
+        </Button>
+        <Button
+          size="sm"
+          variant={
+            tipoDesconto === "porcentagem" ? "solid" : "flat"
+          }
+          color={
+            tipoDesconto === "porcentagem"
+              ? "primary"
+              : "default"
+          }
+          onPress={() => alternarTipoDesconto("porcentagem")}
+          isDisabled={!canAplicarDesconto} // NOVA VALIDAÇÃO
+        >
+          Porcentagem (%)
+        </Button>
+      </div>
+      
+      {/* NOVO: Indicador de permissão */}
+      {canAplicarDesconto && descontoMaximo > 0 && (
+        <Chip size="sm" color="warning" variant="flat">
+          Limite: {descontoMaximo}%
+        </Chip>
+      )}
+    </div>
 
                     {/* Campos de Desconto e Totais */}
-                    <div className="grid md:grid-cols-5 gap-4">
-                      {/* Campo de Desconto */}
-                      {tipoDesconto === "valor" ? (
-                        <Input
-                          label="Desconto"
-                          value={descontoInput}
-                          onChange={(e) =>
-                            handleDescontoTotalChange(e.target.value, "valor")
-                          }
-                          onBlur={handleDescontoTotalBlur}
-                          placeholder="R$ 0,00"
-                          startContent={
-                            <CurrencyDollarIcon className="w-4 h-4" />
-                          }
-                          description={`Valor atual: ${fmt(formData.desconto || 0)}`}
-                        />
-                      ) : (
-                        <Input
-                          label="Desconto (%)"
-                          type="number"
-                          value={descontoPercentual.toString()}
-                          onChange={(e) =>
-                            handleDescontoTotalChange(
-                              e.target.value,
-                              "porcentagem"
-                            )
-                          }
-                          placeholder="0"
-                          min="0"
-                          max="100"
-                          endContent={
-                            <span className="text-default-400">%</span>
-                          }
-                          description={`Valor: ${fmt(formData.desconto || 0)}`}
-                        />
-                      )}
+                    {/* Campos de Desconto e Totais - SEÇÃO MODIFICADA */}
+    <div className="grid md:grid-cols-5 gap-4">
+      {/* Campo de Desconto */}
+      {tipoDesconto === "valor" ? (
+        <Input
+          label="Desconto"
+          value={descontoInput}
+          onChange={(e) => {
+            // NOVA VALIDAÇÃO: Pré-validar antes de enviar para handleDescontoTotalChange
+            const valor = currencyToNumber(currencyMask(e.target.value));
+            const totalBruto = formData.total_bruto || 0;
+            
+            if (canAplicarDesconto && descontoMaximo > 0 && totalBruto > 0) {
+              const porcentagem = (valor / totalBruto) * 100;
+              const valorMaximo = (totalBruto * descontoMaximo) / 100;
+              
+              // Se tentar digitar um valor que excede o limite, bloquear
+              if (porcentagem > descontoMaximo) {
+                // Não permitir que o usuário digite além do limite
+                return;
+              }
+            }
+            
+            handleDescontoTotalChange(e.target.value, "valor");
+          }}
+          onBlur={handleDescontoTotalBlur}
+          placeholder="R$ 0,00"
+          startContent={<CurrencyDollarIcon className="w-4 h-4" />}
+          description={
+            !canAplicarDesconto 
+              ? "Sem permissão para desconto"
+              : canAplicarDesconto && descontoMaximo > 0
+                ? `Máximo: ${fmt((formData.total_bruto || 0) * descontoMaximo / 100)} (${descontoMaximo}%)`
+                : `Valor atual: ${fmt(formData.desconto || 0)}`
+          }
+          isDisabled={!canAplicarDesconto}
+          color={!canAplicarDesconto ? "default" : undefined}
+          // NOVA VALIDAÇÃO: Adicionar indicador visual quando próximo do limite
+          variant={
+            canAplicarDesconto && 
+            descontoMaximo > 0 && 
+            formData.total_bruto && 
+            formData.desconto &&
+            ((formData.desconto / formData.total_bruto) * 100) > (descontoMaximo * 0.8)
+              ? "bordered" 
+              : "flat"
+          }
+/>
+      ) : (
+        <Input
+          label="Desconto (%)"
+          type="number"
+          value={descontoPercentual.toString()}
+          onChange={(e) =>
+            handleDescontoTotalChange(
+              e.target.value,
+              "porcentagem"
+            )
+          }
+          placeholder="0"
+          min="0"
+          max={canAplicarDesconto ? Math.min(100, descontoMaximo || 100) : 0} // NOVA VALIDAÇÃO
+          endContent={
+            <span className="text-default-400">%</span>
+          }
+          description={
+            !canAplicarDesconto 
+              ? "Sem permissão para desconto"
+              : canAplicarDesconto && descontoMaximo > 0
+                ? `Máximo: ${descontoMaximo}% | Valor: ${fmt(formData.desconto || 0)}`
+                : `Valor: ${fmt(formData.desconto || 0)}`
+          }
+          isDisabled={!canAplicarDesconto} // NOVA VALIDAÇÃO
+          color={!canAplicarDesconto ? "default" : undefined}
+        />
+      )}
 
                       {/* Crédito Aplicado (se houver) */}
                       {usarCredito && creditoAplicado > 0 && (
@@ -2408,6 +2624,23 @@ export default function VendasPage() {
                         }
                       />
                     </div>
+                    {canAplicarDesconto && (formData.desconto || 0) > 0 && descontoMaximo > 0 && (
+      <Card className="border-success-200 bg-success-50">
+        <CardBody className="p-3">
+          <div className="flex items-center justify-between text-sm">
+            <div className="flex items-center gap-2">
+              <CheckCircleIcon className="w-4 h-4 text-success-600" />
+              <span className="text-success-700">
+                Desconto aplicado: {((formData.desconto || 0) / (formData.total_bruto || 1) * 100).toFixed(1)}%
+              </span>
+            </div>
+            <span className="text-success-600">
+              Limite restante: {Math.max(0, descontoMaximo - ((formData.desconto || 0) / (formData.total_bruto || 1) * 100)).toFixed(1)}%
+            </span>
+          </div>
+        </CardBody>
+      </Card>
+    )}
 
                     {/* Resumo Visual dos Descontos (se houver) */}
                     {((formData.desconto || 0) > 0 || creditoAplicado > 0) && (
@@ -2420,7 +2653,6 @@ export default function VendasPage() {
                                 {fmt(formData.total_bruto || 0)}
                               </span>
                             </div>
-
                             {(formData.desconto || 0) > 0 && (
                               <div className="flex justify-between text-primary">
                                 <span>
@@ -2783,12 +3015,10 @@ export default function VendasPage() {
                               onPress={() => {
                                 if (!targetVenda) return;
                                 const restante =
-                                  Number(targetVenda.valor_restante) || 0;
-                                const valor25 =
-                                  Math.round(restante * 0.25 * 100) / 100;
-                                setPagamentoValor(
-                                  numberToCurrencyInput(valor25)
-                                );
+                                  Math.round(
+                                    (Number(targetVenda.valor_restante) || 0) * 0.25 * 100
+                                  ) / 100;
+                                setPagamentoValor(numberToCurrencyInput(restante));
                               }}
                               isDisabled={
                                 Number(targetVenda.valor_restante) === 0
@@ -2803,12 +3033,10 @@ export default function VendasPage() {
                               onPress={() => {
                                 if (!targetVenda) return;
                                 const restante =
-                                  Number(targetVenda.valor_restante) || 0;
-                                const valor50 =
-                                  Math.round(restante * 0.5 * 100) / 100;
-                                setPagamentoValor(
-                                  numberToCurrencyInput(valor50)
-                                );
+                                  Math.round(
+                                    (Number(targetVenda.valor_restante) || 0) * 0.5 * 100
+                                  ) / 100;
+                                setPagamentoValor(numberToCurrencyInput(restante));
                               }}
                               isDisabled={
                                 Number(targetVenda.valor_restante) === 0
@@ -2824,9 +3052,7 @@ export default function VendasPage() {
                                 if (!targetVenda) return;
                                 const restante =
                                   Number(targetVenda.valor_restante) || 0;
-                                setPagamentoValor(
-                                  numberToCurrencyInput(restante)
-                                );
+                                setPagamentoValor(numberToCurrencyInput(restante));
                               }}
                               isDisabled={
                                 Number(targetVenda.valor_restante) === 0
@@ -2868,7 +3094,7 @@ export default function VendasPage() {
                                     Number(targetVenda.valor_restante || 0)
                                   ? "✅ Venda será totalmente quitada"
                                   : currencyToNumber(pagamentoValor) > 0
-                                    ? `Restará: ${fmt(Number(targetVenda.valor_restante || 0) - currencyToNumber(pagamentoValor))}`
+                                    ? `Restará: ${fmt(Number(targetVenda.valor_restante) - currencyToNumber(pagamentoValor))}`
                                     : `Máximo permitido: ${fmt(targetVenda.valor_restante)}`
                           }
                           onChange={(e) => {
@@ -3059,6 +3285,32 @@ export default function VendasPage() {
           </ModalContent>
         </Modal>
       )}
+
+      {/* Toaster no final */}
+      <Toaster 
+        position="top-right"
+        toastOptions={{
+          duration: 3000,
+          style: {
+            background: '#363636',
+            color: '#fff',
+          },
+          success: {
+            duration: 2000,
+            iconTheme: {
+              primary: '#10b981',
+              secondary: '#fff',
+            },
+          },
+          error: {
+            duration: 4000,
+            iconTheme: {
+              primary: '#ef4444',
+              secondary: '#fff',
+            },
+          },
+        }}
+      />
     </div>
   );
 }

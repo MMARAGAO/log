@@ -47,6 +47,8 @@ export interface PermissoesAcessos {
     editar_vendas: boolean;
     deletar_vendas: boolean;
     processar_pagamentos: boolean;
+    aplicar_desconto: boolean;
+    desconto_maximo: number;
   };
   logs: {
     ver_logs: boolean;
@@ -136,6 +138,8 @@ function defaultPermissoes(): { acessos: PermissoesAcessos } {
         editar_vendas: false,
         deletar_vendas: false,
         processar_pagamentos: false,
+        aplicar_desconto: false,
+        desconto_maximo: 0,
       },
       logs: {
         ver_logs: false,
@@ -162,8 +166,9 @@ function defaultPermissoes(): { acessos: PermissoesAcessos } {
         editar_devolucoes: false,
         deletar_devolucoes: false,
         processar_creditos: false,
+
       },
-            rma: {
+        rma: {
         ver_rma: false,
         criar_rma: false,
         editar_rma: false,

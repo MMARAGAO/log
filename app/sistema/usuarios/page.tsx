@@ -44,6 +44,22 @@ import {
   MagnifyingGlassIcon,
   PhotoIcon,
   ShieldCheckIcon,
+  CheckCircleIcon,
+  TagIcon,
+  CreditCardIcon,
+  CheckIcon,
+  UserGroupIcon,
+  ArrowUturnLeftIcon,
+  PaperAirplaneIcon,
+  BuildingOfficeIcon,
+  ClipboardDocumentListIcon,
+  BuildingStorefrontIcon,
+  DocumentTextIcon,
+  ArrowPathIcon,
+  UsersIcon,
+  ArchiveBoxIcon,
+  CurrencyDollarIcon,
+  ChartBarIcon,
 } from "@heroicons/react/24/outline";
 import { cpfMask, phoneMask } from "@/utils/maskInput";
 import DataHoje from "@/components/data";
@@ -125,6 +141,8 @@ export default function UsuariosPage() {
           editar_vendas: false,
           deletar_vendas: false,
           processar_pagamentos: false,
+          aplicar_desconto: false,
+          desconto_maximo: 0,
         },
         logs: {
           ver_logs: false,
@@ -184,6 +202,34 @@ export default function UsuariosPage() {
       return alert("Sem permissão para deletar usuários.");
     await handleDelete(id);
   }
+  function toggleAllPerms(sec: string, enable: boolean) {
+  setPermissoes((prev: any) => {
+    const newPerms = { ...prev.acessos[sec] };
+    Object.keys(newPerms).forEach(key => {
+      if (key !== 'desconto_maximo') { // Não alterar o desconto
+        newPerms[key] = enable;
+      }
+    });
+    return {
+      acessos: {
+        ...prev.acessos,
+        [sec]: newPerms,
+      },
+    };
+  });
+}
+function updateDescontoMaximo(sec: string, value: number) {
+  setPermissoes((prev: any) => ({
+    acessos: {
+      ...prev.acessos,
+      [sec]: {
+        ...prev.acessos[sec],
+        desconto_maximo: Math.min(Math.max(value, 0), 100), // Entre 0 e 100%
+      },
+    },
+  }));
+}
+
 
   // Load initial
   useEffect(() => {
@@ -754,103 +800,275 @@ export default function UsuariosPage() {
         </ModalContent>
       </Modal>
 
-      {/* Modal Permissões */}
       {permissoesOpen && canEditUsuarios && (
-        <Modal
-          isOpen={permissoesOpen}
-          onClose={() => setPermissoesOpen(false)}
-          size="4xl"
-          scrollBehavior="outside"
-        >
-          <ModalContent>
-            <ModalHeader className="flex items-center gap-3 pb-4">
-              <ShieldCheckIcon className="w-6 h-6 text-primary" />
-              <div>
-                <h3 className="text-xl font-semibold">Permissões do Usuário</h3>
-                <p className="text-sm text-default-500">
-                  Configure os acessos do sistema
-                </p>
-              </div>
-            </ModalHeader>
+  <Modal
+    isOpen={permissoesOpen}
+    onClose={() => setPermissoesOpen(false)}
+    size="5xl"
+    scrollBehavior="inside"
+  >
+    <ModalContent>
+      <ModalHeader className="flex items-center gap-3 pb-4 bg-gradient-to-r from-primary-50 to-secondary-50 rounded-t-lg">
+        <div className="p-2 bg-primary-100 rounded-full">
+          <ShieldCheckIcon className="w-6 h-6 text-primary-700" />
+        </div>
+        <div>
+          <h3 className="text-xl font-semibold">Permissões do Usuário</h3>
+          <p className="text-sm text-default-500">
+            Configure os acessos e privilégios do sistema
+          </p>
+        </div>
+      </ModalHeader>
 
-            <ModalBody className="gap-6">
-              {permLoading && (
-                <div className="flex justify-center py-12">
-                  <Spinner size="lg" label="Carregando permissões..." />
+      <ModalBody className="gap-6 py-6">
+        {permLoading && (
+          <div className="flex justify-center py-12">
+            <Spinner size="lg" label="Carregando permissões..." />
+          </div>
+        )}
+
+        {!permLoading && permissoes && (
+          <div className="space-y-6">
+            {/* Contador geral de permissões */}
+            <div className="p-4 bg-primary-50 rounded-lg border border-primary-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="font-semibold text-primary-800">Resumo das Permissões</h4>
+                  <p className="text-sm text-primary-600">
+                    {Object.values(permissoes.acessos).reduce((total: number, perms: any) => {
+                      return total + Object.values(perms).filter((v, i, arr) => 
+                        typeof v === 'boolean' && v === true
+                      ).length;
+                    }, 0)} permissões ativas
+                  </p>
                 </div>
-              )}
+                <Chip color="primary" variant="flat" size="lg">
+                  {Object.keys(permissoes.acessos).length} módulos
+                </Chip>
+              </div>
+            </div>
 
-              {!permLoading && permissoes && (
-                <div className="space-y-6">
-                  {Object.entries(permissoes.acessos).map(
-                    ([sec, perms]: any) => {
-                      const permCount =
-                        Object.values(perms).filter(Boolean).length;
-                      const totalPerms = Object.keys(perms).length;
+            {Object.entries(permissoes.acessos).map(([sec, perms]: any) => {
+              const booleanPerms = Object.entries(perms).filter(([k, v]) => typeof v === 'boolean');
+              const numericPerms = Object.entries(perms).filter(([k, v]) => typeof v === 'number');
+              const permCount = booleanPerms.filter(([k, v]) => v === true).length;
+              const totalPerms = booleanPerms.length;
 
-                      return (
-                        <div
-                          key={sec}
-                          className="border border-divider rounded-lg p-4 bg-content1/50"
+              // Função para obter o ícone correto
+              const getSectionIcon = (section: string) => {
+                switch (section) {
+                  case 'dashboard':
+                    return <ChartBarIcon className="w-5 h-5" />;
+                  case 'vendas':
+                    return <CurrencyDollarIcon className="w-5 h-5" />;
+                  case 'estoque':
+                    return <ArchiveBoxIcon className="w-5 h-5" />;
+                  case 'usuarios':
+                    return <UsersIcon className="w-5 h-5" />;
+                  case 'clientes':
+                    return <UserIcon className="w-5 h-5" />;
+                  case 'rma':
+                    return <ArrowPathIcon className="w-5 h-5" />;
+                  case 'logs':
+                    return <DocumentTextIcon className="w-5 h-5" />;
+                  case 'lojas':
+                    return <BuildingStorefrontIcon className="w-5 h-5" />;
+                  case 'ordens':
+                    return <ClipboardDocumentListIcon className="w-5 h-5" />;
+                  case 'fornecedores':
+                    return <BuildingOfficeIcon className="w-5 h-5" />;
+                  case 'transferencias':
+                    return <PaperAirplaneIcon className="w-5 h-5" />;
+                  case 'devolucoes':
+                    return <ArrowUturnLeftIcon className="w-5 h-5" />;
+                  default:
+                    return <UserGroupIcon className="w-5 h-5" />;
+                }
+              };
+
+              return (
+                <div
+                  key={sec}
+                  className="border border-divider rounded-xl p-6 bg-content1 shadow-sm hover:shadow-md transition-shadow"
+                >
+                  {/* Header da seção com controles */}
+                  <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center gap-3">
+                      <div className={`p-2 rounded-lg ${
+                        sec === 'dashboard' ? 'bg-blue-100 text-blue-700' :
+                        sec === 'vendas' ? 'bg-green-100 text-green-700' :
+                        sec === 'estoque' ? 'bg-purple-100 text-purple-700' :
+                        sec === 'usuarios' ? 'bg-orange-100 text-orange-700' :
+                        sec === 'clientes' ? 'bg-cyan-100 text-cyan-700' :
+                        sec === 'rma' ? 'bg-red-100 text-red-700' :
+                        sec === 'logs' ? 'bg-gray-100 text-gray-700' :
+                        sec === 'lojas' ? 'bg-pink-100 text-pink-700' :
+                        sec === 'ordens' ? 'bg-indigo-100 text-indigo-700' :
+                        sec === 'fornecedores' ? 'bg-yellow-100 text-yellow-700' :
+                        sec === 'transferencias' ? 'bg-teal-100 text-teal-700' :
+                        sec === 'devolucoes' ? 'bg-rose-100 text-rose-700' :
+                        'bg-gray-100 text-gray-700'
+                      }`}>
+                        {getSectionIcon(sec)}
+                      </div>
+                      <div>
+                        <h4 className="text-lg font-semibold capitalize">
+                          {sec.replace(/_/g, " ")}
+                        </h4>
+                        <p className="text-xs text-default-500">
+                          {permCount} de {totalPerms} permissões ativas
+                        </p>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-3">
+                      <Chip
+                        size="md"
+                        variant="flat"
+                        color={permCount > 0 ? "success" : "default"}
+                      >
+                        {permCount}/{totalPerms}
+                      </Chip>
+                      
+                      {/* Botões de ação rápida */}
+                      <div className="flex gap-1">
+                        <Button
+                          size="sm"
+                          variant="flat"
+                          color="success"
+                          onPress={() => toggleAllPerms(sec, true)}
+                          title="Ativar todas"
+                          startContent={<CheckIcon className="w-3 h-3" />}
                         >
-                          <div className="flex items-center justify-between mb-4">
-                            <h4 className="text-lg font-medium capitalize">
-                              {sec.replace(/_/g, " ")}
-                            </h4>
-                            <Chip
-                              size="sm"
-                              variant="flat"
-                              color={permCount > 0 ? "primary" : "default"}
-                            >
-                              {permCount}/{totalPerms}
-                            </Chip>
-                          </div>
+                          Todas
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="flat"
+                          color="danger"
+                          onPress={() => toggleAllPerms(sec, false)}
+                          title="Desativar todas"
+                          startContent={<XMarkIcon className="w-3 h-3" />}
+                        >
+                          Nenhuma
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
 
-                          <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-                            {Object.entries(perms).map(
-                              ([k, v]: [string, any]) => (
-                                <Checkbox
-                                  key={k}
-                                  isSelected={v}
-                                  onChange={() => togglePerm(sec, k)}
+                  {/* Grid de permissões booleanas */}
+                  <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 mb-4">
+                    {booleanPerms.map(([k, v]: [string, any]) => (
+                      <div
+                        key={k}
+                        className={`p-3 rounded-lg border transition-colors ${
+                          v ? 'bg-success-50 border-success-200' : 'bg-default-50 border-default-200'
+                        }`}
+                      >
+                        <Checkbox
+                          isSelected={v}
+                          onChange={() => togglePerm(sec, k)}
+                          size="sm"
+                          classNames={{
+                            label: "text-sm font-medium",
+                          }}
+                        >
+                          <span className="capitalize">
+                            {k.replace(/_/g, " ")}
+                          </span>
+                        </Checkbox>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Controles especiais (como desconto para vendas) */}
+                  {sec === 'vendas' && numericPerms.length > 0 && (
+                    <div className="mt-4 p-4 bg-warning-50 rounded-lg border border-warning-200">
+                      <h5 className="font-semibold text-warning-800 mb-3 flex items-center gap-2">
+                        <CreditCardIcon className="w-5 h-5" />
+                        Configurações Especiais de Vendas
+                      </h5>
+                      {numericPerms.map(([k, v]: [string, any]) => (
+                        <div key={k} className="space-y-2">
+                          {k === 'desconto_maximo' && (
+                            <div>
+                              <div className="flex items-center justify-between mb-2">
+                                <label className="text-sm font-medium text-warning-700 flex items-center gap-2">
+                                  <TagIcon className="w-4 h-4" />
+                                  Desconto Máximo Permitido
+                                </label>
+                                <Chip size="sm" color="warning" variant="flat">
+                                  {v}%
+                                </Chip>
+                              </div>
+                              <div className="flex gap-3 items-center">
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  max="100"
+                                  value={v.toString()}
+                                  onChange={(e) => updateDescontoMaximo(sec, Number(e.target.value))}
+                                  endContent="%"
                                   size="sm"
-                                  classNames={{
-                                    label: "text-sm",
-                                  }}
-                                >
-                                  {k.replace(/_/g, " ")}
-                                </Checkbox>
-                              )
-                            )}
-                          </div>
+                                  className="w-24"
+                                  variant="bordered"
+                                />
+                                <div className="flex-1 text-xs text-warning-600">
+                                  Define o percentual máximo de desconto que este usuário pode aplicar nas vendas
+                                </div>
+                              </div>
+                              {/* Barra visual do desconto */}
+                              <div className="mt-2">
+                                <div className="w-full bg-default-200 rounded-full h-2">
+                                  <div 
+                                    className="bg-warning-500 h-2 rounded-full transition-all"
+                                    style={{ width: `${v}%` }}
+                                  ></div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
                         </div>
-                      );
-                    }
+                      ))}
+                    </div>
                   )}
                 </div>
-              )}
-            </ModalBody>
+              );
+            })}
+          </div>
+        )}
+      </ModalBody>
 
-            <ModalFooter className="border-t border-divider pt-4">
-              <Button
-                variant="flat"
-                onPress={() => setPermissoesOpen(false)}
-                isDisabled={permSaving}
-              >
-                Cancelar
-              </Button>
-              <Button
-                color="primary"
-                onPress={salvarPermissoes}
-                isLoading={permSaving}
-                isDisabled={permLoading}
-              >
-                Salvar Permissões
-              </Button>
-            </ModalFooter>
-          </ModalContent>
-        </Modal>
-      )}
+      <ModalFooter className="border-t border-divider pt-4 bg-default-50 rounded-b-lg">
+        <div className="flex justify-between items-center w-full">
+          <div className="text-sm text-default-500 flex items-center gap-2">
+            <CheckCircleIcon className="w-4 h-4 text-success" />
+            As permissões entram em vigor imediatamente após salvar
+          </div>
+          <div className="flex gap-3">
+            <Button
+              variant="light"
+              onPress={() => setPermissoesOpen(false)}
+              isDisabled={permSaving}
+            >
+              Cancelar
+            </Button>
+            <Button
+              color="primary"
+              onPress={salvarPermissoes}
+              isLoading={permSaving}
+              isDisabled={permLoading}
+              className="px-6"
+              
+            >
+              {permSaving ? "Salvando..." : "Salvar Permissões"}
+            </Button>
+          </div>
+        </div>
+      </ModalFooter>
+    </ModalContent>
+  </Modal>
+)}
     </div>
   );
 }
