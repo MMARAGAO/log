@@ -11,7 +11,6 @@ import {
   currencyToNumber,
   numberToCurrencyInput,
 } from "@/utils/maskInput";
-import { VendasStats, VendasFilters } from "@/components/vendas";
 import {
   Card,
   CardBody,
@@ -1604,56 +1603,116 @@ export default function VendasPage() {
       </div>
 
       {/* Estatísticas */}
-      <VendasStats stats={stats} formatCurrency={fmt} />
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Card>
+          <CardBody className="p-4">
+            <p className="text-xs text-default-500">Total de Vendas</p>
+            <p className="text-2xl font-semibold">{stats.count}</p>
+            <p className="text-xs text-default-400">{stats.pagas} pagas</p>
+          </CardBody>
+        </Card>
+        <Card>
+          <CardBody className="p-4">
+            <p className="text-xs text-default-500">Faturamento</p>
+            <p className="text-xl font-semibold">{fmt(stats.faturamento)}</p>
+            <p className="text-xs text-default-400">
+              Ticket médio {fmt(stats.ticket)}
+            </p>
+          </CardBody>
+        </Card>
+        <Card>
+          <CardBody className="p-4">
+            <p className="text-xs text-default-500">A Receber</p>
+            <p className="text-xl font-semibold text-orange-600">
+              {fmt(stats.receber)}
+            </p>
+            <p className="text-xs text-default-400">
+              {vendas.filter((v) => v.valor_restante > 0).length} vendas
+            </p>
+          </CardBody>
+        </Card>
+        <Card>
+          <CardBody className="p-4">
+            <p className="text-xs text-default-500">Vencidas</p>
+            <p
+              className={`text-xl font-semibold ${
+                stats.vencidas > 0 ? "text-red-600" : "text-default-400"
+              }`}
+            >
+              {stats.vencidas}
+            </p>
+            <p className="text-xs text-default-400">
+              {stats.vencidas > 0 ? "Rever cobranças" : "Sem pendências"}
+            </p>
+          </CardBody>
+        </Card>
+      </div>
 
-      {/* Barra de busca e filtros */}
-      <VendasFilters
-        searchTerm={filters.search}
-        onSearchChange={(value) => setFilters((p) => ({ ...p, search: value }))}
-        orderBy={filters.orderBy}
-        onOrderByChange={(value) =>
-          setFilters((p) => ({ ...p, orderBy: value }))
-        }
-        direction={filters.direction}
-        onDirectionToggle={() =>
-          setFilters((p) => ({
-            ...p,
-            direction: p.direction === "asc" ? "desc" : "asc",
-          }))
-        }
-        onClearFilters={() =>
-          setFilters({
-            search: "",
-            status: "",
-            pagamento: "",
-            vencidas: false,
-            cliente: "",
-            loja: "",
-            orderBy: "data_venda",
-            direction: "desc",
-            inicio: "",
-            fim: "",
-            valorMin: "",
-            valorMax: "",
-          })
-        }
-        showFiltersPanel={showFilters}
-        onToggleFiltersPanel={() => setShowFilters(!showFilters)}
-        onAddClick={safeOpenNewVenda}
-        canCreate={canCreateVendas && caixaAberto}
-        hasActiveFilters={
-          filters.search !== "" ||
-          filters.status !== "" ||
-          filters.pagamento !== "" ||
-          filters.vencidas ||
-          filters.cliente !== "" ||
-          filters.loja !== "" ||
-          filters.inicio !== "" ||
-          filters.fim !== "" ||
-          filters.valorMin !== "" ||
-          filters.valorMax !== ""
-        }
-      />
+      {/* Barra de busca */}
+      <div className="flex flex-col gap-3 md:flex-row md:items-center">
+        <Input
+          startContent={<MagnifyingGlassIcon className="w-4 h-4" />}
+          placeholder="Buscar por cliente, ID ou forma de pagamento"
+          value={filters.search}
+          onChange={(e) =>
+            setFilters((p) => ({ ...p, search: e.target.value }))
+          }
+          className="flex-1"
+        />
+        <Select
+          size="sm"
+          label="Ordenar"
+          selectedKeys={[filters.orderBy]}
+          onSelectionChange={(k) =>
+            setFilters((p) => ({
+              ...p,
+              orderBy: Array.from(k)[0] as string,
+            }))
+          }
+          className="max-w-xs"
+        >
+          {ORDER_FIELDS.map((o) => (
+            <SelectItem key={o.key}>{o.label}</SelectItem>
+          ))}
+        </Select>
+        <Button
+          isIconOnly
+          variant="flat"
+          onPress={() =>
+            setFilters((p) => ({
+              ...p,
+              direction: p.direction === "asc" ? "desc" : "asc",
+            }))
+          }
+        >
+          {filters.direction === "asc" ? (
+            <ArrowUpIcon className="w-4 h-4" />
+          ) : (
+            <ArrowDownIcon className="w-4 h-4" />
+          )}
+        </Button>
+        <Button
+          variant="flat"
+          onPress={() =>
+            setFilters({
+              search: "",
+              status: "",
+              pagamento: "",
+              vencidas: false,
+              cliente: "",
+              loja: "",
+              orderBy: "data_venda",
+              direction: "desc",
+              inicio: "",
+              fim: "",
+              valorMin: "",
+              valorMax: "",
+            })
+          }
+        >
+          Limpar
+        </Button>
+      </div>
 
       {/* Painel de filtros avançados */}
       {showFilters && (

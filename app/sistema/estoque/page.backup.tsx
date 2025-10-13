@@ -11,7 +11,6 @@ import {
   currencyToNumber,
   numberToCurrencyInput,
 } from "@/utils/maskInput";
-import { EstoqueStats, EstoqueCard } from "@/components/estoque";
 import {
   Card,
   CardBody,
@@ -1272,8 +1271,81 @@ export default function EstoquePage() {
         )}
       </div>
 
-      {/* Estatísticas */}
-      <EstoqueStats produtos={filteredAndSortedEstoque} />
+      {/* Cards de Estatísticas - sempre visível se pode ver estoque */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <Card>
+          <CardBody className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-100 dark:bg-blue-800 rounded-lg">
+                <CubeIcon className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+              </div>
+              <div>
+                <p className="text-sm text-default-500">Total de Itens</p>
+                <p className="text-2xl font-bold text-blue-600">
+                  {totalQuantidade.toLocaleString("pt-BR")}
+                </p>
+              </div>
+            </div>
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardBody className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-red-100 dark:bg-red-800 rounded-lg">
+                <ShoppingCartIcon className="w-6 h-6 text-red-600 dark:text-red-400" />
+              </div>
+              <div>
+                <p className="text-sm text-default-500">Valor de Compra</p>
+                <p className="text-2xl font-bold text-red-600">
+                  {new Intl.NumberFormat("pt-BR", {
+                    style: "currency",
+                    currency: "BRL",
+                  }).format(totalPrecoCompra)}
+                </p>
+              </div>
+            </div>
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardBody className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-green-100 dark:bg-green-800 rounded-lg">
+                <CurrencyDollarIcon className="w-6 h-6 text-green-600 dark:text-green-400" />
+              </div>
+              <div>
+                <p className="text-sm text-default-500">Valor de Venda</p>
+                <p className="text-2xl font-bold text-green-600">
+                  {new Intl.NumberFormat("pt-BR", {
+                    style: "currency",
+                    currency: "BRL",
+                  }).format(totalPrecoVenda)}
+                </p>
+              </div>
+            </div>
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardBody className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-purple-100 dark:bg-purple-800 rounded-lg">
+                <ChartBarIcon className="w-6 h-6 text-purple-600 dark:text-purple-400" />
+              </div>
+              <div>
+                <p className="text-sm text-default-500">Lucro Potencial</p>
+                <p className="text-2xl font-bold text-purple-600">
+                  {new Intl.NumberFormat("pt-BR", {
+                    style: "currency",
+                    currency: "BRL",
+                  }).format(totalLucro)}
+                </p>
+              </div>
+            </div>
+          </CardBody>
+        </Card>
+      </div>
 
       {/* Busca e Filtros */}
       <div className="mb-6 space-y-4">
@@ -1540,15 +1612,142 @@ export default function EstoquePage() {
         <>
           <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
             {currentItems.map((item) => (
-              <EstoqueCard
-                key={item.id}
-                produto={item}
-                lojas={lojas}
-                onEdit={safeHandleEdit}
-                onDelete={safeHandleDelete}
-                canEdit={canEditEstoque}
-                canDelete={canDeleteEstoque}
-              />
+              <Card key={item.id} className="w-full">
+                <CardBody>
+                  {/* Carrossel de Fotos */}
+                  <PhotoCarousel
+                    photos={item.fotourl || []}
+                    itemName={item.descricao}
+                    className="w-full bg-gray-200 h-56 rounded-xl"
+                  />
+
+                  <div className="flex items-center justify-between mb-3 mt-4">
+                    <div className="flex items-center gap-4">
+                      <div>
+                        <h3 className="text-lg font-semibold">
+                          {item.descricao}
+                        </h3>
+                        <p className="text-small text-default-500">
+                          {item.marca} {item.modelo && `- ${item.modelo}`}
+                        </p>
+                        <div className="flex gap-2 mt-2">
+                          <Chip
+                            size="sm"
+                            variant="flat"
+                            color={
+                              selectedLoja
+                                ? isLowStock(item, selectedLoja)
+                                  ? "danger"
+                                  : "success"
+                                : isLowStock(item)
+                                  ? "danger"
+                                  : "success"
+                            }
+                          >
+                            Qtd:{" "}
+                            {selectedLoja
+                              ? getQuantidadeLoja(item, selectedLoja)
+                              : item.quantidade_total || 0}
+                          </Chip>
+                          {selectedLoja && isLowStock(item, selectedLoja) && (
+                            <Chip
+                              size="sm"
+                              color="danger"
+                              variant="flat"
+                              startContent={
+                                <ExclamationTriangleIcon className="w-3 h-3 mr-1" />
+                              }
+                            >
+                              Estoque Baixo
+                            </Chip>
+                          )}
+                          {!selectedLoja && isLowStock(item) && (
+                            <Chip
+                              size="sm"
+                              color="danger"
+                              variant="flat"
+                              startContent={
+                                <ExclamationTriangleIcon className="w-3 h-3 mr-1" />
+                              }
+                            >
+                              Estoque Baixo
+                            </Chip>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {(canEditEstoque || canDeleteEstoque) && (
+                      <div className="flex gap-2">
+                        {canEditEstoque && (
+                          <Button
+                            isIconOnly
+                            size="sm"
+                            variant="flat"
+                            color="warning"
+                            onPress={() => safeHandleEdit(item)}
+                          >
+                            <PencilIcon className="w-4 h-4" />
+                          </Button>
+                        )}
+                        {canDeleteEstoque && (
+                          <Button
+                            isIconOnly
+                            size="sm"
+                            variant="flat"
+                            color="danger"
+                            onPress={() => safeHandleDelete(item.id)}
+                          >
+                            <TrashIcon className="w-4 h-4" />
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  <Divider className="my-3" />
+
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <p className="text-default-500">Compatível</p>
+                      <p className="font-medium">{item.compativel || "N/A"}</p>
+                    </div>
+                    <div>
+                      <p className="text-default-500">Preço Compra</p>
+                      <p className="font-medium text-red-600">
+                        {new Intl.NumberFormat("pt-BR", {
+                          style: "currency",
+                          currency: "BRL",
+                        }).format(item.preco_compra || 0)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-default-500">Preço Venda</p>
+                      <p className="font-medium text-green-600">
+                        {new Intl.NumberFormat("pt-BR", {
+                          style: "currency",
+                          currency: "BRL",
+                        }).format(item.preco_venda || 0)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-default-500">Lucro Unitário</p>
+                      <p className="font-medium text-blue-600">
+                        {new Intl.NumberFormat("pt-BR", {
+                          style: "currency",
+                          currency: "BRL",
+                        }).format(calculateProfit(item))}
+                      </p>
+                    </div>
+                  </div>
+
+                  {item.observacoes && (
+                    <div className="mt-3 p-3 bg-default-100 rounded-lg">
+                      <p className="text-sm">{item.observacoes}</p>
+                    </div>
+                  )}
+                </CardBody>
+              </Card>
             ))}
 
             {filteredAndSortedEstoque.length === 0 && !loading && (

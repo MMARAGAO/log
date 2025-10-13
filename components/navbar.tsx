@@ -28,7 +28,7 @@ import {
   ArrowUturnLeftIcon,
   CubeTransparentIcon,
   CircleStackIcon,
-  CpuChipIcon
+  CpuChipIcon,
 } from "@heroicons/react/24/outline";
 
 import { useAuthStore } from "@/store/authZustand";
@@ -85,7 +85,13 @@ export function Navbar() {
       name: "RMA",
       path: "/sistema/rma",
       icon: CpuChipIcon,
-    }
+    },
+    {
+      name: "RMA Clientes",
+      path: "/sistema/rmaClientes",
+      icon: UserGroupIcon,
+    },
+    { name: "Caixa", path: "/sistema/caixa", icon: CircleStackIcon },
   ];
 
   const getButtonVariant = (href: string) => {
@@ -154,11 +160,12 @@ export function Navbar() {
           </div>
         </div>
 
-        {/* Menu items */}
-        <div className="p-4 space-y-1">
+        {/* Menu items com scroll */}
+        <div className="p-4 space-y-1 max-h-[calc(100vh-160px)] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 dark:scrollbar-thumb-gray-700 dark:scrollbar-track-gray-900">
           <div>
-          <h1 className="text-sm font-semibold dark:text-white text-gray-500 
-          ">Navegação Principal</h1>
+            <h1 className="text-sm font-semibold dark:text-white text-gray-500">
+              Navegação Principal
+            </h1>
           </div>
           {routes.map((route) => (
             <Button

@@ -36,6 +36,19 @@ export async function updateTable(
     usuarioId,
   });
 
+  // Configura o usuario_id na sessão do banco para o trigger usar
+  if (usuarioId) {
+    try {
+      await supabase.rpc("set_config", {
+        setting: "app.current_user_id",
+        value: usuarioId,
+      });
+      console.log("✅ Usuario ID configurado na sessão:", usuarioId);
+    } catch (error) {
+      console.warn("⚠️ Não foi possível configurar usuario_id:", error);
+    }
+  }
+
   // Busca os dados anteriores completos para o log
   let dadosAnteriores: any = null;
   try {
@@ -133,10 +146,41 @@ export async function updateTable(
   }
 
   // Monta payload final
+  console.log("🔍 Values recebido no updateTable:", values);
+  console.log("🔍 Chaves do values:", Object.keys(values));
+
+  // Adiciona usuario_id automaticamente, exceto na tabela usuarios
   const updateValues = {
     ...values,
+    ...(table !== "usuarios" ? { usuario_id: usuarioId } : {}),
     ...(wantsPhotoColumn ? { fotourl: newFotos } : {}),
   };
+
+  console.log("📦 Payload final para update:", {
+    table,
+    id,
+    key,
+    updateValues,
+    keysCount: Object.keys(updateValues).length,
+  });
+  console.log("📦 Chaves do updateValues:", Object.keys(updateValues));
+  console.log(
+    "📦 updateValues completo (JSON):",
+    JSON.stringify(updateValues, null, 2)
+  );
+
+  // Verifica se há algo para atualizar
+  if (Object.keys(updateValues).length === 0) {
+    console.warn("⚠️ Nenhum dado para atualizar. Retornando registro atual.");
+    const { data: currentData } = await supabase
+      .from(table)
+      .select("*")
+      .eq(key, id)
+      .maybeSingle();
+    return currentData;
+  }
+
+  console.log(`🔄 Executando UPDATE na tabela ${table} onde ${key}=${id}...`);
 
   const { data, error } = await supabase
     .from(table)
@@ -144,6 +188,8 @@ export async function updateTable(
     .eq(key, id)
     .select()
     .maybeSingle();
+
+  console.log("📊 Resultado do UPDATE:", { data, error });
 
   if (error) {
     console.error("❌ Erro ao atualizar registro:", error);
@@ -157,54 +203,8 @@ export async function updateTable(
 
   console.log("✅ Registro atualizado com sucesso:", data);
 
-  // Registra a ação na tabela de logs
-  try {
-    console.log("📝 Tentando registrar log de atualização...");
-
-    // Pega informações do navegador se não foram fornecidas
-    const finalIp = ip || null;
-    const finalUserAgent =
-      userAgent ||
-      (typeof navigator !== "undefined" ? navigator.userAgent : null);
-
-    // Identifica o ID do registro atualizado
-    const registroId = data?.uuid || data?.id || String(id);
-
-    const logData = {
-      usuario_id: usuarioId,
-      acao: `editar_${table}`,
-      tabela: table,
-      registro_id: String(registroId),
-      dados_anteriores: dadosAnteriores,
-      dados_novos: data,
-      ip: finalIp,
-      user_agent: finalUserAgent,
-    };
-
-    console.log("📋 Dados do log:", logData);
-
-    const { data: logResult, error: logError } = await supabase
-      .from("logs")
-      .insert(logData)
-      .select();
-
-    if (logError) {
-      console.error("❌ Erro ao inserir log - message:", logError.message);
-      console.error("❌ Erro ao inserir log - details:", logError.details);
-      console.error("❌ Erro ao inserir log - hint:", logError.hint);
-      console.error("❌ Erro ao inserir log - code:", logError.code);
-      console.error("❌ Erro completo:", JSON.stringify(logError, null, 2));
-    } else {
-      console.log("✅ Log registrado com sucesso:", logResult);
-    }
-  } catch (logError) {
-    console.error("❌ Exceção ao registrar log:", logError);
-    console.error(
-      "❌ Exceção stringificada:",
-      JSON.stringify(logError, null, 2)
-    );
-    // Não propaga o erro do log para não quebrar a operação principal
-  }
+  // Log será criado automaticamente pelo trigger do banco de dados
+  // Não é necessário criar log manualmente aqui
 
   return data;
 }

@@ -1,377 +1,348 @@
-"use client";
+﻿"use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useAuthStore } from "@/store/authZustand";
-import { fetchTable } from "@/lib/fetchTable";
+import { useState, useEffect, useMemo } from "react";
 import {
   Card,
   CardBody,
   Button,
-  Input,
+  Spinner,
+  Chip,
   Select,
   SelectItem,
+  Input,
+  Modal,
+  ModalContent,
+  ModalHeader,
+  ModalBody,
+  ModalFooter,
+  Tabs,
+  Tab,
   Table,
   TableHeader,
   TableColumn,
   TableBody,
   TableRow,
   TableCell,
-  Modal,
-  ModalContent,
-  ModalHeader,
-  ModalBody,
-  ModalFooter,
-  useDisclosure,
-  Chip,
-  Switch,
   Pagination,
-  Tooltip,
-  Spinner,
-  Code,
-  ScrollShadow,
 } from "@heroui/react";
 import {
-  MagnifyingGlassIcon,
-  FunnelIcon,
-  ArrowUpIcon,
-  ArrowDownIcon,
-  EyeIcon,
   ClockIcon,
-  UserIcon,
-  TableCellsIcon,
-  DocumentTextIcon,
+  FunnelIcon,
+  MagnifyingGlassIcon,
+  ArrowPathIcon,
+  ChartBarIcon,
   ExclamationTriangleIcon,
-  ComputerDesktopIcon,
-  GlobeAltIcon,
-  CalendarDaysIcon,
-  PlusIcon,
+  EyeIcon,
+  CheckCircleIcon,
+  XCircleIcon,
   PencilIcon,
-  TrashIcon,
-  ArchiveBoxIcon,
-  ArrowDownTrayIcon,
+  CalendarIcon,
+  UserIcon,
+  DocumentTextIcon,
 } from "@heroicons/react/24/outline";
+import { fetchTable } from "@/lib/fetchTable";
+import { useAuthStore } from "@/store/authZustand";
+import toast, { Toaster } from "react-hot-toast";
 
-// Tipos baseados no schema
 interface Log {
   id: number;
   usuario_id: string | null;
+  tipo_operacao: "INSERT" | "UPDATE" | "DELETE";
   acao: string;
-  tabela: string | null;
-  registro_id: string | null;
+  tabela: string;
+  modulo: string;
+  registro_id: string;
+  descricao: string;
   dados_anteriores: any;
   dados_novos: any;
-  ip: string | null;
-  user_agent: string | null;
   criado_em: string;
 }
 
 interface Usuario {
   uuid: string;
-  nome: string | null;
-  email?: string | null;
-  cargo?: string | null;
-  fotourl?: string[] | null;
+  nome: string;
+  email: string;
 }
-
-const ACOES_OPCOES = [
-  { key: "criar", label: "Criar", color: "success", icon: PlusIcon },
-  { key: "editar", label: "Editar", color: "warning", icon: PencilIcon },
-  { key: "deletar", label: "Deletar", color: "danger", icon: TrashIcon },
-  {
-    key: "arquivar",
-    label: "Arquivar",
-    color: "default",
-    icon: ArchiveBoxIcon,
-  },
-] as const;
-
-const TABELAS_OPCOES = [
-  { key: "clientes", label: "Clientes", icon: UserIcon },
-  { key: "vendas", label: "Vendas", icon: DocumentTextIcon },
-  { key: "estoque", label: "Estoque", icon: ArchiveBoxIcon },
-  { key: "usuarios", label: "Usuários", icon: UserIcon },
-  { key: "fornecedores", label: "Fornecedores", icon: UserIcon },
-  { key: "ordens", label: "Ordens", icon: DocumentTextIcon },
-] as const;
-
-const ORDER_FIELDS = [
-  { key: "criado_em", label: "Data/Hora" },
-  { key: "acao", label: "Ação" },
-  { key: "tabela", label: "Tabela" },
-  { key: "usuario_id", label: "Usuário" },
-  { key: "ip", label: "IP" },
-];
-
-interface FilterState {
-  search: string;
-  acao: string;
-  tabela: string;
-  usuario: string;
-  orderBy: string;
-  direction: "asc" | "desc";
-  inicio: string;
-  fim: string;
-  ip: string;
-}
-
-const PAGE_SIZE = 20;
 
 export default function LogsPage() {
-  // Auth
-  const { user } = useAuthStore();
-
-  // Verificação de permissões específicas de logs
-  const permLogs = user?.permissoes?.acessos?.logs;
-  const canViewLogs = !!permLogs?.ver_logs;
-  const canExportLogs = !!permLogs?.exportar_logs;
-  const canFilterLogs = !!permLogs?.filtrar_logs;
-  const canViewDetails = !!permLogs?.ver_detalhes_logs;
-
-  // Fallback para admins/gerentes (retrocompatibilidade)
-  const isAdmin = user?.cargo === "Admin" || user?.cargo === "Gerente";
-  const hasAccess = canViewLogs || isAdmin;
-
-  console.log("🔍 Debug permissões logs:", {
-    user: user?.nome,
-    cargo: user?.cargo,
-    permLogs,
-    canViewLogs,
-    isAdmin,
-    hasAccess,
-  });
-
-  // Dados
   const [logs, setLogs] = useState<Log[]>([]);
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  // Filtros
-  const [filters, setFilters] = useState<FilterState>({
-    search: "",
-    acao: "",
-    tabela: "",
-    usuario: "",
-    orderBy: "criado_em",
-    direction: "desc",
-    inicio: "",
-    fim: "",
-    ip: "",
-  });
-
+  const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
-  const [showFilters, setShowFilters] = useState(false);
+  const rowsPerPage = 20;
+  const [filtroModulo, setFiltroModulo] = useState("");
+  const [filtroTipo, setFiltroTipo] = useState("");
+  const [filtroBusca, setFiltroBusca] = useState("");
+  const [dataInicio, setDataInicio] = useState("");
+  const [dataFim, setDataFim] = useState("");
+  const [modalDetalhes, setModalDetalhes] = useState(false);
+  const [logSelecionado, setLogSelecionado] = useState<Log | null>(null);
 
-  // Modal detalhes
-  const viewModal = useDisclosure();
-  const [targetLog, setTargetLog] = useState<Log | null>(null);
+  const { user } = useAuthStore();
+  const acessos = user?.permissoes?.acessos as any;
+  const permLogs = acessos?.logs;
+  const canViewLogs = !!permLogs?.ver_logs;
 
-  // Carregar dados iniciais
-  async function loadAll() {
+  const modulos = [
+    "Vendas",
+    "Estoque",
+    "Clientes",
+    "Fornecedores",
+    "Ordens de Serviço",
+    "RMA",
+    "RMA Clientes",
+    "Caixa",
+    "Transferências",
+    "Lojas",
+    "Usuários",
+    "Sistema",
+  ];
+
+  useEffect(() => {
+    if (canViewLogs) {
+      loadData();
+    }
+  }, [canViewLogs]);
+
+  async function loadData() {
     setLoading(true);
     try {
-      const [logsData, usuariosData] = await Promise.all([
-        fetchTable("logs"),
-        fetchTable("usuarios"),
-      ]);
-      setLogs(logsData || []);
-      setUsuarios(usuariosData || []);
-    } catch (e) {
-      console.error("Erro ao carregar logs:", e);
+      await Promise.all([loadLogs(), loadUsuarios()]);
+    } catch (error) {
+      console.error("Erro ao carregar dados:", error);
+      toast.error("Erro ao carregar dados");
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => {
-    if (hasAccess) {
-      loadAll();
+  async function loadLogs() {
+    try {
+      const data = await fetchTable("logs");
+      if (data) {
+        const logsOrdenados = data.sort(
+          (a: any, b: any) =>
+            new Date(b.criado_em).getTime() - new Date(a.criado_em).getTime()
+        );
+        setLogs(logsOrdenados);
+      }
+    } catch (error) {
+      console.error("Erro ao carregar logs:", error);
+      throw error;
     }
-  }, [hasAccess]);
-
-  // Helpers
-  function fmtDateTime(d?: string | null) {
-    if (!d) return "-";
-    return new Date(d).toLocaleString("pt-BR");
   }
 
-  function fmtDate(d?: string | null) {
-    if (!d) return "-";
-    return new Date(d).toLocaleDateString("pt-BR");
-  }
-
-  function getUsuarioNome(userId: string | null) {
-    if (!userId) return "Sistema";
-    const usuario = usuarios.find((u) => u.uuid === userId);
-    return usuario?.nome || usuario?.email || "Usuário desconhecido";
-  }
-
-  function getAcaoInfo(acao: string) {
-    const tipo = acao.split("_")[0]; // ex: "criar", "editar", "deletar"
-    return ACOES_OPCOES.find((a) => a.key === tipo) || ACOES_OPCOES[0];
-  }
-
-  function getTabelaInfo(tabela: string | null) {
-    if (!tabela) return null;
-    return TABELAS_OPCOES.find((t) => t.key === tabela);
-  }
-
-  function formatAcao(acao: string) {
-    const partes = acao.split("_");
-    if (partes.length >= 2) {
-      const verbo = partes[0];
-      const objeto = partes.slice(1).join("_");
-      return `${verbo.charAt(0).toUpperCase() + verbo.slice(1)} ${objeto}`;
+  async function loadUsuarios() {
+    try {
+      const data = await fetchTable("usuarios");
+      if (data) {
+        setUsuarios(data);
+      }
+    } catch (error) {
+      console.error("Erro ao carregar usuários:", error);
     }
-    return acao;
   }
 
-  function getDeviceInfo(userAgent: string | null) {
-    if (!userAgent) return "Desconhecido";
-
-    // Detecta browser simples
-    if (userAgent.includes("Chrome")) return "Chrome";
-    if (userAgent.includes("Firefox")) return "Firefox";
-    if (userAgent.includes("Safari")) return "Safari";
-    if (userAgent.includes("Edge")) return "Edge";
-
-    // Detecta mobile
-    if (userAgent.includes("Mobile")) return "Mobile";
-
-    return "Desktop";
+  function getUserName(usuarioId: string | null): string {
+    if (!usuarioId) return "Sistema";
+    const usuario = usuarios.find((u) => u.uuid === usuarioId);
+    return usuario?.nome || "Desconhecido";
   }
 
-  // Filtros / ordenação
-  const filtered = useMemo(() => {
-    return logs
-      .filter((log) => {
-        // Busca geral
-        if (filters.search) {
-          const searchLower = filters.search.toLowerCase();
-          const matchText = [
-            log.acao,
-            log.tabela,
-            log.registro_id,
-            getUsuarioNome(log.usuario_id),
-            log.ip,
-          ].some((field) => field?.toLowerCase().includes(searchLower));
-          if (!matchText) return false;
-        }
+  function getUserEmail(usuarioId: string | null): string | null {
+    if (!usuarioId) return null;
+    const usuario = usuarios.find((u) => u.uuid === usuarioId);
+    return usuario?.email || null;
+  }
 
-        // Filtro por ação
-        if (filters.acao && !log.acao.startsWith(filters.acao)) return false;
+  const logsFiltrados = useMemo(() => {
+    return logs.filter((log) => {
+      if (filtroModulo && log.modulo !== filtroModulo) return false;
+      if (filtroTipo && log.tipo_operacao !== filtroTipo) return false;
 
-        // Filtro por tabela
-        if (filters.tabela && log.tabela !== filters.tabela) return false;
-
-        // Filtro por usuário
-        if (filters.usuario && log.usuario_id !== filters.usuario) return false;
-
-        // Filtro por IP
-        if (filters.ip && log.ip !== filters.ip) return false;
-
-        // Filtro por data início
-        if (filters.inicio && log.criado_em < filters.inicio + "T00:00:00")
+      if (filtroBusca) {
+        const busca = filtroBusca.toLowerCase();
+        const matchDescricao = log.descricao?.toLowerCase().includes(busca);
+        const matchUsuario = getUserName(log.usuario_id)
+          .toLowerCase()
+          .includes(busca);
+        const matchRegistro = log.registro_id?.toLowerCase().includes(busca);
+        const matchTabela = log.tabela?.toLowerCase().includes(busca);
+        if (!matchDescricao && !matchUsuario && !matchRegistro && !matchTabela)
           return false;
+      }
 
-        // Filtro por data fim
-        if (filters.fim && log.criado_em > filters.fim + "T23:59:59")
-          return false;
+      if (dataInicio) {
+        const logDate = new Date(log.criado_em).toISOString().split("T")[0];
+        if (logDate < dataInicio) return false;
+      }
+      if (dataFim) {
+        const logDate = new Date(log.criado_em).toISOString().split("T")[0];
+        if (logDate > dataFim) return false;
+      }
 
-        return true;
-      })
-      .sort((a, b) => {
-        const dir = filters.direction === "asc" ? 1 : -1;
-        let av: any = a[filters.orderBy as keyof Log];
-        let bv: any = b[filters.orderBy as keyof Log];
+      return true;
+    });
+  }, [
+    logs,
+    filtroModulo,
+    filtroTipo,
+    filtroBusca,
+    dataInicio,
+    dataFim,
+    usuarios,
+  ]);
 
-        if (filters.orderBy === "criado_em") {
-          av = av ? new Date(av).getTime() : 0;
-          bv = bv ? new Date(bv).getTime() : 0;
-        }
+  const pages = Math.ceil(logsFiltrados.length / rowsPerPage);
+  const items = useMemo(() => {
+    const start = (page - 1) * rowsPerPage;
+    const end = start + rowsPerPage;
+    return logsFiltrados.slice(start, end);
+  }, [page, logsFiltrados]);
 
-        if (typeof av === "string") av = av.toLowerCase();
-        if (typeof bv === "string") bv = bv.toLowerCase();
-
-        if (av < bv) return -1 * dir;
-        if (av > bv) return 1 * dir;
-        return 0;
-      });
-  }, [logs, filters, usuarios]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const pageItems = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-
-  useEffect(() => {
-    setPage(1);
-  }, [filters]);
-
-  // Estatísticas
-  const stats = useMemo(() => {
-    const total = logs.length;
-    const hoje = new Date().toISOString().split("T")[0];
-    const ontem = new Date(Date.now() - 24 * 60 * 60 * 1000)
-      .toISOString()
-      .split("T")[0];
-
-    const hojeLogs = logs.filter((l) => l.criado_em.startsWith(hoje)).length;
-    const ontemLogs = logs.filter((l) => l.criado_em.startsWith(ontem)).length;
-
-    const criacoes = logs.filter((l) => l.acao.startsWith("criar")).length;
-    const edicoes = logs.filter((l) => l.acao.startsWith("editar")).length;
-    const exclusoes = logs.filter((l) => l.acao.startsWith("deletar")).length;
-
-    const usuariosAtivos = new Set(
-      logs.filter((l) => l.usuario_id).map((l) => l.usuario_id)
-    ).size;
-
+  const estatisticas = useMemo(() => {
     return {
-      total,
-      hojeLogs,
-      ontemLogs,
-      criacoes,
-      edicoes,
-      exclusoes,
-      usuariosAtivos,
+      total: logsFiltrados.length,
+      inserts: logsFiltrados.filter((l) => l.tipo_operacao === "INSERT").length,
+      updates: logsFiltrados.filter((l) => l.tipo_operacao === "UPDATE").length,
+      deletes: logsFiltrados.filter((l) => l.tipo_operacao === "DELETE").length,
     };
-  }, [logs]);
+  }, [logsFiltrados]);
 
-  // Abrir detalhes
-  function openView(log: Log) {
-    if (!canViewDetails && !isAdmin) {
-      alert("Você não tem permissão para ver detalhes dos logs.");
-      return;
+  function getCorTipo(
+    tipo: string
+  ): "success" | "primary" | "danger" | "default" {
+    switch (tipo) {
+      case "INSERT":
+        return "success";
+      case "UPDATE":
+        return "primary";
+      case "DELETE":
+        return "danger";
+      default:
+        return "default";
     }
-    setTargetLog(log);
-    viewModal.onOpen();
   }
 
-  // Verificação de permissão
-  if (!hasAccess) {
-    return (
-      <div className="p-6 space-y-6 max-w-7xl mx-auto">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold flex items-center gap-2">
-              <DocumentTextIcon className="w-6 h-6" />
-              Logs do Sistema
-            </h1>
-            <p className="text-sm text-default-500">
-              Histórico de ações e auditoria
-            </p>
-          </div>
-        </div>
+  function getIconeTipo(tipo: string) {
+    switch (tipo) {
+      case "INSERT":
+        return <CheckCircleIcon className="w-4 h-4" />;
+      case "UPDATE":
+        return <PencilIcon className="w-4 h-4" />;
+      case "DELETE":
+        return <XCircleIcon className="w-4 h-4" />;
+      default:
+        return <ClockIcon className="w-4 h-4" />;
+    }
+  }
 
+  function getLabelTipo(tipo: string) {
+    switch (tipo) {
+      case "INSERT":
+        return "Criação";
+      case "UPDATE":
+        return "Atualização";
+      case "DELETE":
+        return "Exclusão";
+      default:
+        return tipo;
+    }
+  }
+
+  function limparFiltros() {
+    setFiltroModulo("");
+    setFiltroTipo("");
+    setFiltroBusca("");
+    setDataInicio("");
+    setDataFim("");
+    setPage(1);
+  }
+
+  function setFiltroRapido(tipo: "hoje" | "ontem" | "semana" | "mes") {
+    const hoje = new Date();
+    const hojeStr = hoje.toISOString().split("T")[0];
+
+    switch (tipo) {
+      case "hoje":
+        setDataInicio(hojeStr);
+        setDataFim(hojeStr);
+        break;
+      case "ontem":
+        const ontem = new Date(hoje);
+        ontem.setDate(ontem.getDate() - 1);
+        setDataInicio(ontem.toISOString().split("T")[0]);
+        setDataFim(ontem.toISOString().split("T")[0]);
+        break;
+      case "semana":
+        const seteDias = new Date(hoje);
+        seteDias.setDate(seteDias.getDate() - 7);
+        setDataInicio(seteDias.toISOString().split("T")[0]);
+        setDataFim(hojeStr);
+        break;
+      case "mes":
+        const trintaDias = new Date(hoje);
+        trintaDias.setDate(trintaDias.getDate() - 30);
+        setDataInicio(trintaDias.toISOString().split("T")[0]);
+        setDataFim(hojeStr);
+        break;
+    }
+    setPage(1);
+  }
+
+  function formatarDiferenca(dadosAnteriores: any, dadosNovos: any): string[] {
+    if (!dadosAnteriores || !dadosNovos) return [];
+
+    const diferencas: string[] = [];
+    const keys = new Set([
+      ...Object.keys(dadosAnteriores),
+      ...Object.keys(dadosNovos),
+    ]);
+
+    keys.forEach((key) => {
+      if (
+        ["updatedat", "updated_at", "createdat", "created_at"].includes(
+          key.toLowerCase()
+        )
+      )
+        return;
+
+      const valorAntigo = dadosAnteriores[key];
+      const valorNovo = dadosNovos[key];
+
+      if (JSON.stringify(valorAntigo) !== JSON.stringify(valorNovo)) {
+        const formatAntigo = formatValue(valorAntigo);
+        const formatNovo = formatValue(valorNovo);
+        diferencas.push(`${key}: ${formatAntigo} → ${formatNovo}`);
+      }
+    });
+
+    return diferencas;
+  }
+
+  function formatValue(value: any): string {
+    if (value === null) return "null";
+    if (value === undefined) return "undefined";
+    if (typeof value === "boolean") return value ? "true" : "false";
+    if (typeof value === "object") {
+      try {
+        return JSON.stringify(value);
+      } catch {
+        return String(value);
+      }
+    }
+    return String(value);
+  }
+
+  if (!canViewLogs) {
+    return (
+      <div className="container mx-auto p-6">
         <Card className="border-danger-200">
           <CardBody className="text-center py-12">
-            <div className="mb-4">
-              <ExclamationTriangleIcon className="w-16 h-16 text-danger mx-auto" />
-            </div>
+            <ExclamationTriangleIcon className="w-16 h-16 text-danger mx-auto mb-4" />
             <h2 className="text-xl font-semibold mb-2">Acesso Negado</h2>
-            <p className="text-danger text-sm mb-4">
-              Você não possui permissão para visualizar os logs do sistema.
-            </p>
-            <p className="text-default-500 text-xs">
-              Entre em contato com o administrador para solicitar acesso.
+            <p className="text-danger text-sm">
+              Você não possui permissão para visualizar os Logs do sistema.
             </p>
           </CardBody>
         </Card>
@@ -379,500 +350,523 @@ export default function LogsPage() {
     );
   }
 
-  // Verificação de loading
   if (loading) {
     return (
-      <div className="flex justify-center items-center min-h-screen">
-        <Spinner size="lg" label="Carregando logs..." />
+      <div className="container mx-auto p-6">
+        <div className="flex flex-col justify-center items-center h-96">
+          <Spinner size="lg" />
+          <p className="mt-4 text-default-500">Carregando logs...</p>
+        </div>
       </div>
     );
   }
 
-  // UI
   return (
-    <div className="container mx-auto p-6 flex flex-col gap-6">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+    <div className="container mx-auto p-6 max-w-7xl">
+      <Toaster position="top-right" />
+
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-8">
         <div>
-          <h1 className="text-2xl font-semibold flex items-center gap-2">
-            <DocumentTextIcon className="w-6 h-6" />
-            Logs do Sistema
+          <h1 className="text-3xl font-bold flex items-center gap-2">
+            <DocumentTextIcon className="w-8 h-8 text-primary" />
+            Sistema de Logs
           </h1>
-          <p className="text-sm text-default-500">
-            Histórico de ações e auditoria
+          <p className="text-default-500 mt-1">
+            Auditoria e rastreamento de todas as operações do sistema
           </p>
         </div>
-        <div className="flex gap-2">
-          {(canFilterLogs || isAdmin) && (
-            <Button
-              variant={showFilters ? "solid" : "flat"}
-              startContent={<FunnelIcon className="w-4 h-4" />}
-              onPress={() => setShowFilters((v) => !v)}
-            >
-              Filtros
-            </Button>
-          )}
-          {(canExportLogs || isAdmin) && (
-            <Button
-              variant="flat"
-              startContent={<ArrowDownTrayIcon className="w-4 h-4" />}
-              onPress={() => {
-                console.log("Implementar exportação");
-              }}
-            >
-              Exportar
-            </Button>
-          )}
-        </div>
+
+        <Button
+          color="primary"
+          variant="shadow"
+          startContent={<ArrowPathIcon className="w-5 h-5" />}
+          onPress={() => {
+            loadData();
+            toast.success("Logs atualizados!");
+          }}
+        >
+          Atualizar
+        </Button>
       </div>
 
-      {/* Estatísticas */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardBody className="p-4">
-            <p className="text-xs text-default-500">Total de Logs</p>
-            <p className="text-2xl font-semibold">{stats.total}</p>
-            <p className="text-xs text-default-400">Hoje: {stats.hojeLogs}</p>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <Card className="bg-gradient-to-br from-primary-50 to-primary-100 border-primary-200 border-2">
+          <CardBody className="text-center py-6">
+            <ChartBarIcon className="w-8 h-8 text-primary-600 mx-auto mb-2" />
+            <p className="text-3xl font-bold text-primary-700">
+              {estatisticas.total}
+            </p>
+            <p className="text-sm text-primary-600 font-medium">Total</p>
           </CardBody>
         </Card>
-        <Card>
-          <CardBody className="p-4">
-            <p className="text-xs text-default-500">Ações por Tipo</p>
-            <div className="flex gap-2 mt-1">
-              <Chip size="sm" color="success" variant="flat">
-                {stats.criacoes} criações
-              </Chip>
-              <Chip size="sm" color="warning" variant="flat">
-                {stats.edicoes} edições
-              </Chip>
+
+        <Card className="bg-gradient-to-br from-success-50 to-success-100 border-success-200 border-2">
+          <CardBody className="text-center py-6">
+            <CheckCircleIcon className="w-8 h-8 text-success-600 mx-auto mb-2" />
+            <p className="text-3xl font-bold text-success-700">
+              {estatisticas.inserts}
+            </p>
+            <p className="text-sm text-success-600 font-medium">Criações</p>
+          </CardBody>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200 border-2">
+          <CardBody className="text-center py-6">
+            <PencilIcon className="w-8 h-8 text-blue-600 mx-auto mb-2" />
+            <p className="text-3xl font-bold text-blue-700">
+              {estatisticas.updates}
+            </p>
+            <p className="text-sm text-blue-600 font-medium">Atualizações</p>
+          </CardBody>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-danger-50 to-danger-100 border-danger-200 border-2">
+          <CardBody className="text-center py-6">
+            <XCircleIcon className="w-8 h-8 text-danger-600 mx-auto mb-2" />
+            <p className="text-3xl font-bold text-danger-700">
+              {estatisticas.deletes}
+            </p>
+            <p className="text-sm text-danger-600 font-medium">Exclusões</p>
+          </CardBody>
+        </Card>
+      </div>
+
+      <Card className="mb-6">
+        <CardBody>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <FunnelIcon className="w-5 h-5 text-primary" />
+              <h3 className="text-lg font-bold">Filtros</h3>
+              {(filtroModulo ||
+                filtroTipo ||
+                filtroBusca ||
+                dataInicio ||
+                dataFim) && (
+                <Chip size="sm" color="primary" variant="flat">
+                  {logsFiltrados.length} de {logs.length}
+                </Chip>
+              )}
             </div>
-            <p className="text-xs text-default-400 mt-1">
-              {stats.exclusoes} exclusões
-            </p>
-          </CardBody>
-        </Card>
-        <Card>
-          <CardBody className="p-4">
-            <p className="text-xs text-default-500">Usuários Ativos</p>
-            <p className="text-2xl font-semibold">{stats.usuariosAtivos}</p>
-            <p className="text-xs text-default-400">Com atividade registrada</p>
-          </CardBody>
-        </Card>
-        <Card>
-          <CardBody className="p-4">
-            <p className="text-xs text-default-500">Atividade</p>
-            <p className="text-xl font-semibold">
-              {stats.hojeLogs > stats.ontemLogs ? "📈" : "📉"}
-            </p>
-            <p className="text-xs text-default-400">
-              Ontem: {stats.ontemLogs} logs
-            </p>
-          </CardBody>
-        </Card>
-      </div>
 
-      {/* Barra de busca */}
-      <div className="flex flex-col gap-3 md:flex-row md:items-center">
-        <Input
-          startContent={<MagnifyingGlassIcon className="w-4 h-4" />}
-          placeholder="Buscar por ação, tabela, usuário, IP..."
-          value={filters.search}
-          onChange={(e) =>
-            setFilters((p) => ({ ...p, search: e.target.value }))
-          }
-          className="flex-1"
-        />
-        <Select
-          size="sm"
-          label="Ordenar"
-          selectedKeys={[filters.orderBy]}
-          onSelectionChange={(k) =>
-            setFilters((p) => ({
-              ...p,
-              orderBy: Array.from(k)[0] as string,
-            }))
-          }
-          className="max-w-xs"
-        >
-          {ORDER_FIELDS.map((o) => (
-            <SelectItem key={o.key}>{o.label}</SelectItem>
-          ))}
-        </Select>
-        <Button
-          isIconOnly
-          variant="flat"
-          onPress={() =>
-            setFilters((p) => ({
-              ...p,
-              direction: p.direction === "asc" ? "desc" : "asc",
-            }))
-          }
-        >
-          {filters.direction === "asc" ? (
-            <ArrowUpIcon className="w-4 h-4" />
-          ) : (
-            <ArrowDownIcon className="w-4 h-4" />
-          )}
-        </Button>
-        <Button
-          variant="flat"
-          onPress={() =>
-            setFilters({
-              search: "",
-              acao: "",
-              tabela: "",
-              usuario: "",
-              orderBy: "criado_em",
-              direction: "desc",
-              inicio: "",
-              fim: "",
-              ip: "",
-            })
-          }
-        >
-          Limpar
-        </Button>
-      </div>
+            <div className="hidden lg:flex gap-2">
+              <Button
+                size="sm"
+                variant="flat"
+                startContent={<CalendarIcon className="w-4 h-4" />}
+                onPress={() => setFiltroRapido("hoje")}
+              >
+                Hoje
+              </Button>
+              <Button
+                size="sm"
+                variant="flat"
+                startContent={<CalendarIcon className="w-4 h-4" />}
+                onPress={() => setFiltroRapido("ontem")}
+              >
+                Ontem
+              </Button>
+              <Button
+                size="sm"
+                variant="flat"
+                startContent={<CalendarIcon className="w-4 h-4" />}
+                onPress={() => setFiltroRapido("semana")}
+              >
+                7 dias
+              </Button>
+              <Button
+                size="sm"
+                variant="flat"
+                startContent={<CalendarIcon className="w-4 h-4" />}
+                onPress={() => setFiltroRapido("mes")}
+              >
+                30 dias
+              </Button>
+            </div>
+          </div>
 
-      {/* Painel de filtros avançados */}
-      {showFilters && (canFilterLogs || isAdmin) && (
-        <Card>
-          <CardBody className="grid gap-4 md:grid-cols-3 lg:grid-cols-5">
-            <Select
-              label="Tipo de Ação"
-              size="sm"
-              selectedKeys={filters.acao ? [filters.acao] : []}
-              onSelectionChange={(k) =>
-                setFilters((p) => ({
-                  ...p,
-                  acao: (Array.from(k)[0] as string) || "",
-                }))
-              }
-              placeholder="Todas"
-            >
-              {ACOES_OPCOES.map((a) => (
-                <SelectItem key={a.key}>{a.label}</SelectItem>
-              ))}
-            </Select>
-
-            <Select
-              label="Tabela"
-              size="sm"
-              selectedKeys={filters.tabela ? [filters.tabela] : []}
-              onSelectionChange={(k) =>
-                setFilters((p) => ({
-                  ...p,
-                  tabela: (Array.from(k)[0] as string) || "",
-                }))
-              }
-              placeholder="Todas"
-            >
-              {TABELAS_OPCOES.map((t) => (
-                <SelectItem key={t.key}>{t.label}</SelectItem>
-              ))}
-            </Select>
-
-            <Select
-              label="Usuário"
-              size="sm"
-              selectedKeys={filters.usuario ? [filters.usuario] : []}
-              onSelectionChange={(k) =>
-                setFilters((p) => ({
-                  ...p,
-                  usuario: (Array.from(k)[0] as string) || "",
-                }))
-              }
-              placeholder="Todos"
-            >
-              {usuarios.map((u) => (
-                <SelectItem key={u.uuid}>
-                  {u.nome || u.email || "Usuário"}
-                </SelectItem>
-              ))}
-            </Select>
-
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <Input
-              size="sm"
+              label="Buscar"
+              placeholder="Descrição, usuário, ID..."
+              value={filtroBusca}
+              onChange={(e) => {
+                setFiltroBusca(e.target.value);
+                setPage(1);
+              }}
+              startContent={<MagnifyingGlassIcon className="w-4 h-4" />}
+              variant="bordered"
+              isClearable
+              onClear={() => {
+                setFiltroBusca("");
+                setPage(1);
+              }}
+            />
+
+            <Select
+              label="Módulo"
+              placeholder="Todos"
+              selectedKeys={filtroModulo ? [filtroModulo] : []}
+              onChange={(e) => {
+                setFiltroModulo(e.target.value);
+                setPage(1);
+              }}
+              variant="bordered"
+            >
+              {modulos.map((modulo) => (
+                <SelectItem key={modulo}>{modulo}</SelectItem>
+              ))}
+            </Select>
+
+            <Select
+              label="Tipo"
+              placeholder="Todos"
+              selectedKeys={filtroTipo ? [filtroTipo] : []}
+              onChange={(e) => {
+                setFiltroTipo(e.target.value);
+                setPage(1);
+              }}
+              variant="bordered"
+            >
+              <SelectItem key="INSERT">Criação</SelectItem>
+              <SelectItem key="UPDATE">Atualização</SelectItem>
+              <SelectItem key="DELETE">Exclusão</SelectItem>
+            </Select>
+
+            <Button
+              color="default"
+              variant="flat"
+              onPress={limparFiltros}
+              fullWidth
+              className="h-14"
+            >
+              Limpar Filtros
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+            <Input
               type="date"
               label="Data Início"
-              value={filters.inicio}
-              onChange={(e) =>
-                setFilters((p) => ({ ...p, inicio: e.target.value }))
-              }
+              value={dataInicio}
+              onChange={(e) => {
+                setDataInicio(e.target.value);
+                setPage(1);
+              }}
+              variant="bordered"
+              startContent={<CalendarIcon className="w-4 h-4" />}
             />
 
             <Input
-              size="sm"
               type="date"
               label="Data Fim"
-              value={filters.fim}
-              onChange={(e) =>
-                setFilters((p) => ({ ...p, fim: e.target.value }))
-              }
+              value={dataFim}
+              onChange={(e) => {
+                setDataFim(e.target.value);
+                setPage(1);
+              }}
+              variant="bordered"
+              startContent={<CalendarIcon className="w-4 h-4" />}
             />
+          </div>
+        </CardBody>
+      </Card>
 
-            <Select
-              label="Endereço IP"
-              size="sm"
-              selectedKeys={filters.ip ? [filters.ip] : []}
-              onSelectionChange={(k) =>
-                setFilters((p) => ({
-                  ...p,
-                  ip: (Array.from(k)[0] as string) || "",
-                }))
-              }
-              placeholder="Todos"
-            >
-              {Array.from(new Set(logs.map((l) => l.ip).filter(Boolean))).map(
-                (ip) => (
-                  <SelectItem key={ip as string}>{ip as string}</SelectItem>
-                )
-              )}
-            </Select>
-          </CardBody>
-        </Card>
-      )}
-
-      {/* Tabela */}
       <Card>
         <CardBody className="p-0">
-          <Table removeWrapper aria-label="Tabela de logs">
+          <Table
+            aria-label="Tabela de logs"
+            bottomContent={
+              pages > 1 && (
+                <div className="flex w-full justify-center">
+                  <Pagination
+                    showControls
+                    showShadow
+                    color="primary"
+                    page={page}
+                    total={pages}
+                    onChange={(page) => setPage(page)}
+                  />
+                </div>
+              )
+            }
+          >
             <TableHeader>
-              <TableColumn>Data/Hora</TableColumn>
-              <TableColumn>Ação</TableColumn>
-              <TableColumn>Tabela</TableColumn>
-              <TableColumn>Registro</TableColumn>
-              <TableColumn>Usuário</TableColumn>
-              <TableColumn>IP / Device</TableColumn>
-              <TableColumn>Ações</TableColumn>
+              <TableColumn>TIPO</TableColumn>
+              <TableColumn>MÓDULO</TableColumn>
+              <TableColumn>DESCRIÇÃO</TableColumn>
+              <TableColumn>USUÁRIO</TableColumn>
+              <TableColumn>DATA/HORA</TableColumn>
+              <TableColumn>AÇÕES</TableColumn>
             </TableHeader>
             <TableBody emptyContent="Nenhum log encontrado">
-              {pageItems.map((log) => {
-                const acaoInfo = getAcaoInfo(log.acao);
-                const tabelaInfo = getTabelaInfo(log.tabela);
-                const AcaoIcon = acaoInfo.icon;
-                const TabelaIcon = tabelaInfo?.icon || TableCellsIcon;
-
-                return (
-                  <TableRow key={log.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <ClockIcon className="w-4 h-4 text-default-400" />
-                        <div>
-                          <p className="text-xs font-medium">
-                            {fmtDate(log.criado_em)}
-                          </p>
-                          <p className="text-[10px] text-default-500">
-                            {new Date(log.criado_em).toLocaleTimeString(
-                              "pt-BR"
-                            )}
-                          </p>
-                        </div>
-                      </div>
-                    </TableCell>
-
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <AcaoIcon className="w-4 h-4" />
-                        <div>
-                          <Chip size="sm" color={acaoInfo.color} variant="flat">
-                            {formatAcao(log.acao)}
-                          </Chip>
-                        </div>
-                      </div>
-                    </TableCell>
-
-                    <TableCell>
-                      {log.tabela ? (
-                        <div className="flex items-center gap-2">
-                          <TabelaIcon className="w-4 h-4 text-default-500" />
-                          <span className="text-sm capitalize">
-                            {log.tabela}
-                          </span>
-                        </div>
-                      ) : (
-                        "-"
-                      )}
-                    </TableCell>
-
-                    <TableCell>
-                      <div className="max-w-[100px]">
-                        {log.registro_id ? (
-                          <Code size="sm" className="text-xs">
-                            {log.registro_id.length > 8
-                              ? `${log.registro_id.slice(0, 8)}...`
-                              : log.registro_id}
-                          </Code>
-                        ) : (
-                          "-"
-                        )}
-                      </div>
-                    </TableCell>
-
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <UserIcon className="w-4 h-4 text-default-400" />
-                        <span className="text-xs max-w-[120px] truncate">
-                          {getUsuarioNome(log.usuario_id)}
-                        </span>
-                      </div>
-                    </TableCell>
-
-                    <TableCell>
-                      <div className="space-y-1">
-                        {log.ip && (
-                          <div className="flex items-center gap-1">
-                            <GlobeAltIcon className="w-3 h-3 text-default-400" />
-                            <span className="text-[10px] text-default-600">
-                              {log.ip}
-                            </span>
-                          </div>
-                        )}
-                        {log.user_agent && (
-                          <div className="flex items-center gap-1">
-                            <ComputerDesktopIcon className="w-3 h-3 text-default-400" />
-                            <span className="text-[10px] text-default-500">
-                              {getDeviceInfo(log.user_agent)}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    </TableCell>
-
-                    <TableCell>
-                      <Tooltip content="Ver detalhes">
-                        <Button
-                          isIconOnly
-                          size="sm"
-                          variant="light"
-                          onPress={() => openView(log)}
-                          isDisabled={!canViewDetails && !isAdmin}
-                        >
-                          <EyeIcon className="w-4 h-4" />
-                        </Button>
-                      </Tooltip>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
+              {items.map((log) => (
+                <TableRow key={log.id}>
+                  <TableCell>
+                    <Chip
+                      size="sm"
+                      color={getCorTipo(log.tipo_operacao)}
+                      variant="flat"
+                      startContent={getIconeTipo(log.tipo_operacao)}
+                    >
+                      {getLabelTipo(log.tipo_operacao)}
+                    </Chip>
+                  </TableCell>
+                  <TableCell>
+                    <Chip size="sm" variant="dot">
+                      {log.modulo || "Não especificado"}
+                    </Chip>
+                  </TableCell>
+                  <TableCell>
+                    <div className="max-w-2xl">
+                      <p className="text-sm font-medium whitespace-normal break-words">
+                        {log.descricao || "Sem descrição"}
+                      </p>
+                      <p className="text-xs text-default-500 mt-1">
+                        {log.tabela || "N/A"} #{log.registro_id || "N/A"}
+                      </p>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      <UserIcon className="w-4 h-4 text-default-400" />
+                      <span className="text-sm">
+                        {getUserName(log.usuario_id)}
+                      </span>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <span className="text-sm">
+                      {new Date(log.criado_em).toLocaleString("pt-BR", {
+                        timeZone: "America/Sao_Paulo",
+                        day: "2-digit",
+                        month: "2-digit",
+                        year: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      size="sm"
+                      color="primary"
+                      variant="light"
+                      startContent={<EyeIcon className="w-4 h-4" />}
+                      onPress={() => {
+                        setLogSelecionado(log);
+                        setModalDetalhes(true);
+                      }}
+                    >
+                      Ver
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
             </TableBody>
           </Table>
         </CardBody>
       </Card>
 
-      <div className="flex justify-between items-center">
-        <span className="text-xs text-default-500">
-          {filtered.length} log(s) encontrado(s)
-        </span>
-        {totalPages > 1 && (
-          <Pagination
-            page={page}
-            total={totalPages}
-            onChange={setPage}
-            showControls
-            size="sm"
-          />
-        )}
-      </div>
-
-      {/* Modal Detalhes */}
       <Modal
-        isOpen={viewModal.isOpen}
-        onOpenChange={viewModal.onOpenChange}
-        size="2xl"
+        isOpen={modalDetalhes}
+        onClose={() => {
+          setModalDetalhes(false);
+          setLogSelecionado(null);
+        }}
+        size="4xl"
         scrollBehavior="inside"
       >
         <ModalContent>
           <ModalHeader className="flex items-center gap-2">
-            <DocumentTextIcon className="w-5 h-5" />
-            Detalhes do Log #{targetLog?.id}
+            <EyeIcon className="w-5 h-5" />
+            Detalhes do Log #{logSelecionado?.id}
           </ModalHeader>
-          <ModalBody className="space-y-4">
-            {targetLog && (
-              <>
-                {/* Informações básicas */}
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <p className="text-default-500 text-xs mb-1">Data/Hora</p>
-                    <p className="font-medium">
-                      {fmtDateTime(targetLog.criado_em)}
-                    </p>
+          <ModalBody>
+            {logSelecionado && (
+              <Tabs aria-label="Detalhes" color="primary" variant="underlined">
+                <Tab
+                  key="info"
+                  title={
+                    <div className="flex items-center gap-2">
+                      <DocumentTextIcon className="w-4 h-4" />
+                      <span>Informações</span>
+                    </div>
+                  }
+                >
+                  <div className="space-y-6 py-4">
+                    <div>
+                      <p className="text-sm text-default-500 mb-2">
+                        Tipo de Operação
+                      </p>
+                      <Chip
+                        size="lg"
+                        color={getCorTipo(logSelecionado.tipo_operacao)}
+                        variant="flat"
+                        startContent={getIconeTipo(
+                          logSelecionado.tipo_operacao
+                        )}
+                      >
+                        {getLabelTipo(logSelecionado.tipo_operacao)}
+                      </Chip>
+                    </div>
+
+                    <div>
+                      <p className="text-sm text-default-500 mb-2">Descrição</p>
+                      <Card className="bg-default-100">
+                        <CardBody>
+                          <p className="font-semibold">
+                            {logSelecionado.descricao || "Sem descrição"}
+                          </p>
+                        </CardBody>
+                      </Card>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-sm text-default-500 mb-2">Módulo</p>
+                        <Chip variant="flat" color="primary">
+                          {logSelecionado.modulo || "Não especificado"}
+                        </Chip>
+                      </div>
+
+                      <div>
+                        <p className="text-sm text-default-500 mb-2">Tabela</p>
+                        <Chip variant="flat">
+                          {logSelecionado.tabela || "N/A"}
+                        </Chip>
+                      </div>
+
+                      <div>
+                        <p className="text-sm text-default-500 mb-2">
+                          Registro ID
+                        </p>
+                        <Chip variant="flat">
+                          #{logSelecionado.registro_id || "N/A"}
+                        </Chip>
+                      </div>
+
+                      <div>
+                        <p className="text-sm text-default-500 mb-2">
+                          Data/Hora
+                        </p>
+                        <Chip
+                          variant="flat"
+                          startContent={<ClockIcon className="w-4 h-4" />}
+                        >
+                          {new Date(logSelecionado.criado_em).toLocaleString(
+                            "pt-BR",
+                            {
+                              timeZone: "America/Sao_Paulo",
+                            }
+                          )}
+                        </Chip>
+                      </div>
+
+                      <div>
+                        <p className="text-sm text-default-500 mb-2">Usuário</p>
+                        <Chip
+                          variant="flat"
+                          startContent={<UserIcon className="w-4 h-4" />}
+                        >
+                          {getUserName(logSelecionado.usuario_id)}
+                        </Chip>
+                      </div>
+
+                      {getUserEmail(logSelecionado.usuario_id) && (
+                        <div>
+                          <p className="text-sm text-default-500 mb-2">Email</p>
+                          <Chip variant="flat">
+                            {getUserEmail(logSelecionado.usuario_id)}
+                          </Chip>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-default-500 text-xs mb-1">Ação</p>
-                    <Chip
-                      size="sm"
-                      color={getAcaoInfo(targetLog.acao).color}
-                      variant="flat"
+                </Tab>
+
+                {logSelecionado.dados_anteriores && (
+                  <Tab key="anterior" title="Dados Anteriores">
+                    <Card className="mt-4">
+                      <CardBody>
+                        <pre className="text-xs overflow-auto max-h-96 bg-default-50 p-4 rounded-lg">
+                          {JSON.stringify(
+                            logSelecionado.dados_anteriores,
+                            null,
+                            2
+                          )}
+                        </pre>
+                      </CardBody>
+                    </Card>
+                  </Tab>
+                )}
+
+                {logSelecionado.dados_novos && (
+                  <Tab key="novo" title="Dados Novos">
+                    <Card className="mt-4">
+                      <CardBody>
+                        <pre className="text-xs overflow-auto max-h-96 bg-default-50 p-4 rounded-lg">
+                          {JSON.stringify(logSelecionado.dados_novos, null, 2)}
+                        </pre>
+                      </CardBody>
+                    </Card>
+                  </Tab>
+                )}
+
+                {logSelecionado.tipo_operacao === "UPDATE" &&
+                  logSelecionado.dados_anteriores &&
+                  logSelecionado.dados_novos && (
+                    <Tab
+                      key="diff"
+                      title={
+                        <div className="flex items-center gap-2">
+                          <PencilIcon className="w-4 h-4" />
+                          <span>Diferenças</span>
+                        </div>
+                      }
                     >
-                      {formatAcao(targetLog.acao)}
-                    </Chip>
-                  </div>
-                  <div>
-                    <p className="text-default-500 text-xs mb-1">Tabela</p>
-                    <p className="font-medium">{targetLog.tabela || "-"}</p>
-                  </div>
-                  <div>
-                    <p className="text-default-500 text-xs mb-1">Registro ID</p>
-                    <Code size="sm">{targetLog.registro_id || "-"}</Code>
-                  </div>
-                  <div>
-                    <p className="text-default-500 text-xs mb-1">Usuário</p>
-                    <p className="font-medium">
-                      {getUsuarioNome(targetLog.usuario_id)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-default-500 text-xs mb-1">IP</p>
-                    <p className="font-medium">{targetLog.ip || "-"}</p>
-                  </div>
-                </div>
-
-                {/* User Agent */}
-                {targetLog.user_agent && (
-                  <div>
-                    <p className="text-default-500 text-xs mb-1">User Agent</p>
-                    <Code size="sm" className="text-xs break-all">
-                      {targetLog.user_agent}
-                    </Code>
-                  </div>
-                )}
-
-                {/* Dados anteriores */}
-                {targetLog.dados_anteriores && (
-                  <div>
-                    <p className="text-default-500 text-xs mb-2">
-                      Dados Anteriores
-                    </p>
-                    <ScrollShadow className="max-h-48">
-                      <Code
-                        size="sm"
-                        className="whitespace-pre text-xs block p-3"
-                      >
-                        {JSON.stringify(targetLog.dados_anteriores, null, 2)}
-                      </Code>
-                    </ScrollShadow>
-                  </div>
-                )}
-
-                {/* Dados novos */}
-                {targetLog.dados_novos && (
-                  <div>
-                    <p className="text-default-500 text-xs mb-2">Dados Novos</p>
-                    <ScrollShadow className="max-h-48">
-                      <Code
-                        size="sm"
-                        className="whitespace-pre text-xs block p-3"
-                      >
-                        {JSON.stringify(targetLog.dados_novos, null, 2)}
-                      </Code>
-                    </ScrollShadow>
-                  </div>
-                )}
-              </>
+                      <div className="space-y-3 py-4 max-h-96 overflow-auto">
+                        {formatarDiferenca(
+                          logSelecionado.dados_anteriores,
+                          logSelecionado.dados_novos
+                        ).length === 0 ? (
+                          <Card className="bg-default-100">
+                            <CardBody className="text-center py-8">
+                              <p className="text-default-500">
+                                Nenhuma diferença detectada
+                              </p>
+                            </CardBody>
+                          </Card>
+                        ) : (
+                          formatarDiferenca(
+                            logSelecionado.dados_anteriores,
+                            logSelecionado.dados_novos
+                          ).map((diff, index) => (
+                            <Card
+                              key={index}
+                              className="bg-gradient-to-r from-warning-50 to-warning-100 border-warning-200 border"
+                            >
+                              <CardBody>
+                                <p className="text-sm font-mono font-medium text-warning-800">
+                                  {diff}
+                                </p>
+                              </CardBody>
+                            </Card>
+                          ))
+                        )}
+                      </div>
+                    </Tab>
+                  )}
+              </Tabs>
             )}
           </ModalBody>
           <ModalFooter>
-            <Button variant="flat" onPress={viewModal.onClose}>
+            <Button
+              color="primary"
+              onPress={() => {
+                setModalDetalhes(false);
+                setLogSelecionado(null);
+              }}
+            >
               Fechar
             </Button>
           </ModalFooter>

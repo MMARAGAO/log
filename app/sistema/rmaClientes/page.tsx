@@ -39,16 +39,69 @@ import {
 } from "@heroicons/react/24/outline";
 
 const STATUS_OPTIONS = [
-  { key: "pendente", label: "Pendente" },
-  { key: "enviado", label: "Enviado para Assistência" },
-  { key: "concluido", label: "Concluído" },
+  {
+    key: "solicitado",
+    label: "1. Solicitado pelo Cliente",
+    description: "Cliente informou problema/devolução",
+  },
+  {
+    key: "em_analise",
+    label: "2. Em Análise",
+    description: "Avaliando validade da solicitação",
+  },
+  {
+    key: "aprovado",
+    label: "3. Aprovado - RMA Emitido",
+    description: "Código RMA gerado, aguardando envio",
+  },
+  {
+    key: "reprovado",
+    label: "❌ Reprovado",
+    description: "Solicitação não aprovada",
+  },
+  {
+    key: "em_transito",
+    label: "4. Em Trânsito",
+    description: "Produto sendo enviado ao centro logístico",
+  },
+  {
+    key: "recebido",
+    label: "5. Recebido",
+    description: "Produto recebido, aguardando inspeção",
+  },
+  {
+    key: "em_inspecao",
+    label: "6. Em Inspeção",
+    description: "Testando e verificando estado do produto",
+  },
+  {
+    key: "em_reparo",
+    label: "7a. Em Reparo",
+    description: "Produto sendo reparado",
+  },
+  {
+    key: "processando_troca",
+    label: "7b. Processando Troca",
+    description: "Separando produto para substituição",
+  },
+  {
+    key: "processando_reembolso",
+    label: "7c. Processando Reembolso",
+    description: "Preparando reembolso/crédito",
+  },
+  {
+    key: "concluido",
+    label: "8. ✅ Concluído",
+    description: "RMA finalizado e registrado",
+  },
 ];
 
 const ITEMS_PER_PAGE = 9; // 3x3 grid
 
-export default function RmaPage() {
-  const [rma, setRma] = useState<any[]>([]);
+export default function RmaClientesPage() {
+  const [rmaClientes, setRmaClientes] = useState<any[]>([]);
   const [produtos, setProdutos] = useState<any[]>([]);
+  const [clientes, setClientes] = useState<any[]>([]);
   const [lojas, setLojas] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -60,8 +113,11 @@ export default function RmaPage() {
   const [productSearchTerm, setProductSearchTerm] = useState("");
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
   const [showProductSearch, setShowProductSearch] = useState(false);
+  const [clienteSearchTerm, setClienteSearchTerm] = useState("");
+  const [selectedCliente, setSelectedCliente] = useState<any>(null);
+  const [showClienteSearch, setShowClienteSearch] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<any>(null); // Para edição
+  const [selectedItem, setSelectedItem] = useState<any>(null);
   const [deleteModal, setDeleteModal] = useState({
     isOpen: false,
     itemId: null,
@@ -72,20 +128,21 @@ export default function RmaPage() {
   const [carouselIndex, setCarouselIndex] = useState<{ [key: number]: number }>(
     {}
   );
+  const [modalCarouselIndex, setModalCarouselIndex] = useState(0);
 
   const { user } = useAuthStore();
-  const acessos = user?.permissoes?.acessos;
-  const permRma = acessos?.rma;
-  const canViewRma = !!permRma?.ver_rma;
-  const canCreateRma = !!permRma?.criar_rma;
+  const acessos = user?.permissoes?.acessos as any;
+  const permRmaClientes = acessos?.rma_clientes;
+  const canViewRmaClientes = !!permRmaClientes?.ver_rma_clientes;
+  const canCreateRmaClientes = !!permRmaClientes?.criar_rma_clientes;
 
-  async function loadRma() {
+  async function loadRmaClientes() {
     setLoading(true);
     try {
-      const data = await fetchTable("rma");
-      setRma(data || []);
+      const data = await fetchTable("rma_clientes");
+      setRmaClientes(data || []);
     } catch (error) {
-      setRma([]);
+      setRmaClientes([]);
     } finally {
       setLoading(false);
     }
@@ -96,19 +153,34 @@ export default function RmaPage() {
     setProdutos(data || []);
   }
 
+  async function loadClientes() {
+    const data = await fetchTable("clientes");
+    setClientes(data || []);
+  }
+
   async function loadLojas() {
     const data = await fetchTable("lojas");
     setLojas(data || []);
   }
 
   useEffect(() => {
-    loadRma();
+    loadRmaClientes();
     loadProdutos();
+    loadClientes();
     loadLojas();
   }, []);
 
   function handleAdd() {
-    setFormData({});
+    // Gerar número de RMA automático
+    const year = new Date().getFullYear();
+    const randomNum = Math.floor(Math.random() * 999999)
+      .toString()
+      .padStart(6, "0");
+    const numeroRma = `RMA-${year}-${randomNum}`;
+
+    setFormData({
+      numero_rma: numeroRma,
+    });
     setIsEditing(false);
     setIsOpen(true);
   }
@@ -126,7 +198,7 @@ export default function RmaPage() {
         const fileName = `${rmaId}_${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
 
         const { error: uploadError } = await supabase.storage
-          .from("rma")
+          .from("rma_clientes")
           .upload(fileName, file);
 
         if (uploadError) {
@@ -134,7 +206,9 @@ export default function RmaPage() {
           throw uploadError;
         }
 
-        const { data } = supabase.storage.from("rma").getPublicUrl(fileName);
+        const { data } = supabase.storage
+          .from("rma_clientes")
+          .getPublicUrl(fileName);
         if (data?.publicUrl) {
           uploadedUrls.push(data.publicUrl);
         }
@@ -148,8 +222,8 @@ export default function RmaPage() {
   }
 
   async function handleSave() {
-    if (!formData.produto_id || !formData.loja_id) {
-      toast.error("Por favor, selecione um produto e uma loja.");
+    if (!formData.produto_id || !formData.cliente_id || !formData.loja_id) {
+      toast.error("Por favor, selecione um produto, cliente e loja.");
       return;
     }
 
@@ -165,20 +239,24 @@ export default function RmaPage() {
         // Combinar fotos antigas (não removidas) com novas
         const allPhotos = [...editFotos, ...newPhotoUrls];
 
-        // Criar objeto apenas com campos válidos da tabela RMA
         const validRmaFields = {
           produto_id: formData.produto_id,
+          cliente_id: formData.cliente_id,
           loja_id: formData.loja_id,
           quantidade: formData.quantidade || 1,
           motivo: formData.motivo || null,
           tipo_rma: formData.tipo_rma || null,
-          status: formData.status || "pendente",
+          status: formData.status || "solicitado",
           observacoes: formData.observacoes || null,
+          solucao: formData.solucao || null,
+          numero_rma: formData.numero_rma || null,
+          codigo_rastreio: formData.codigo_rastreio || null,
+          analise_interna: formData.analise_interna || null,
+          inspecao: formData.inspecao || null,
           updated_at: new Date().toISOString(),
           fotourl: allPhotos.length > 0 ? allPhotos : null,
         };
 
-        // Remover campos undefined para evitar problemas
         const cleanedData = Object.fromEntries(
           Object.entries(validRmaFields).filter(
             ([key, value]) => value !== undefined
@@ -186,35 +264,39 @@ export default function RmaPage() {
         );
 
         try {
-          const updateResult = await updateTable(
-            "rma",
+          await updateTable(
+            "rma_clientes",
             selectedItem.id,
             cleanedData,
             undefined,
             editFotos
           );
 
-          toast.success("RMA atualizado com sucesso!");
+          toast.success("RMA de cliente atualizado com sucesso!");
         } catch (updateError) {
           throw new Error(
             `Erro ao atualizar RMA: ${getErrorMessage(updateError)}`
           );
         }
       } else {
-        // Criar objeto apenas com campos válidos da tabela RMA
         const validRmaFields = {
           produto_id: formData.produto_id,
+          cliente_id: formData.cliente_id,
           loja_id: formData.loja_id,
           quantidade: formData.quantidade || 1,
           motivo: formData.motivo || null,
           tipo_rma: formData.tipo_rma || "troca",
-          status: formData.status || "pendente",
+          status: formData.status || "solicitado",
           observacoes: formData.observacoes || null,
+          solucao: formData.solucao || null,
+          numero_rma: formData.numero_rma || null,
+          codigo_rastreio: formData.codigo_rastreio || null,
+          analise_interna: formData.analise_interna || null,
+          inspecao: formData.inspecao || null,
           data_rma: new Date().toISOString(),
           usuario_id: user?.id || null,
         };
 
-        // Remover campos undefined
         const cleanedData = Object.fromEntries(
           Object.entries(validRmaFields).filter(
             ([key, value]) => value !== undefined
@@ -222,16 +304,14 @@ export default function RmaPage() {
         );
 
         try {
-          // Inserir sem foto primeiro para obter o ID
-          const result = await insertTable("rma", cleanedData);
+          const result = await insertTable("rma_clientes", cleanedData);
 
-          // Se há fotos, fazer upload e atualizar o registro
           if (fotos.length > 0 && result && result[0]?.id) {
             const photoUrls = await uploadMultiplePhotos(fotos, result[0].id);
 
             if (photoUrls.length > 0) {
               await updateTable(
-                "rma",
+                "rma_clientes",
                 result[0].id,
                 { fotourl: photoUrls },
                 undefined,
@@ -240,15 +320,14 @@ export default function RmaPage() {
             }
           }
 
-          toast.success("RMA cadastrado com sucesso!");
+          toast.success("RMA de cliente cadastrado com sucesso!");
         } catch (insertError) {
           console.error("❌ Erro ao inserir RMA:", insertError);
           throw new Error(`Erro ao criar RMA: ${getErrorMessage(insertError)}`);
         }
       }
 
-      await loadRma();
-
+      await loadRmaClientes();
       handleClose();
     } catch (error) {
       console.error("❌ Erro ao salvar RMA:", error);
@@ -265,20 +344,26 @@ export default function RmaPage() {
     setProductSearchTerm("");
     setSelectedProduct(null);
     setShowProductSearch(false);
-    setSelectedItem(null); // Limpar item selecionado
+    setClienteSearchTerm("");
+    setSelectedCliente(null);
+    setShowClienteSearch(false);
+    setSelectedItem(null);
     setFotos([]);
     setEditFotos([]);
+    setModalCarouselIndex(0);
   }
 
   function handleEdit(item: any) {
-    setSelectedItem(item); // Salvar item para edição
+    setSelectedItem(item);
     setFormData({
       ...item,
       quantidade: item.quantidade || 1,
     });
     setSelectedProduct(produtos.find((p) => p.id === item.produto_id) || null);
+    setSelectedCliente(clientes.find((c) => c.id === item.cliente_id) || null);
     setEditFotos(item.fotourl ?? []);
     setFotos([]);
+    setModalCarouselIndex(0);
     setIsEditing(true);
     setIsOpen(true);
   }
@@ -287,13 +372,12 @@ export default function RmaPage() {
     setEditFotos((prev) => prev.filter((f) => f !== url));
   }
 
-  // Deletar RMA - versão atualizada
   function handleDeleteClick(item: any) {
-    const produto = produtos.find((p) => p.id === item.produto_id);
+    const cliente = clientes.find((c) => c.id === item.cliente_id);
     setDeleteModal({
       isOpen: true,
       itemId: item.id,
-      itemName: produto?.descricao || `RMA #${item.id}`,
+      itemName: cliente?.nome || `RMA #${item.id}`,
     });
   }
 
@@ -302,8 +386,8 @@ export default function RmaPage() {
 
     setLoading(true);
     try {
-      await deleteTable("rma", deleteModal.itemId);
-      await loadRma();
+      await deleteTable("rma_clientes", deleteModal.itemId);
+      await loadRmaClientes();
       toast.success("RMA excluído com sucesso!");
       setDeleteModal({ isOpen: false, itemId: null, itemName: "" });
     } catch (error) {
@@ -319,9 +403,10 @@ export default function RmaPage() {
   }
 
   // Filtros e paginação
-  const filteredRma = useMemo(() => {
-    return rma.filter((item) => {
+  const filteredRmaClientes = useMemo(() => {
+    return rmaClientes.filter((item) => {
       const produto = produtos.find((p) => p.id === item.produto_id);
+      const cliente = clientes.find((c) => c.id === item.cliente_id);
       const loja = lojas.find((l) => l.id === item.loja_id);
 
       const searchMatch =
@@ -329,6 +414,7 @@ export default function RmaPage() {
         produto?.descricao?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         produto?.marca?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         produto?.modelo?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        cliente?.nome?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         loja?.nome?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.motivo?.toLowerCase().includes(searchTerm.toLowerCase());
 
@@ -336,22 +422,20 @@ export default function RmaPage() {
 
       return searchMatch && statusMatch;
     });
-  }, [rma, produtos, lojas, searchTerm, statusFilter]);
+  }, [rmaClientes, produtos, clientes, lojas, searchTerm, statusFilter]);
 
-  // Cálculos de paginação
-  const totalPages = Math.ceil(filteredRma.length / ITEMS_PER_PAGE);
+  const totalPages = Math.ceil(filteredRmaClientes.length / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
   const endIndex = startIndex + ITEMS_PER_PAGE;
-  const currentItems = filteredRma.slice(startIndex, endIndex);
+  const currentItems = filteredRmaClientes.slice(startIndex, endIndex);
 
-  // Reset da página quando filtros mudam
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, statusFilter]);
 
   // Filtrar produtos baseado na pesquisa
   const filteredProdutos = useMemo(() => {
-    if (!productSearchTerm) return produtos.slice(0, 16); // Mostrar apenas 16 produtos inicialmente
+    if (!productSearchTerm) return produtos.slice(0, 16);
 
     return produtos.filter(
       (produto) =>
@@ -370,6 +454,23 @@ export default function RmaPage() {
     );
   }, [produtos, productSearchTerm]);
 
+  // Filtrar clientes baseado na pesquisa
+  const filteredClientes = useMemo(() => {
+    if (!clienteSearchTerm) return clientes.slice(0, 16);
+
+    return clientes.filter(
+      (cliente) =>
+        cliente.nome?.toLowerCase().includes(clienteSearchTerm.toLowerCase()) ||
+        cliente.email
+          ?.toLowerCase()
+          .includes(clienteSearchTerm.toLowerCase()) ||
+        cliente.telefone
+          ?.toLowerCase()
+          .includes(clienteSearchTerm.toLowerCase()) ||
+        cliente.doc?.toLowerCase().includes(clienteSearchTerm.toLowerCase())
+    );
+  }, [clientes, clienteSearchTerm]);
+
   function handleSelectProduct(produto: any) {
     setSelectedProduct(produto);
     setFormData({ ...formData, produto_id: produto.id });
@@ -382,7 +483,19 @@ export default function RmaPage() {
     setSelectedProduct(null);
   }
 
-  if (!canViewRma) {
+  function handleSelectCliente(cliente: any) {
+    setSelectedCliente(cliente);
+    setFormData({ ...formData, cliente_id: cliente.id });
+    setShowClienteSearch(false);
+    setClienteSearchTerm("");
+  }
+
+  function handleOpenClienteSearch() {
+    setShowClienteSearch(true);
+    setSelectedCliente(null);
+  }
+
+  if (!canViewRmaClientes) {
     return (
       <div className="container mx-auto p-6">
         <Card className="border-danger-200">
@@ -390,7 +503,7 @@ export default function RmaPage() {
             <ExclamationTriangleIcon className="w-16 h-16 text-danger mx-auto mb-4" />
             <h2 className="text-xl font-semibold mb-2">Acesso Negado</h2>
             <p className="text-danger text-sm mb-4">
-              Você não possui permissão para visualizar RMA.
+              Você não possui permissão para visualizar RMA de Clientes.
             </p>
           </CardBody>
         </Card>
@@ -403,21 +516,21 @@ export default function RmaPage() {
       <Toaster position="top-right" />
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-3xl font-bold">Controle de RMA</h1>
+          <h1 className="text-3xl font-bold">RMA de Clientes</h1>
           <p className="text-default-500 mt-1">
-            {filteredRma.length} registro
-            {filteredRma.length !== 1 ? "s" : ""} encontrado
-            {filteredRma.length !== 1 ? "s" : ""}
+            {filteredRmaClientes.length} registro
+            {filteredRmaClientes.length !== 1 ? "s" : ""} encontrado
+            {filteredRmaClientes.length !== 1 ? "s" : ""}
           </p>
         </div>
-        {canCreateRma && (
+        {canCreateRmaClientes && (
           <Button
             color="primary"
             startContent={<PlusIcon className="w-4 h-4" />}
             onPress={handleAdd}
             size="lg"
           >
-            Novo RMA
+            Novo RMA Cliente
           </Button>
         )}
       </div>
@@ -427,7 +540,7 @@ export default function RmaPage() {
         <CardBody>
           <div className="flex flex-col md:flex-row gap-4">
             <Input
-              placeholder="Buscar por produto, marca, modelo, loja ou motivo..."
+              placeholder="Buscar por produto, cliente, loja ou motivo..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="flex-1"
@@ -467,6 +580,7 @@ export default function RmaPage() {
           <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 mb-8">
             {currentItems.map((item) => {
               const produto = produtos.find((p) => p.id === item.produto_id);
+              const cliente = clientes.find((c) => c.id === item.cliente_id);
               const loja = lojas.find((l) => l.id === item.loja_id);
               return (
                 <Card key={item.id} onPress={() => handleEdit(item)}>
@@ -474,22 +588,41 @@ export default function RmaPage() {
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex-1">
                         <h3 className="text-lg font-semibold line-clamp-1">
-                          {produto?.descricao || "Produto"}
+                          {cliente?.nome || "Cliente"}
                         </h3>
                         <p className="text-sm text-default-500 line-clamp-1">
-                          {produto?.marca} {produto?.modelo}
+                          {produto?.descricao || "Produto"}
                         </p>
-                        <p className="text-sm text-default-500 line-clamp-1">
+                        <p className="text-xs text-default-400 line-clamp-1">
                           📍 {loja?.nome || "N/A"}
                         </p>
                       </div>
                       <Chip
                         color={
-                          item.status === "pendente"
+                          item.status === "solicitado"
                             ? "warning"
-                            : item.status === "enviado"
+                            : item.status === "em_analise"
                               ? "primary"
-                              : "success"
+                              : item.status === "aprovado"
+                                ? "success"
+                                : item.status === "reprovado"
+                                  ? "danger"
+                                  : item.status === "em_transito"
+                                    ? "secondary"
+                                    : item.status === "recebido"
+                                      ? "primary"
+                                      : item.status === "em_inspecao"
+                                        ? "primary"
+                                        : item.status === "em_reparo"
+                                          ? "warning"
+                                          : item.status === "processando_troca"
+                                            ? "secondary"
+                                            : item.status ===
+                                                "processando_reembolso"
+                                              ? "secondary"
+                                              : item.status === "concluido"
+                                                ? "success"
+                                                : "default"
                         }
                         variant="flat"
                         size="sm"
@@ -501,8 +634,10 @@ export default function RmaPage() {
 
                     <div className="grid grid-cols-2 gap-3 text-sm mb-3">
                       <div className="bg-default-50 rounded-lg p-2">
-                        <p className="text-default-500 text-xs">Quantidade</p>
-                        <p className="font-semibold">{item.quantidade}</p>
+                        <p className="text-default-500 text-xs">RMA</p>
+                        <p className="font-semibold text-xs">
+                          {item.numero_rma || `#${item.id}`}
+                        </p>
                       </div>
                       <div className="bg-default-50 rounded-lg p-2">
                         <p className="text-default-500 text-xs">Tipo</p>
@@ -511,7 +646,7 @@ export default function RmaPage() {
                         </p>
                       </div>
                       <div className="bg-default-50 rounded-lg p-2">
-                        <p className="text-default-500 text-xs">Data RMA</p>
+                        <p className="text-default-500 text-xs">Data</p>
                         <p className="font-semibold">
                           {item.data_rma
                             ? new Date(item.data_rma).toLocaleDateString(
@@ -521,10 +656,84 @@ export default function RmaPage() {
                         </p>
                       </div>
                       <div className="bg-default-50 rounded-lg p-2">
-                        <p className="text-default-500 text-xs">ID</p>
-                        <p className="font-semibold">#{item.id}</p>
+                        <p className="text-default-500 text-xs">Qtd</p>
+                        <p className="font-semibold">{item.quantidade}</p>
                       </div>
                     </div>
+
+                    {/* Barra de Progresso das Etapas */}
+                    {item.status !== "reprovado" && (
+                      <div className="mb-3 p-2 bg-default-50 rounded-lg">
+                        <p className="text-xs text-default-500 mb-2">
+                          Progresso:
+                        </p>
+                        <div className="flex items-center gap-1">
+                          {[
+                            "solicitado",
+                            "em_analise",
+                            "aprovado",
+                            "em_transito",
+                            "recebido",
+                            "em_inspecao",
+                            "concluido",
+                          ].map((etapa, idx) => {
+                            const statusOrder = [
+                              "solicitado",
+                              "em_analise",
+                              "aprovado",
+                              "em_transito",
+                              "recebido",
+                              "em_inspecao",
+                              "em_reparo",
+                              "processando_troca",
+                              "processando_reembolso",
+                              "concluido",
+                            ];
+                            const currentIndex = statusOrder.indexOf(
+                              item.status
+                            );
+                            const etapaIndex = statusOrder.indexOf(etapa);
+                            const isActive = currentIndex >= etapaIndex;
+                            const isCurrent =
+                              item.status === etapa ||
+                              (etapa === "em_inspecao" &&
+                                [
+                                  "em_reparo",
+                                  "processando_troca",
+                                  "processando_reembolso",
+                                ].includes(item.status));
+
+                            return (
+                              <div
+                                key={etapa}
+                                className={`h-1.5 flex-1 rounded-full transition-all ${
+                                  isCurrent
+                                    ? "bg-primary animate-pulse"
+                                    : isActive
+                                      ? "bg-success"
+                                      : "bg-default-200"
+                                }`}
+                                title={
+                                  STATUS_OPTIONS.find((s) => s.key === etapa)
+                                    ?.label
+                                }
+                              />
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {item.codigo_rastreio && (
+                      <div className="mt-2 p-2 bg-secondary-50 rounded-lg border border-secondary-200">
+                        <p className="text-xs text-secondary-600 font-medium">
+                          📦 Rastreio:
+                        </p>
+                        <p className="text-sm font-mono">
+                          {item.codigo_rastreio}
+                        </p>
+                      </div>
+                    )}
 
                     {item.motivo && (
                       <div className="mt-2 p-2 bg-warning-50 rounded-lg border border-warning-200">
@@ -538,7 +747,7 @@ export default function RmaPage() {
                     {item.observacoes && (
                       <div className="mt-2 p-2 bg-primary-50 rounded-lg border border-primary-200">
                         <p className="text-xs text-primary-600 font-medium">
-                          Observações:
+                          Solicitação:
                         </p>
                         <p className="text-sm line-clamp-2">
                           {item.observacoes}
@@ -546,7 +755,16 @@ export default function RmaPage() {
                       </div>
                     )}
 
-                    {/* Carrossel de Fotos do RMA */}
+                    {item.solucao && item.status === "concluido" && (
+                      <div className="mt-2 p-2 bg-success-50 rounded-lg border border-success-200">
+                        <p className="text-xs text-success-600 font-medium">
+                          ✅ Resolução:
+                        </p>
+                        <p className="text-sm line-clamp-2">{item.solucao}</p>
+                      </div>
+                    )}
+
+                    {/* Carrossel de Fotos */}
                     {item.fotourl && item.fotourl.length > 0 && (
                       <div className="mt-3 bg-default-100 rounded-lg p-3">
                         <div className="flex items-center justify-between mb-2">
@@ -561,7 +779,6 @@ export default function RmaPage() {
                           </p>
                         </div>
                         <div className="relative group">
-                          {/* Imagem Principal */}
                           <div
                             className="w-full h-40 rounded-lg overflow-hidden bg-default-200 cursor-pointer"
                             onClick={() =>
@@ -586,7 +803,6 @@ export default function RmaPage() {
                             />
                           </div>
 
-                          {/* Botões de Navegação */}
                           {item.fotourl.length > 1 && (
                             <>
                               <Button
@@ -628,7 +844,6 @@ export default function RmaPage() {
                             </>
                           )}
 
-                          {/* Indicadores de Posição */}
                           {item.fotourl.length > 1 && (
                             <div className="flex gap-1 justify-center mt-2">
                               {item.fotourl.map((_: any, idx: number) => (
@@ -655,10 +870,11 @@ export default function RmaPage() {
                       </div>
                     )}
 
-                    {/* Adicionar botões de ação no card */}
-                    {(canCreateRma || permRma?.deletar_rma) && (
+                    {/* Botões de ação */}
+                    {(canCreateRmaClientes ||
+                      permRmaClientes?.deletar_rma_clientes) && (
                       <div className="flex gap-2 mt-3">
-                        {canCreateRma && (
+                        {canCreateRmaClientes && (
                           <Button
                             size="sm"
                             variant="flat"
@@ -669,12 +885,12 @@ export default function RmaPage() {
                             Editar
                           </Button>
                         )}
-                        {permRma?.deletar_rma && (
+                        {permRmaClientes?.deletar_rma_clientes && (
                           <Button
                             size="sm"
                             variant="flat"
                             color="danger"
-                            onPress={() => handleDeleteClick(item)} // Mudança aqui
+                            onPress={() => handleDeleteClick(item)}
                             className="flex-1"
                             startContent={<TrashIcon className="w-4 h-4" />}
                           >
@@ -705,21 +921,21 @@ export default function RmaPage() {
           )}
 
           {/* Mensagem quando não há resultados */}
-          {filteredRma.length === 0 && !loading && (
+          {filteredRmaClientes.length === 0 && !loading && (
             <Card>
               <CardBody className="text-center py-12">
                 <div className="text-6xl mb-4">
                   <MagnifyingGlassIcon className="w-16 h-16 text-default-400 mx-auto" />
                 </div>
                 <h3 className="text-xl font-semibold mb-2">
-                  Nenhum RMA encontrado
+                  Nenhum RMA de Cliente encontrado
                 </h3>
                 <p className="text-default-500 mb-4">
                   {searchTerm || statusFilter
                     ? "Tente ajustar os filtros de busca"
-                    : "Não há registros de RMA cadastrados"}
+                    : "Não há registros de RMA de clientes cadastrados"}
                 </p>
-                {canCreateRma && (
+                {canCreateRmaClientes && (
                   <Button
                     color="primary"
                     startContent={<PlusIcon className="w-4 h-4" />}
@@ -735,7 +951,7 @@ export default function RmaPage() {
       )}
 
       {/* Modal de cadastro/edição */}
-      {(canCreateRma || isEditing) && (
+      {(canCreateRmaClientes || isEditing) && (
         <Modal
           isOpen={isOpen}
           onClose={handleClose}
@@ -745,25 +961,145 @@ export default function RmaPage() {
           <ModalContent>
             <ModalHeader className="flex flex-col gap-1 rounded-t-lg">
               <h2 className="text-xl font-bold">
-                {isEditing ? "Editar RMA" : "Novo RMA"}
+                {isEditing ? "Editar RMA de Cliente" : "Novo RMA de Cliente"}
               </h2>
               <p className="text-sm text-default-500">
                 {isEditing
                   ? "Atualize as informações do RMA"
-                  : "Registre uma nova solicitação de RMA"}
+                  : "Registre uma nova solicitação de RMA de cliente"}
               </p>
             </ModalHeader>
             <ModalBody className="py-6">
               <div className="space-y-6">
-                {/* Seção 1 - Seleção de Produto */}
-                <div className="p-4 bg-default-50 rounded-lg ">
+                {/* Seção 1 - Seleção de Cliente */}
+                <div className="p-4 bg-default-50 rounded-lg">
+                  <h3 className="text-lg font-semibold mb-3 text-primary">
+                    Selecionar Cliente
+                  </h3>
+
+                  {selectedCliente || formData.cliente_id ? (
+                    <div className="p-4 bg-success-50 rounded-lg mb-3">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <h4 className="font-semibold text-success-800">
+                            {selectedCliente?.nome ||
+                              clientes.find((c) => c.id === formData.cliente_id)
+                                ?.nome}
+                          </h4>
+                          <p className="text-sm text-success-600">
+                            {selectedCliente?.email ||
+                              clientes.find((c) => c.id === formData.cliente_id)
+                                ?.email}
+                          </p>
+                          <p className="text-sm text-success-600">
+                            {selectedCliente?.telefone ||
+                              clientes.find((c) => c.id === formData.cliente_id)
+                                ?.telefone}
+                          </p>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="flat"
+                          color="warning"
+                          onPress={handleOpenClienteSearch}
+                        >
+                          Alterar
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <Button
+                      color="primary"
+                      variant="flat"
+                      className="w-full mb-3"
+                      size="lg"
+                      onPress={handleOpenClienteSearch}
+                      startContent={<MagnifyingGlassIcon className="w-4 h-4" />}
+                    >
+                      Buscar e Selecionar Cliente
+                    </Button>
+                  )}
+
+                  {showClienteSearch && (
+                    <div className="space-y-4">
+                      <div className="flex justify-between items-center">
+                        <h4 className="font-semibold">Buscar Clientes</h4>
+                        <Button
+                          size="sm"
+                          variant="light"
+                          onPress={() => setShowClienteSearch(false)}
+                        >
+                          ✕
+                        </Button>
+                      </div>
+
+                      <Input
+                        placeholder="Digite nome, email, telefone ou CPF/CNPJ..."
+                        value={clienteSearchTerm}
+                        onChange={(e) => setClienteSearchTerm(e.target.value)}
+                        startContent={
+                          <MagnifyingGlassIcon className="w-4 h-4 text-default-400" />
+                        }
+                        size="md"
+                        variant="bordered"
+                        isClearable
+                        onClear={() => setClienteSearchTerm("")}
+                      />
+
+                      <div className="max-h-96 overflow-y-auto">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                          {filteredClientes.map((cliente) => (
+                            <Card
+                              key={cliente.id}
+                              className="cursor-pointer hover:shadow-md transition-shadow"
+                              isPressable
+                              onPress={() => handleSelectCliente(cliente)}
+                            >
+                              <CardBody className="p-3">
+                                <div className="flex items-center gap-3">
+                                  <Avatar
+                                    src={cliente.fotourl?.[0]}
+                                    name={cliente.nome?.charAt(0)}
+                                    size="sm"
+                                  />
+                                  <div className="flex-1">
+                                    <h5 className="font-medium text-sm line-clamp-1">
+                                      {cliente.nome}
+                                    </h5>
+                                    <p className="text-xs text-default-500 line-clamp-1">
+                                      {cliente.email}
+                                    </p>
+                                    <p className="text-xs text-default-400">
+                                      {cliente.telefone}
+                                    </p>
+                                  </div>
+                                </div>
+                              </CardBody>
+                            </Card>
+                          ))}
+                        </div>
+
+                        {filteredClientes.length === 0 && (
+                          <div className="text-center py-8">
+                            <div className="text-4xl mb-2">🔍</div>
+                            <p className="text-default-500">
+                              Nenhum cliente encontrado
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Seção 2 - Seleção de Produto */}
+                <div className="p-4 bg-default-50 rounded-lg">
                   <h3 className="text-lg font-semibold mb-3 text-primary">
                     Selecionar Produto
                   </h3>
 
-                  {/* Produto selecionado ou botão para buscar */}
                   {selectedProduct || formData.produto_id ? (
-                    <div className="p-4 bg-success-50 rounded-lg  mb-3">
+                    <div className="p-4 bg-success-50 rounded-lg mb-3">
                       <div className="flex justify-between items-start">
                         <div>
                           <h4 className="font-semibold text-success-800">
@@ -779,19 +1115,6 @@ export default function RmaPage() {
                               produtos.find((p) => p.id === formData.produto_id)
                                 ?.modelo}
                           </p>
-                          {(selectedProduct?.preco_venda ||
-                            produtos.find((p) => p.id === formData.produto_id)
-                              ?.preco_venda) && (
-                            <p className="text-sm font-medium text-success-700">
-                              R${" "}
-                              {(
-                                selectedProduct?.preco_venda ||
-                                produtos.find(
-                                  (p) => p.id === formData.produto_id
-                                )?.preco_venda
-                              )?.toFixed(2)}
-                            </p>
-                          )}
                         </div>
                         <Button
                           size="sm"
@@ -816,7 +1139,6 @@ export default function RmaPage() {
                     </Button>
                   )}
 
-                  {/* Modal de busca de produtos */}
                   {showProductSearch && (
                     <div className="space-y-4">
                       <div className="flex justify-between items-center">
@@ -830,7 +1152,6 @@ export default function RmaPage() {
                         </Button>
                       </div>
 
-                      {/* Input de busca */}
                       <Input
                         placeholder="Digite para buscar produtos..."
                         value={productSearchTerm}
@@ -844,25 +1165,6 @@ export default function RmaPage() {
                         onClear={() => setProductSearchTerm("")}
                       />
 
-                      {/* Contador de resultados */}
-                      <div className="flex justify-between items-center text-sm text-default-500">
-                        <span>
-                          {filteredProdutos.length} produto
-                          {filteredProdutos.length !== 1 ? "s" : ""} encontrado
-                          {filteredProdutos.length !== 1 ? "s" : ""}
-                        </span>
-                        {productSearchTerm && (
-                          <Button
-                            size="sm"
-                            variant="light"
-                            onPress={() => setProductSearchTerm("")}
-                          >
-                            Limpar busca
-                          </Button>
-                        )}
-                      </div>
-
-                      {/* Grid de produtos 4x4 */}
                       <div className="max-h-96 overflow-y-auto">
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                           {filteredProdutos.map((produto) => (
@@ -888,34 +1190,18 @@ export default function RmaPage() {
                                         {produto.modelo}
                                       </p>
                                     )}
-                                    {produto.preco_venda && (
-                                      <p className="font-semibold text-success-600">
-                                        R$ {produto.preco_venda.toFixed(2)}
-                                      </p>
-                                    )}
                                   </div>
-                                  {produto.compativel && (
-                                    <div className="bg-warning-50 rounded px-2 py-1">
-                                      <p className="text-xs text-warning-700 line-clamp-1">
-                                        {produto.compativel}
-                                      </p>
-                                    </div>
-                                  )}
                                 </div>
                               </CardBody>
                             </Card>
                           ))}
                         </div>
 
-                        {/* Mensagem quando não há produtos */}
                         {filteredProdutos.length === 0 && (
                           <div className="text-center py-8">
                             <div className="text-4xl mb-2">🔍</div>
                             <p className="text-default-500">
                               Nenhum produto encontrado
-                            </p>
-                            <p className="text-sm text-default-400">
-                              Tente buscar com outros termos
                             </p>
                           </div>
                         )}
@@ -924,15 +1210,14 @@ export default function RmaPage() {
                   )}
                 </div>
 
-                {/* Seção 2 - Loja e Detalhes da RMA */}
+                {/* Seção 3 - Loja e Detalhes */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Seleção de loja */}
-                  <div className="p-4 bg-default-50 rounded-lg ">
+                  <div className="p-4 bg-default-50 rounded-lg">
                     <h3 className="text-lg font-semibold mb-3 text-primary">
                       Loja
                     </h3>
                     <Select
-                      label="Loja de Origem"
+                      label="Loja Responsável"
                       selectedKeys={
                         formData.loja_id ? [formData.loja_id.toString()] : []
                       }
@@ -959,10 +1244,9 @@ export default function RmaPage() {
                     </Select>
                   </div>
 
-                  {/* Detalhes da RMA */}
-                  <div className="p-4 bg-warning-50 rounded-lg ">
+                  <div className="p-4 bg-warning-50 rounded-lg">
                     <h3 className="text-lg font-semibold mb-3 text-warning-700">
-                      Detalhes da RMA
+                      Detalhes
                     </h3>
                     <div className="grid grid-cols-2 gap-3">
                       <Input
@@ -1001,125 +1285,360 @@ export default function RmaPage() {
                       >
                         <SelectItem key="troca">🔄 Troca</SelectItem>
                         <SelectItem key="garantia">🛡️ Garantia</SelectItem>
-                        <SelectItem key="assistencia">
-                          🔧 Assistência
-                        </SelectItem>
+                        <SelectItem key="reparo">🔧 Reparo</SelectItem>
+                        <SelectItem key="devolucao">↩️ Devolução</SelectItem>
                       </Select>
                     </div>
                   </div>
                 </div>
 
-                {/* Seção 3 - Status e Motivo */}
-                <div className="p-4 bg-success-50 rounded-lg ">
+                {/* Seção 4 - Etapa e Rastreamento */}
+                <div className="p-4 bg-success-50 rounded-lg">
                   <h3 className="text-lg font-semibold mb-3 text-success-700">
-                    Status e Motivo
+                    Etapa do Processo e Rastreamento
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <Select
-                      label="Status Atual"
+                      label="Status / Etapa do RMA"
                       selectedKeys={
-                        formData.status ? [formData.status] : ["pendente"]
+                        formData.status ? [formData.status] : ["solicitado"]
                       }
                       onSelectionChange={(keys) => {
                         const key = Array.from(keys)[0] as string;
                         setFormData({ ...formData, status: key });
                       }}
                       size="md"
-                      placeholder="Selecione o status"
+                      placeholder="Selecione a etapa"
                       variant="bordered"
+                      description="Selecione a etapa atual do processo de RMA"
                     >
                       {STATUS_OPTIONS.map((option) => (
                         <SelectItem
                           key={option.key}
+                          textValue={option.label}
                           startContent={
                             <Chip
                               size="sm"
                               color={
-                                option.key === "pendente"
+                                option.key === "solicitado"
                                   ? "warning"
-                                  : option.key === "enviado"
+                                  : option.key === "em_analise"
                                     ? "primary"
-                                    : "success"
+                                    : option.key === "aprovado"
+                                      ? "success"
+                                      : option.key === "reprovado"
+                                        ? "danger"
+                                        : option.key === "em_transito"
+                                          ? "secondary"
+                                          : option.key === "recebido"
+                                            ? "primary"
+                                            : option.key === "em_inspecao"
+                                              ? "primary"
+                                              : option.key === "em_reparo"
+                                                ? "warning"
+                                                : option.key ===
+                                                    "processando_troca"
+                                                  ? "secondary"
+                                                  : option.key ===
+                                                      "processando_reembolso"
+                                                    ? "secondary"
+                                                    : option.key === "concluido"
+                                                      ? "success"
+                                                      : "default"
                               }
                               variant="flat"
                             />
                           }
                         >
-                          {option.label}
+                          <div className="flex flex-col">
+                            <span className="font-semibold text-sm">
+                              {option.label}
+                            </span>
+                            <span className="text-xs text-default-400">
+                              {option.description}
+                            </span>
+                          </div>
                         </SelectItem>
                       ))}
                     </Select>
 
                     <Input
                       label="Motivo da RMA"
-                      placeholder="Ex: Defeito, dano no transporte, etc."
+                      placeholder="Ex: Defeito, produto errado, etc."
                       value={formData.motivo || ""}
                       onChange={(e) =>
                         setFormData({ ...formData, motivo: e.target.value })
                       }
                       variant="bordered"
-                      startContent={
-                        <div className="pointer-events-none flex items-center">
-                          <span className="text-default-400 text-small"></span>
-                        </div>
+                    />
+                  </div>
+
+                  {/* Campos adicionais baseados no status */}
+                  <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <Input
+                      label="Número do RMA"
+                      placeholder="Ex: RMA-2025-001"
+                      value={formData.numero_rma || ""}
+                      onChange={(e) =>
+                        setFormData({ ...formData, numero_rma: e.target.value })
                       }
+                      variant="bordered"
+                      description="Código único para rastreamento"
+                      startContent={
+                        <span className="text-default-400 text-sm">#</span>
+                      }
+                      isDisabled
+                    />
+
+                    {(formData.status === "em_transito" ||
+                      formData.status === "recebido" ||
+                      formData.status === "em_inspecao" ||
+                      formData.status === "em_reparo" ||
+                      formData.status === "processando_troca" ||
+                      formData.status === "processando_reembolso" ||
+                      formData.status === "concluido") && (
+                      <Input
+                        label="Código de Rastreio"
+                        placeholder="Ex: BR123456789BR"
+                        value={formData.codigo_rastreio || ""}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            codigo_rastreio: e.target.value,
+                          })
+                        }
+                        variant="bordered"
+                        description="Código dos Correios ou transportadora"
+                      />
+                    )}
+                  </div>
+                </div>
+
+                {/* Seção 5 - Detalhes do Processo */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="p-4 bg-primary-50 rounded-lg">
+                    <h3 className="text-lg font-semibold mb-3 text-primary-700">
+                      1. Solicitação do Cliente
+                    </h3>
+                    <Textarea
+                      placeholder="Detalhes do problema relatado pelo cliente, motivo da devolução, estado do produto..."
+                      value={formData.observacoes || ""}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          observacoes: e.target.value,
+                        })
+                      }
+                      variant="bordered"
+                      minRows={4}
+                      maxRows={6}
+                      classNames={{
+                        input: "resize-none",
+                      }}
+                    />
+                  </div>
+
+                  <div className="p-4 bg-warning-50 rounded-lg">
+                    <h3 className="text-lg font-semibold mb-3 text-warning-700">
+                      2. Análise Interna
+                    </h3>
+                    <Textarea
+                      placeholder="Avaliação da validade da solicitação, verificação de garantia, política de devolução..."
+                      value={formData.analise_interna || ""}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          analise_interna: e.target.value,
+                        })
+                      }
+                      variant="bordered"
+                      minRows={4}
+                      maxRows={6}
+                      classNames={{
+                        input: "resize-none",
+                      }}
                     />
                   </div>
                 </div>
 
-                {/* Seção 4 - Observações */}
-                <div className="p-4 bg-primary-50 rounded-lg ">
-                  <h3 className="text-lg font-semibold mb-3 text-primary-700">
-                    Observações
-                  </h3>
-                  <Textarea
-                    placeholder="Informações adicionais sobre a RMA, condições do produto, procedimentos realizados, etc."
-                    value={formData.observacoes || ""}
-                    onChange={(e) =>
-                      setFormData({ ...formData, observacoes: e.target.value })
-                    }
-                    variant="bordered"
-                    minRows={4}
-                    maxRows={6}
-                    classNames={{
-                      input: "resize-none",
-                    }}
-                  />
-                </div>
+                {/* Seção 6 - Inspeção e Resolução */}
+                {(formData.status === "recebido" ||
+                  formData.status === "em_inspecao" ||
+                  formData.status === "em_reparo" ||
+                  formData.status === "processando_troca" ||
+                  formData.status === "processando_reembolso" ||
+                  formData.status === "concluido") && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="p-4 bg-secondary-50 rounded-lg">
+                      <h3 className="text-lg font-semibold mb-3 text-secondary-700">
+                        5/6. Recebimento e Inspeção
+                      </h3>
+                      <Textarea
+                        placeholder="Estado do produto recebido, testes realizados, diagnóstico técnico..."
+                        value={formData.inspecao || ""}
+                        onChange={(e) =>
+                          setFormData({ ...formData, inspecao: e.target.value })
+                        }
+                        variant="bordered"
+                        minRows={4}
+                        maxRows={6}
+                        classNames={{
+                          input: "resize-none",
+                        }}
+                      />
+                    </div>
 
-                {/* Seção 5 - Fotos */}
-                <div className="p-4 bg-secondary-50 rounded-lg ">
-                  <h3 className="text-lg font-semibold mb-3 text-secondary-700">
-                    Fotos do RMA
-                  </h3>
+                    <div className="p-4 bg-success-50 rounded-lg">
+                      <h3 className="text-lg font-semibold mb-3 text-success-700">
+                        7. Resolução Aplicada
+                      </h3>
+                      <Textarea
+                        placeholder="Ação tomada: reparo realizado, produto trocado, valor reembolsado, crédito concedido..."
+                        value={formData.solucao || ""}
+                        onChange={(e) =>
+                          setFormData({ ...formData, solucao: e.target.value })
+                        }
+                        variant="bordered"
+                        minRows={4}
+                        maxRows={6}
+                        classNames={{
+                          input: "resize-none",
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
 
-                  {/* Fotos existentes */}
+                {/* Seção 7 - Fotos com Carrossel no Modal */}
+                <div className="p-4 bg-default-50 rounded-lg">
+                  <h3 className="text-lg font-semibold mb-3 text-default-700">
+                    📸 Fotos e Evidências do RMA
+                  </h3>
+                  <p className="text-xs text-default-500 mb-3">
+                    Adicione fotos do produto, nota fiscal, etiqueta de envio,
+                    etc.
+                  </p>
+
+                  {/* Carrossel de Fotos Existentes */}
                   {isEditing && editFotos.length > 0 && (
                     <div className="mb-4">
                       <label className="text-sm font-medium text-default-600 mb-2 block">
-                        Fotos atuais:
+                        Fotos atuais ({editFotos.length}):
                       </label>
-                      <div className="flex flex-wrap gap-3">
-                        {editFotos.map((url) => (
-                          <div key={url} className="relative">
-                            <Avatar src={url} size="lg" className="w-20 h-20" />
-                            <Button
-                              isIconOnly
-                              size="sm"
-                              color="danger"
-                              variant="solid"
-                              className="absolute -top-2 -right-2 min-w-6 w-6 h-6"
-                              onPress={() => handleRemoveFoto(url)}
-                            >
-                              <XMarkIcon className="w-3 h-3" />
-                            </Button>
+                      <div className="bg-default-100 rounded-lg p-3">
+                        <div className="relative group">
+                          <div className="w-full h-64 rounded-lg overflow-hidden bg-default-200">
+                            <img
+                              src={
+                                editFotos[modalCarouselIndex % editFotos.length]
+                              }
+                              alt={`Foto ${modalCarouselIndex + 1}`}
+                              className="w-full h-full object-contain cursor-pointer"
+                              onClick={() =>
+                                window.open(
+                                  editFotos[
+                                    modalCarouselIndex % editFotos.length
+                                  ],
+                                  "_blank"
+                                )
+                              }
+                            />
                           </div>
-                        ))}
+
+                          {/* Botão de remover foto */}
+                          <Button
+                            isIconOnly
+                            size="sm"
+                            color="danger"
+                            variant="solid"
+                            className="absolute top-2 right-2"
+                            onPress={() =>
+                              handleRemoveFoto(
+                                editFotos[modalCarouselIndex % editFotos.length]
+                              )
+                            }
+                          >
+                            <TrashIcon className="w-4 h-4" />
+                          </Button>
+
+                          {editFotos.length > 1 && (
+                            <>
+                              <Button
+                                isIconOnly
+                                size="sm"
+                                variant="solid"
+                                color="default"
+                                className="absolute left-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity"
+                                onPress={() => {
+                                  setModalCarouselIndex(
+                                    (prev) =>
+                                      (prev - 1 + editFotos.length) %
+                                      editFotos.length
+                                  );
+                                }}
+                              >
+                                <ChevronLeftIcon className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                isIconOnly
+                                size="sm"
+                                variant="solid"
+                                color="default"
+                                className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity"
+                                onPress={() => {
+                                  setModalCarouselIndex(
+                                    (prev) => (prev + 1) % editFotos.length
+                                  );
+                                }}
+                              >
+                                <ChevronRightIcon className="w-4 h-4" />
+                              </Button>
+                            </>
+                          )}
+                        </div>
+
+                        {/* Indicadores */}
+                        {editFotos.length > 1 && (
+                          <div className="flex gap-1 justify-center mt-3">
+                            {editFotos.map((_, idx) => (
+                              <button
+                                key={idx}
+                                onClick={() => setModalCarouselIndex(idx)}
+                                className={`h-1.5 rounded-full transition-all ${
+                                  modalCarouselIndex % editFotos.length === idx
+                                    ? "w-6 bg-primary"
+                                    : "w-1.5 bg-default-300 hover:bg-default-400"
+                                }`}
+                              />
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Miniaturas */}
+                        <div className="flex flex-wrap gap-2 mt-3">
+                          {editFotos.map((url, idx) => (
+                            <div
+                              key={url}
+                              className={`relative cursor-pointer ${
+                                idx === modalCarouselIndex % editFotos.length
+                                  ? "ring-2 ring-primary"
+                                  : ""
+                              }`}
+                              onClick={() => setModalCarouselIndex(idx)}
+                            >
+                              <Avatar
+                                src={url}
+                                size="md"
+                                className="w-16 h-16"
+                              />
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     </div>
                   )}
 
-                  {/* Preview das novas fotos selecionadas */}
+                  {/* Preview das novas fotos */}
                   {fotos.length > 0 && (
                     <div className="mb-4">
                       <label className="text-sm font-medium text-default-600 mb-2 block">
@@ -1172,8 +1691,8 @@ export default function RmaPage() {
                         file:mr-4 file:py-2 file:px-4 
                         file:rounded-full file:border-0 
                         file:text-sm file:font-semibold 
-                        file:bg-secondary-100 file:text-secondary-700 
-                        hover:file:bg-secondary-200 
+                        file:bg-primary-100 file:text-primary-700 
+                        hover:file:bg-primary-200 
                         cursor-pointer"
                     />
                     <p className="mt-2 text-xs text-default-400">
@@ -1182,74 +1701,8 @@ export default function RmaPage() {
                     </p>
                   </div>
                 </div>
-
-                {/* Seção 6 - Preview/Resumo */}
-                {(selectedProduct || formData.produto_id) && (
-                  <div className="p-4 bg-default-100 rounded-lg border">
-                    <h4 className="font-semibold mb-3 text-default-700">
-                      Resumo da RMA
-                    </h4>
-                    {(() => {
-                      const produto =
-                        selectedProduct ||
-                        produtos.find((p) => p.id === formData.produto_id);
-                      const loja = lojas.find((l) => l.id === formData.loja_id);
-                      return produto ? (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                          <div className="space-y-2">
-                            <div className="flex justify-between">
-                              <span className="text-default-500">Produto:</span>
-                              <span className="font-medium">
-                                {produto.descricao}
-                              </span>
-                            </div>
-                            {produto.marca && (
-                              <div className="flex justify-between">
-                                <span className="text-default-500">Marca:</span>
-                                <span>{produto.marca}</span>
-                              </div>
-                            )}
-                            {produto.modelo && (
-                              <div className="flex justify-between">
-                                <span className="text-default-500">
-                                  Modelo:
-                                </span>
-                                <span>{produto.modelo}</span>
-                              </div>
-                            )}
-                          </div>
-                          <div className="space-y-2">
-                            {loja && (
-                              <div className="flex justify-between">
-                                <span className="text-default-500">Loja:</span>
-                                <span>{loja.nome}</span>
-                              </div>
-                            )}
-                            <div className="flex justify-between">
-                              <span className="text-default-500">
-                                Quantidade:
-                              </span>
-                              <span className="font-medium text-primary">
-                                {formData.quantidade || 1}
-                              </span>
-                            </div>
-                            {formData.tipo_rma && (
-                              <div className="flex justify-between">
-                                <span className="text-default-500">Tipo:</span>
-                                <span className="font-medium">
-                                  {formData.tipo_rma}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      ) : null;
-                    })()}
-                  </div>
-                )}
               </div>
             </ModalBody>
-            {/* Atualizar o footer do modal */}
             <ModalFooter className="bg-default-50 rounded-b-lg">
               <Button
                 variant="light"
@@ -1263,7 +1716,12 @@ export default function RmaPage() {
                 color="primary"
                 onPress={handleSave}
                 className="font-medium px-6"
-                isDisabled={!formData.produto_id || !formData.loja_id || saving}
+                isDisabled={
+                  !formData.produto_id ||
+                  !formData.cliente_id ||
+                  !formData.loja_id ||
+                  saving
+                }
                 isLoading={saving}
               >
                 {saving
@@ -1271,8 +1729,8 @@ export default function RmaPage() {
                     ? "Atualizando..."
                     : "Salvando..."
                   : isEditing
-                    ? " Atualizar"
-                    : " Salvar"}
+                    ? "Atualizar"
+                    : "Salvar"}
               </Button>
             </ModalFooter>
           </ModalContent>
@@ -1295,16 +1753,16 @@ export default function RmaPage() {
           </ModalHeader>
           <ModalBody className="py-6">
             <div className="text-center space-y-4">
-              <div className="p-4 bg-danger-50 rounded-lg ">
+              <div className="p-4 bg-danger-50 rounded-lg">
                 <p className="text-lg font-semibold text-danger-800 mb-2">
                   Tem certeza que deseja excluir este RMA?
                 </p>
                 <p className="text-danger-600">
-                  <strong>Produto:</strong> {deleteModal.itemName}
+                  <strong>Cliente:</strong> {deleteModal.itemName}
                 </p>
               </div>
 
-              <div className="bg-warning-50 rounded-lg p-4 ">
+              <div className="bg-warning-50 rounded-lg p-4">
                 <div className="flex items-start gap-2">
                   <span className="text-warning-600 text-xl">⚠️</span>
                   <div className="text-left">

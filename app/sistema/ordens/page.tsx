@@ -577,9 +577,14 @@ export default function OrdensPage() {
   }
 
   function edit(o: Ordem) {
+    console.log("📝 EDIT - Ordem recebida do banco:", o);
+    console.log("📝 EDIT - Chaves da ordem:", Object.keys(o));
+
     setIsEditing(true);
     setSelectedOrdem(o);
-    setFormData({
+
+    // Copia APENAS os campos válidos da ordem, ignorando campos extras de JOINs
+    const novoFormData = {
       id: o.id,
       modelo: o.modelo || "",
       cor: o.cor || "",
@@ -596,7 +601,13 @@ export default function OrdensPage() {
       prioridade: o.prioridade,
       tecnico_responsavel: o.tecnico_responsavel || "",
       id_cliente: o.id_cliente,
-    });
+      // NÃO copiar: nome, created_at, updated_at, ou qualquer outro campo extra
+    };
+
+    console.log("📝 EDIT - FormData que será definido:", novoFormData);
+    console.log("📝 EDIT - Chaves do formData:", Object.keys(novoFormData));
+
+    setFormData(novoFormData);
     setValorInput(o.valor ? numberToCurrencyInput(o.valor) : "");
     setCurrentFotos(o.fotourl || []);
     setSelectedFiles([]);
@@ -669,42 +680,98 @@ export default function OrdensPage() {
 
     setLoading(true);
     try {
+      console.log("🔍 INÍCIO handleSave - formData atual:", formData);
+      console.log("🔍 Chaves no formData:", Object.keys(formData));
+
       const valorNumber = valorInput ? currencyToNumber(valorInput) : 0;
-      const baseData = {
+
+      // Lista de campos válidos da tabela ordens (sem campos extras de JOINs)
+      const camposValidos = [
+        "modelo",
+        "cor",
+        "defeito",
+        "diagnostico",
+        "entrada",
+        "saida",
+        "forma_pagamento",
+        "status",
+        "garantia",
+        "periodo_garantia",
+        "observacoes",
+        "prazo",
+        "prioridade",
+        "tecnico_responsavel",
+        "valor",
+        "id_cliente",
+        "fotourl",
+      ];
+
+      const baseData: any = {
         modelo: formData.modelo,
-        cor: formData.cor || null,
-        defeito: formData.defeito || null,
-        diagnostico: formData.diagnostico || null,
-        entrada: formData.entrada || null,
-        saida: formData.saida || null,
-        forma_pagamento: formData.forma_pagamento || null,
         status: formData.status || "aguardando",
         garantia: !!formData.garantia,
-        periodo_garantia: formData.periodo_garantia || null,
-        observacoes: formData.observacoes || null,
-        prazo: formData.prazo || null,
         prioridade: formData.prioridade || "normal",
-        tecnico_responsavel: formData.tecnico_responsavel || null,
         valor: valorNumber,
-        id_cliente: formData.id_cliente || null,
       };
+
+      // Adiciona campos opcionais apenas se tiverem valor
+      if (formData.cor) baseData.cor = formData.cor;
+      if (formData.defeito) baseData.defeito = formData.defeito;
+      if (formData.diagnostico) baseData.diagnostico = formData.diagnostico;
+      if (formData.entrada) baseData.entrada = formData.entrada;
+      if (formData.saida) baseData.saida = formData.saida;
+      if (formData.forma_pagamento)
+        baseData.forma_pagamento = formData.forma_pagamento;
+      if (formData.periodo_garantia)
+        baseData.periodo_garantia = formData.periodo_garantia;
+      if (formData.observacoes) baseData.observacoes = formData.observacoes;
+      if (formData.prazo) baseData.prazo = formData.prazo;
+      if (formData.tecnico_responsavel)
+        baseData.tecnico_responsavel = formData.tecnico_responsavel;
+      if (formData.id_cliente) baseData.id_cliente = formData.id_cliente;
+
+      // Remove qualquer campo inválido que possa ter sido copiado do formData
+      Object.keys(baseData).forEach((key) => {
+        if (!camposValidos.includes(key)) {
+          console.warn(`⚠️ Removendo campo inválido: ${key}`, baseData[key]);
+          delete baseData[key];
+        }
+      });
+
+      console.log("📋 Dados que serão enviados:", baseData);
 
       if (isEditing && selectedOrdem) {
         // Atualiza dados + fotos (adicionando uma a uma se múltiplas)
         if (selectedFiles.length > 0) {
-          let currentArray = [...currentFotos];
-          for (let i = 0; i < selectedFiles.length; i++) {
+          // Atualiza os dados na primeira foto
+          await updateTable(
+            "ordens",
+            selectedOrdem.id,
+            baseData,
+            selectedFiles[0],
+            currentFotos
+          );
+
+          // Busca o estado atualizado
+          let updated = await fetchTable("ordens");
+          let ord = updated.find((oo: Ordem) => oo.id === selectedOrdem.id);
+          let currentArray = ord?.fotourl || [...currentFotos];
+
+          // Adiciona as fotos restantes (apenas upload, sem atualizar outros campos)
+          for (let i = 1; i < selectedFiles.length; i++) {
             await updateTable(
               "ordens",
               selectedOrdem.id,
-              i === 0 ? baseData : {},
+              {}, // Objeto vazio é OK aqui pois estamos apenas adicionando foto
               selectedFiles[i],
               currentArray
             );
-            // busca estado real
-            const updated = await fetchTable("ordens");
-            const ord = updated.find((oo: Ordem) => oo.id === selectedOrdem.id);
+            // Busca estado real após cada upload
+            updated = await fetchTable("ordens");
+            ord = updated.find((oo: Ordem) => oo.id === selectedOrdem.id);
             currentArray = ord?.fotourl || currentArray;
+            // Pequeno delay para evitar race conditions
+            await new Promise((r) => setTimeout(r, 300));
           }
         } else {
           await updateTable(
@@ -751,9 +818,25 @@ export default function OrdensPage() {
       }
       await loadData();
       onClose();
-    } catch (e) {
-      console.error(e);
-      alert("Erro ao salvar ordem.");
+    } catch (e: any) {
+      console.error("❌ Erro completo:", e);
+      console.error("❌ Mensagem:", e?.message);
+      console.error("❌ Detalhes:", e?.details);
+      console.error("❌ Hint:", e?.hint);
+      console.error("❌ Code:", e?.code);
+
+      let errorMsg = "Erro ao salvar ordem.";
+      if (e?.message) {
+        errorMsg += "\n" + e.message;
+      }
+      if (e?.details) {
+        errorMsg += "\nDetalhes: " + e.details;
+      }
+      if (e?.hint) {
+        errorMsg += "\nDica: " + e.hint;
+      }
+
+      alert(errorMsg);
     } finally {
       setLoading(false);
     }

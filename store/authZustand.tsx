@@ -76,11 +76,23 @@ export interface PermissoesAcessos {
     deletar_devolucoes: boolean;
     processar_creditos: boolean;
   };
-    rma: {
+  rma: {
     ver_rma: boolean;
     criar_rma: boolean;
     editar_rma?: boolean;
     deletar_rma?: boolean;
+  };
+
+  rmaClientes: {
+    ver_rma: boolean;
+    criar_rma: boolean;
+    editar_rma?: boolean;
+    deletar_rma?: boolean;
+  };
+  caixa: {
+    abrir_caixa: boolean;
+    ver_caixa: boolean;
+    fechar_caixa: boolean;
   };
 }
 
@@ -166,13 +178,23 @@ function defaultPermissoes(): { acessos: PermissoesAcessos } {
         editar_devolucoes: false,
         deletar_devolucoes: false,
         processar_creditos: false,
-
       },
-        rma: {
+      rma: {
         ver_rma: false,
         criar_rma: false,
         editar_rma: false,
         deletar_rma: false,
+      },
+      rmaClientes: {
+        ver_rma: false,
+        criar_rma: false,
+        editar_rma: false,
+        deletar_rma: false,
+      },
+      caixa: {
+        abrir_caixa: false,
+        ver_caixa: false,
+        fechar_caixa: false,
       },
     },
   };

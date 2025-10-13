@@ -11,7 +11,6 @@ import {
   currencyToNumber,
   numberToCurrencyInput,
 } from "@/utils/maskInput";
-import { DevolucaoStats } from "@/components/devolucoes";
 import {
   Card,
   CardBody,
@@ -1149,7 +1148,44 @@ export default function DevolucoesPagina() {
       </div>
 
       {/* Estatísticas */}
-      <DevolucaoStats devolucoes={devolucoes} />
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Card>
+          <CardBody className="p-4">
+            <p className="text-xs text-default-500">Total de Devoluções</p>
+            <p className="text-2xl font-semibold">{stats.count}</p>
+            <p className="text-xs text-default-400">
+              {stats.totalCompletas} total, {stats.totalParciais} parcial
+            </p>
+          </CardBody>
+        </Card>
+        <Card>
+          <CardBody className="p-4">
+            <p className="text-xs text-default-500">Valor Devolvido</p>
+            <p className="text-xl font-semibold">{fmt(stats.valorTotal)}</p>
+            <p className="text-xs text-default-400">Total acumulado</p>
+          </CardBody>
+        </Card>
+        <Card>
+          <CardBody className="p-4">
+            <p className="text-xs text-default-500">Crédito Pendente</p>
+            <p className="text-xl font-semibold text-orange-600">
+              {fmt(stats.creditoPendente)}
+            </p>
+            <p className="text-xs text-default-400">
+              {devolucoes.filter((d) => !d.credito_aplicado).length} pendentes
+            </p>
+          </CardBody>
+        </Card>
+        <Card>
+          <CardBody className="p-4">
+            <p className="text-xs text-default-500">Média por Devolução</p>
+            <p className="text-xl font-semibold">
+              {fmt(stats.count > 0 ? stats.valorTotal / stats.count : 0)}
+            </p>
+            <p className="text-xs text-default-400">Ticket médio</p>
+          </CardBody>
+        </Card>
+      </div>
 
       {/* Barra de busca */}
       <div className="flex flex-col gap-3 md:flex-row md:items-center">

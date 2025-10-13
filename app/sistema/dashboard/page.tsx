@@ -3,167 +3,48 @@
 import { useEffect, useMemo, useState } from "react";
 import { fetchTable } from "@/lib/fetchTable";
 import { useAuthStore } from "@/store/authZustand";
-import {
-  Card,
-  CardBody,
-  Chip,
-  Button,
-  Input,
-  Spinner,
-  Avatar,
-  Tooltip,
-  Progress,
-  Badge,
-} from "@heroui/react";
+import { Card, CardBody, Button, Spinner } from "@heroui/react";
 import {
   ArrowTrendingUpIcon,
-  FunnelIcon,
-  UsersIcon,
-  ShoppingCartIcon,
-  CurrencyDollarIcon,
-  ClockIcon,
   ExclamationTriangleIcon,
+  CurrencyDollarIcon,
+  ShoppingCartIcon,
+  UsersIcon,
   WrenchScrewdriverIcon,
-  Battery0Icon,
-  Battery50Icon,
-  Battery100Icon,
-  UserCircleIcon,
-  ArrowDownTrayIcon,
-  BuildingStorefrontIcon,
-  TruckIcon,
-  ArrowUturnLeftIcon,
-  ShieldCheckIcon,
   ChartBarIcon,
-  CalendarDaysIcon,
+  ArrowDownTrayIcon,
+  ClockIcon,
+  Battery100Icon,
 } from "@heroicons/react/24/outline";
 import {
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip as RTooltip,
-  PieChart,
-  Pie,
-  Cell,
-  BarChart,
-  Bar,
-  Legend,
-  Sector,
-  AreaChart,
-  Area,
-  ComposedChart,
-} from "recharts";
-
-interface Venda {
-  id: number;
-  data_venda: string;
-  total_bruto: number;
-  desconto: number;
-  total_liquido: number;
-  forma_pagamento: string;
-  status_pagamento: string;
-  valor_restante: number;
-  valor_pago: number;
-  fiado: boolean;
-  data_vencimento?: string | null;
-  itens: any[];
-  cliente_nome?: string | null;
-  id_cliente?: number | null;
-  id_usuario?: string | null;
-  loja_id?: number | null;
-}
-
-interface Estoque {
-  id: number;
-  descricao: string | null;
-  marca?: string | null;
-  modelo?: string | null;
-  preco_compra?: number | null;
-  preco_venda?: number | null;
-  minimo?: number | null;
-}
-
-interface EstoqueLoja {
-  id: number;
-  produto_id: number;
-  loja_id: number;
-  quantidade: number;
-}
-
-interface Cliente {
-  id: number;
-  nome: string | null;
-  email?: string | null;
-  telefone?: string | null;
-  credito?: number | null;
-  createdat?: string;
-}
-
-interface Ordem {
-  id: number;
-  entrada?: string | null;
-  saida?: string | null;
-  status?: string | null;
-  valor?: number | null;
-  prioridade?: string | null;
-  prazo?: string | null;
-  tecnico_responsavel?: string | null;
-  garantia?: boolean;
-}
-
-interface Usuario {
-  uuid: string;
-  nome?: string | null;
-  email?: string | null;
-  fotourl?: string[] | null;
-  credito?: number | null;
-}
-
-interface Loja {
-  id: number;
-  nome: string;
-  endereco?: string | null;
-}
-
-interface Transferencia {
-  id: number;
-  loja_origem_id: number;
-  loja_destino_id: number;
-  data_transferencia: string;
-  status: string;
-}
-
-interface Devolucao {
-  id: number;
-  id_venda: number;
-  data_devolucao: string;
-  valor_total_devolvido: number;
-  tipo_devolucao: string;
-  credito_aplicado: boolean;
-  valor_credito_gerado: number;
-}
-
-interface Fornecedor {
-  id: number;
-  nome: string;
-  ativo: boolean;
-  data_cadastro: string;
-}
-
-const COLORS = [
-  "#3B82F6",
-  "#10B981",
-  "#FACC15",
-  "#F43F5E",
-  "#8B5CF6",
-  "#14B8A6",
-  "#FB923C",
-  "#EC4899",
-  "#06B6D4",
-  "#84CC16",
-];
+  KPICard,
+  FiltroPeriodo,
+  VendasChart,
+  ProdutosChart,
+  FormasPagamentoChart,
+  OrdensStatus,
+  EstoqueStatus,
+  DashboardPDFGenerator,
+  type Venda,
+  type Estoque,
+  type EstoqueLoja,
+  type Cliente,
+  type Ordem,
+  type Usuario,
+  type Loja,
+  type Transferencia,
+  type Devolucao,
+  type Fornecedor,
+  type KPIData,
+  type ChartDataItem,
+  type ProdutoVendidoItem,
+  type FormasPagamentoItem,
+  type VendasPorLojaItem,
+  type TopClienteItem,
+  type TopVendedorItem,
+  type EstoqueInfo,
+} from "@/components/dashboard";
+import toast, { Toaster } from "react-hot-toast";
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
@@ -180,56 +61,55 @@ export default function DashboardPage() {
   const [dateStart, setDateStart] = useState("");
   const [dateEnd, setDateEnd] = useState("");
   const [showFilters, setShowFilters] = useState(false);
-  const [selectedPeriod, setSelectedPeriod] = useState("30"); // dias
-  const { user } = useAuthStore();
+  const [selectedPeriod, setSelectedPeriod] = useState("30");
 
-  // Controle de permissões
+  const { user } = useAuthStore();
   const acessos = user?.permissoes?.acessos;
   const permDashboard = acessos?.dashboard;
   const canViewDashboard = !!permDashboard?.ver_dashboard;
-  const canViewRelatorios = !!permDashboard?.ver_relatorios;
   const canExportarDados = !!permDashboard?.exportar_dados;
 
   useEffect(() => {
-    (async () => {
-      setLoading(true);
-      try {
-        const [vRaw, eRaw, elRaw, cRaw, oRaw, uRaw, lRaw, tRaw, dRaw, fRaw] =
-          await Promise.all([
-            fetchTable("vendas"),
-            fetchTable("estoque"),
-            fetchTable("estoque_lojas"),
-            fetchTable("clientes"),
-            fetchTable("ordens"),
-            fetchTable("usuarios"),
-            fetchTable("lojas"),
-            fetchTable("transferencias"),
-            fetchTable("devolucoes"),
-            fetchTable("fornecedores"),
-          ]);
-
-        setVendas(
-          (vRaw || []).map((v: any) => ({
-            ...v,
-            itens: Array.isArray(v.itens) ? v.itens : v.itens || [],
-          }))
-        );
-        setEstoque(eRaw || []);
-        setEstoqueLojas(elRaw || []);
-        setClientes(cRaw || []);
-        setOrdens(oRaw || []);
-        setUsuarios(uRaw || []);
-        setLojas(lRaw || []);
-        setTransferencias(tRaw || []);
-        setDevolucoes(dRaw || []);
-        setFornecedores(fRaw || []);
-      } finally {
-        setLoading(false);
-      }
-    })();
+    loadData();
   }, []);
 
-  // Auto-definir período se não há filtro manual
+  async function loadData() {
+    setLoading(true);
+    try {
+      const [vRaw, eRaw, elRaw, cRaw, oRaw, uRaw, lRaw, tRaw, dRaw, fRaw] =
+        await Promise.all([
+          fetchTable("vendas"),
+          fetchTable("estoque"),
+          fetchTable("estoque_lojas"),
+          fetchTable("clientes"),
+          fetchTable("ordens"),
+          fetchTable("usuarios"),
+          fetchTable("lojas"),
+          fetchTable("transferencias"),
+          fetchTable("devolucoes"),
+          fetchTable("fornecedores"),
+        ]);
+
+      setVendas(
+        (vRaw || []).map((v: any) => ({
+          ...v,
+          itens: Array.isArray(v.itens) ? v.itens : v.itens || [],
+        }))
+      );
+      setEstoque(eRaw || []);
+      setEstoqueLojas(elRaw || []);
+      setClientes(cRaw || []);
+      setOrdens(oRaw || []);
+      setUsuarios(uRaw || []);
+      setLojas(lRaw || []);
+      setTransferencias(tRaw || []);
+      setDevolucoes(dRaw || []);
+      setFornecedores(fRaw || []);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   useEffect(() => {
     if (!dateStart && !dateEnd && selectedPeriod) {
       const end = new Date();
@@ -240,7 +120,6 @@ export default function DashboardPage() {
     }
   }, [selectedPeriod, dateStart, dateEnd]);
 
-  // Filtro por intervalo de datas
   const vendasFiltradas = useMemo(() => {
     return vendas.filter((v) => {
       if (!dateStart && !dateEnd) return true;
@@ -261,8 +140,7 @@ export default function DashboardPage() {
     });
   }, [ordens, dateStart, dateEnd]);
 
-  // KPIs Principais
-  const kpis = useMemo(() => {
+  const kpis = useMemo<KPIData>(() => {
     const totalVendas = vendasFiltradas.length;
     const receita = vendasFiltradas.reduce(
       (acc, v) => acc + Number(v.total_liquido || 0),
@@ -297,26 +175,38 @@ export default function DashboardPage() {
     const margemDesconto =
       receitaBruta > 0 ? (descontos / receitaBruta) * 100 : 0;
 
-    // Devolução
-    const totalDevolucoes = devolucoes.reduce(
+    const totalDevolucoes = devolucoes.length;
+    const valorDevolucoes = devolucoes.reduce(
       (acc, d) => acc + Number(d.valor_total_devolvido || 0),
       0
     );
-    const creditoGerado = devolucoes.reduce(
-      (acc, d) => acc + Number(d.valor_credito_gerado || 0),
+    const taxaDevolucao = totalVendas > 0 ? (totalDevolucoes / totalVendas) * 100 : 0;
+
+    const totalOrdens = ordensFiltradasPeriodo.length;
+    const ordensAbertas = ordensFiltradasPeriodo.filter((o) => o.status === "aberta").length;
+    const ordensConcluidas = ordensFiltradasPeriodo.filter((o) => o.status === "concluida").length;
+    const taxaConclusao = totalOrdens > 0 ? (ordensConcluidas / totalOrdens) * 100 : 0;
+    const valorOrdens = ordensFiltradasPeriodo.reduce(
+      (acc, o) => acc + Number(o.valor || 0),
       0
     );
+    const ticketOrdem = totalOrdens ? valorOrdens / totalOrdens : 0;
 
-    // Clientes
+    const totalClientes = clientes.length;
     const clientesAtivos = clientes.filter((c) =>
-      vendas.some((v) => v.id_cliente === c.id)
+      vendasFiltradas.some((v) => v.id_cliente === c.id)
     ).length;
 
-    // Ordens
-    const ordensAbertas = ordens.filter((o) => !o.saida).length;
-    const ordensAtrasadas = ordens.filter(
-      (o) => !o.saida && o.prazo && new Date(o.prazo) < new Date()
-    ).length;
+    const dataInicioPeriodo = dateStart ? new Date(dateStart) : new Date(0);
+    const clientesNovos = clientes.filter((c) => {
+      if (!c.createdat) return false;
+      return new Date(c.createdat) >= dataInicioPeriodo;
+    }).length;
+
+    const totalUsuarios = usuarios.length;
+    const totalLojas = lojas.length;
+    const totalFornecedores = fornecedores.length;
+    const fornecedoresAtivos = fornecedores.filter((f) => f.ativo).length;
 
     return {
       totalVendas,
@@ -324,115 +214,91 @@ export default function DashboardPage() {
       receitaBruta,
       descontos,
       aReceber,
+      valorPago,
       fiadoVencido,
       ticket,
       margemDesconto,
       totalDevolucoes,
-      creditoGerado,
-      clientesAtivos,
+      valorDevolucoes,
+      taxaDevolucao,
+      totalOrdens,
       ordensAbertas,
-      ordensAtrasadas,
-      valorPago,
+      ordensConcluidas,
+      taxaConclusao,
+      valorOrdens,
+      ticketOrdem,
+      totalClientes,
+      clientesAtivos,
+      clientesNovos,
+      totalUsuarios,
+      totalLojas,
+      totalFornecedores,
+      fornecedoresAtivos,
     };
-  }, [vendasFiltradas, devolucoes, clientes, vendas, ordens]);
+  }, [
+    vendasFiltradas,
+    ordensFiltradasPeriodo,
+    devolucoes,
+    clientes,
+    usuarios,
+    lojas,
+    fornecedores,
+    dateStart,
+  ]);
 
-  // Análise temporal - receita por dia
-  const receitaTemporal = useMemo(() => {
-    const map = new Map<
-      string,
-      {
-        data: string;
-        receita: number;
-        bruto: number;
-        vendas: number;
-        devolucoes: number;
-      }
-    >();
+  const chartData = useMemo<ChartDataItem[]>(() => {
+    const map = new Map<string, { date: string; receita: number; vendas: number }>();
 
     vendasFiltradas.forEach((v) => {
-      const d = new Date(v.data_venda).toISOString().slice(0, 10);
-      if (!map.has(d))
-        map.set(d, { data: d, receita: 0, bruto: 0, vendas: 0, devolucoes: 0 });
+      const d = new Date(v.data_venda).toLocaleDateString("pt-BR", {
+        day: "2-digit",
+        month: "2-digit",
+      });
+      if (!map.has(d)) map.set(d, { date: d, receita: 0, vendas: 0 });
       const r = map.get(d)!;
       r.receita += Number(v.total_liquido || 0);
-      r.bruto += Number(v.total_bruto || 0);
       r.vendas += 1;
     });
 
-    // Adicionar devoluções
-    devolucoes.forEach((d) => {
-      const dt = new Date(d.data_devolucao).toISOString().slice(0, 10);
-      if (map.has(dt)) {
-        map.get(dt)!.devolucoes += Number(d.valor_total_devolvido || 0);
-      }
-    });
-
-    return Array.from(map.values()).sort((a, b) =>
-      a.data.localeCompare(b.data)
-    );
-  }, [vendasFiltradas, devolucoes]);
-
-  // Receita por forma de pagamento
-  const receitaPorPagamento = useMemo(() => {
-    const map = new Map<string, number>();
-    vendasFiltradas.forEach((v) => {
-      const k = v.forma_pagamento || "Não informado";
-      map.set(k, (map.get(k) || 0) + Number(v.total_liquido || 0));
-    });
-    return Array.from(map.entries())
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value);
+    return Array.from(map.values());
   }, [vendasFiltradas]);
 
-  // Top produtos mais vendidos
-  const topProdutos = useMemo(() => {
-    const map = new Map<
-      string,
-      {
-        nome: string;
-        quantidade: number;
-        valor: number;
-        margem?: number;
-      }
-    >();
+  const produtosVendidos = useMemo<ProdutoVendidoItem[]>(() => {
+    const map = new Map<string, { produto: string; quantidade: number; valor: number }>();
 
     vendasFiltradas.forEach((v) => {
       v.itens.forEach((item: any) => {
         const key = item.descricao || `Produto ${item.id_estoque}`;
         if (!map.has(key)) {
-          map.set(key, { nome: key, quantidade: 0, valor: 0 });
+          map.set(key, { produto: key, quantidade: 0, valor: 0 });
         }
         const obj = map.get(key)!;
         obj.quantidade += Number(item.quantidade || 0);
         obj.valor += Number(item.subtotal || 0);
-
-        // Calcular margem se temos preço de compra
-        const produto = estoque.find((e) => e.id === item.id_estoque);
-        if (produto?.preco_compra && produto.preco_venda) {
-          obj.margem =
-            ((produto.preco_venda - produto.preco_compra) /
-              produto.preco_venda) *
-            100;
-        }
       });
     });
 
-    return Array.from(map.values())
-      .sort((a, b) => b.valor - a.valor)
-      .slice(0, 10);
-  }, [vendasFiltradas, estoque]);
+    return Array.from(map.values()).sort((a, b) => b.quantidade - a.quantidade);
+  }, [vendasFiltradas]);
 
-  // Performance por loja
-  const performanceLojas = useMemo(() => {
-    const map = new Map<
-      number,
-      {
-        loja: string;
-        vendas: number;
-        receita: number;
-        ticket: number;
+  const formasPagamento = useMemo<FormasPagamentoItem[]>(() => {
+    const map = new Map<string, { forma: string; total: number; quantidade: number }>();
+
+    vendasFiltradas.forEach((v) => {
+      const forma = v.forma_pagamento || "Não informado";
+      if (!map.has(forma)) {
+        map.set(forma, { forma, total: 0, quantidade: 0 });
       }
-    >();
+      const obj = map.get(forma)!;
+      obj.total += Number(v.total_liquido || 0);
+      obj.quantidade += 1;
+    });
+
+    return Array.from(map.values()).sort((a, b) => b.total - a.total);
+  }, [vendasFiltradas]);
+
+  const vendasPorLoja = useMemo<VendasPorLojaItem[]>(() => {
+    const map = new Map<number, { nome: string; total: number; vendas: number; ticket: number }>();
 
     vendasFiltradas.forEach((v) => {
       if (!v.loja_id) return;
@@ -440,165 +306,122 @@ export default function DashboardPage() {
       const nomeLoja = loja?.nome || `Loja ${v.loja_id}`;
 
       if (!map.has(v.loja_id)) {
-        map.set(v.loja_id, {
-          loja: nomeLoja,
-          vendas: 0,
-          receita: 0,
-          ticket: 0,
-        });
+        map.set(v.loja_id, { nome: nomeLoja, total: 0, vendas: 0, ticket: 0 });
       }
       const obj = map.get(v.loja_id)!;
+      obj.total += Number(v.total_liquido || 0);
       obj.vendas += 1;
-      obj.receita += Number(v.total_liquido || 0);
     });
 
     return Array.from(map.values()).map((item) => ({
       ...item,
-      ticket: item.vendas > 0 ? item.receita / item.vendas : 0,
+      ticket: item.vendas > 0 ? item.total / item.vendas : 0,
     }));
   }, [vendasFiltradas, lojas]);
 
-  // Top clientes por valor
-  const topClientes = useMemo(() => {
-    const map = new Map<
-      number,
-      {
-        id: number;
-        nome: string;
-        vendas: number;
-        valor: number;
-        credito: number;
-        ultimaCompra?: string;
-      }
-    >();
+  const topClientes = useMemo<TopClienteItem[]>(() => {
+    const map = new Map<number, { nome: string; total: number; vendas: number; ticket: number }>();
 
     vendasFiltradas.forEach((v) => {
       if (!v.id_cliente) return;
       const cliente = clientes.find((c) => c.id === v.id_cliente);
-      const nome = cliente?.nome || v.cliente_nome || "Cliente sem nome";
+      const nomeCliente = cliente?.nome || v.cliente_nome || `Cliente ${v.id_cliente}`;
 
       if (!map.has(v.id_cliente)) {
-        map.set(v.id_cliente, {
-          id: v.id_cliente,
-          nome,
-          vendas: 0,
-          valor: 0,
-          credito: Number(cliente?.credito || 0),
-          ultimaCompra: v.data_venda,
-        });
+        map.set(v.id_cliente, { nome: nomeCliente, total: 0, vendas: 0, ticket: 0 });
       }
       const obj = map.get(v.id_cliente)!;
+      obj.total += Number(v.total_liquido || 0);
       obj.vendas += 1;
-      obj.valor += Number(v.total_liquido || 0);
-
-      // Atualizar última compra
-      if (new Date(v.data_venda) > new Date(obj.ultimaCompra || "")) {
-        obj.ultimaCompra = v.data_venda;
-      }
     });
 
     return Array.from(map.values())
-      .sort((a, b) => b.valor - a.valor)
-      .slice(0, 8);
+      .map((item) => ({
+        ...item,
+        ticket: item.vendas > 0 ? item.total / item.vendas : 0,
+      }))
+      .sort((a, b) => b.total - a.total);
   }, [vendasFiltradas, clientes]);
 
-  // Performance vendedores
-  const topVendedores = useMemo(() => {
-    const map = new Map<
-      string,
-      {
-        id: string;
-        nome: string;
-        vendas: number;
-        receita: number;
-        foto?: string;
-        ordens?: number;
-      }
-    >();
+  const topVendedores = useMemo<TopVendedorItem[]>(() => {
+    const map = new Map<string, { nome: string; total: number; vendas: number; ticket: number }>();
 
     vendasFiltradas.forEach((v) => {
       if (!v.id_usuario) return;
       const usuario = usuarios.find((u) => u.uuid === v.id_usuario);
-      const nome = usuario?.nome || usuario?.email || v.id_usuario.slice(0, 8);
+      const nomeUsuario = usuario?.nome || `Usuário ${v.id_usuario}`;
 
       if (!map.has(v.id_usuario)) {
-        map.set(v.id_usuario, {
-          id: v.id_usuario,
-          nome,
-          vendas: 0,
-          receita: 0,
-          foto: usuario?.fotourl?.[0],
-          ordens: ordensFiltradasPeriodo.filter(
-            (o) => o.tecnico_responsavel === nome
-          ).length,
-        });
+        map.set(v.id_usuario, { nome: nomeUsuario, total: 0, vendas: 0, ticket: 0 });
       }
       const obj = map.get(v.id_usuario)!;
+      obj.total += Number(v.total_liquido || 0);
       obj.vendas += 1;
-      obj.receita += Number(v.total_liquido || 0);
     });
 
     return Array.from(map.values())
-      .sort((a, b) => b.receita - a.receita)
-      .slice(0, 8);
-  }, [vendasFiltradas, usuarios, ordensFiltradasPeriodo]);
+      .map((item) => ({
+        ...item,
+        ticket: item.vendas > 0 ? item.total / item.vendas : 0,
+      }))
+      .sort((a, b) => b.total - a.total);
+  }, [vendasFiltradas, usuarios]);
 
-  // Análise de estoque
-  const analiseEstoque = useMemo(() => {
-    const totalItens = estoque.length;
-    const valorEstoque = estoque.reduce((acc, item) => {
+  const estoqueInfo = useMemo<EstoqueInfo>(() => {
+    const valorTotal = estoque.reduce((acc, item) => {
       const quantidadeTotal = estoqueLojas
         .filter((el) => el.produto_id === item.id)
-        .reduce((sum, el) => sum + Number(el.quantidade || 0), 0);
+        .reduce((sum, el) => sum + el.quantidade, 0);
       return acc + quantidadeTotal * Number(item.preco_compra || 0);
     }, 0);
 
-    const itensCriticos = estoque.filter((item) => {
-      const quantidadeTotal = estoqueLojas
-        .filter((el) => el.produto_id === item.id)
-        .reduce((sum, el) => sum + Number(el.quantidade || 0), 0);
-      return quantidadeTotal <= Number(item.minimo || 0);
-    });
+    const totalProdutos = estoque.length;
 
-    const itensZerados = estoque.filter((item) => {
+    const produtosAbaixoMinimo = estoque.filter((item) => {
       const quantidadeTotal = estoqueLojas
         .filter((el) => el.produto_id === item.id)
-        .reduce((sum, el) => sum + Number(el.quantidade || 0), 0);
+        .reduce((sum, el) => sum + el.quantidade, 0);
+      return quantidadeTotal <= Number(item.minimo || 0);
+    }).length;
+
+    const produtosSemEstoque = estoque.filter((item) => {
+      const quantidadeTotal = estoqueLojas
+        .filter((el) => el.produto_id === item.id)
+        .reduce((sum, el) => sum + el.quantidade, 0);
       return quantidadeTotal === 0;
-    });
+    }).length;
 
     return {
-      totalItens,
-      valorEstoque,
-      itensCriticos: itensCriticos.length,
-      itensZerados: itensZerados.length,
-      itensDetalhados: itensCriticos.slice(0, 10),
+      valorTotal,
+      totalProdutos,
+      produtosAbaixoMinimo,
+      produtosSemEstoque,
     };
   }, [estoque, estoqueLojas]);
 
-  // Status das ordens
-  const statusOrdens = useMemo(() => {
-    const map = new Map<
-      string,
-      { status: string; total: number; valor: number }
-    >();
-    ordensFiltradasPeriodo.forEach((o) => {
-      const status = (o.status || "Sem status").trim();
-      if (!map.has(status)) {
-        map.set(status, { status, total: 0, valor: 0 });
-      }
-      const obj = map.get(status)!;
-      obj.total += 1;
-      obj.valor += Number(o.valor || 0);
-    });
+  function handleExportarPDF() {
+    if (!canExportarDados) {
+      toast.error("Você não possui permissão para exportar dados.");
+      return;
+    }
 
-    return Array.from(map.values()).sort((a, b) => b.total - a.total);
-  }, [ordensFiltradasPeriodo]);
-
-  // Transferências pendentes
-  const transferenciasPendentes = useMemo(() => {
-    return transferencias.filter((t) => t.status === "pendente").length;
-  }, [transferencias]);
+    try {
+      DashboardPDFGenerator.gerar(
+        { inicio: dateStart, fim: dateEnd },
+        kpis,
+        produtosVendidos,
+        formasPagamento,
+        vendasPorLoja,
+        topClientes,
+        topVendedores,
+        estoqueInfo
+      );
+      toast.success("Relatório exportado com sucesso!");
+    } catch (error) {
+      console.error("Erro ao exportar PDF:", error);
+      toast.error("Erro ao exportar relatório.");
+    }
+  }
 
   function fmtBRL(valor: number): string {
     return valor.toLocaleString("pt-BR", {
@@ -607,53 +430,15 @@ export default function DashboardPage() {
     });
   }
 
-  function fmtDate(date: string): string {
-    return new Date(date).toLocaleDateString("pt-BR");
-  }
-
-  // Tooltip customizado
-  const CustomTooltip = (props: any) => {
-    const { active, payload, label } = props;
-    if (!active || !payload || !payload.length) return null;
-
-    return (
-      <div className="rounded-lg border bg-background/95 backdrop-blur-sm px-3 py-2 shadow-lg">
-        <p className="font-semibold text-sm mb-1">{label}</p>
-        {payload.map((p: any, i: number) => (
-          <div key={i} className="flex items-center gap-2 text-xs">
-            <div
-              className="w-2 h-2 rounded-full"
-              style={{ backgroundColor: p.color }}
-            />
-            <span>{p.name}: </span>
-            <span className="font-medium">
-              {typeof p.value === "number" ? fmtBRL(p.value) : p.value}
-            </span>
-          </div>
-        ))}
-      </div>
-    );
-  };
-
   if (!canViewDashboard) {
     return (
       <div className="container mx-auto p-6">
-        <div className="flex items-center gap-3 mb-4">
-          <ArrowTrendingUpIcon className="w-8 h-8 text-danger" />
-          <div>
-            <h1 className="text-3xl font-bold">Dashboard</h1>
-            <p className="text-default-500">Visão geral operacional</p>
-          </div>
-        </div>
         <Card className="border-danger-200">
           <CardBody className="text-center py-12">
             <ExclamationTriangleIcon className="w-16 h-16 text-danger mx-auto mb-4" />
             <h2 className="text-xl font-semibold mb-2">Acesso Negado</h2>
-            <p className="text-danger text-sm mb-4">
+            <p className="text-danger text-sm">
               Você não possui permissão para visualizar o dashboard.
-            </p>
-            <p className="text-default-500 text-xs">
-              Entre em contato com o administrador para solicitar acesso.
             </p>
           </CardBody>
         </Card>
@@ -661,638 +446,217 @@ export default function DashboardPage() {
     );
   }
 
-  function handleExportData() {
-    if (!canExportarDados) {
-      alert("Você não possui permissão para exportar dados.");
-      return;
-    }
-    console.log("Exportando dados...");
+  if (loading) {
+    return (
+      <div className="container mx-auto p-6">
+        <div className="flex flex-col justify-center items-center h-96">
+          <Spinner size="lg" />
+          <p className="mt-4 text-default-500">Carregando dashboard...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="container mx-auto p-6 flex flex-col gap-6">
+    <div className="container mx-auto p-6 max-w-7xl">
+      <Toaster position="top-right" />
+
       {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-8">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <ChartBarIcon className="w-6 h-6 text-primary" />
+          <h1 className="text-3xl font-bold flex items-center gap-2">
+            <ChartBarIcon className="w-8 h-8 text-primary" />
             Dashboard Executivo
           </h1>
-          <p className="text-sm text-default-500">
-            Visão completa do negócio • Período:{" "}
-            {dateStart ? fmtDate(dateStart) : "Início"} até{" "}
-            {dateEnd ? fmtDate(dateEnd) : "Hoje"}
+          <p className="text-default-500 mt-1">
+            Visão completa e estratégica do negócio
           </p>
         </div>
 
-        <div className="flex gap-2 flex-wrap">
-          <div className="flex gap-1">
-            {["7", "30", "90"].map((period) => (
-              <Button
-                key={period}
-                size="sm"
-                variant={selectedPeriod === period ? "solid" : "flat"}
-                onPress={() => {
-                  setSelectedPeriod(period);
-                  setDateStart("");
-                  setDateEnd("");
-                }}
-              >
-                {period}d
-              </Button>
-            ))}
-          </div>
-
+        <div className="flex gap-2">
           <Button
-            variant={showFilters ? "solid" : "flat"}
-            size="sm"
-            startContent={<FunnelIcon className="w-4 h-4" />}
-            onPress={() => setShowFilters(!showFilters)}
+            color="primary"
+            variant="shadow"
+            startContent={<ArrowDownTrayIcon className="w-5 h-5" />}
+            onPress={handleExportarPDF}
+            isDisabled={!canExportarDados}
           >
-            Filtros
+            Exportar PDF
           </Button>
-
-          {canExportarDados && (
-            <Button
-              color="success"
-              variant="flat"
-              size="sm"
-              startContent={<ArrowDownTrayIcon className="w-4 h-4" />}
-              onPress={handleExportData}
-            >
-              Exportar
-            </Button>
-          )}
+          <Button
+            color="default"
+            variant="flat"
+            startContent={<ArrowTrendingUpIcon className="w-5 h-5" />}
+            onPress={loadData}
+          >
+            Atualizar
+          </Button>
         </div>
       </div>
 
-      {/* Filtros */}
-      {showFilters && (
+      {/* Filtro de Período */}
+      <FiltroPeriodo
+        dateStart={dateStart}
+        dateEnd={dateEnd}
+        onDateStartChange={setDateStart}
+        onDateEndChange={setDateEnd}
+        selectedPeriod={selectedPeriod}
+        onPeriodChange={setSelectedPeriod}
+        showFilters={showFilters}
+        onToggleFilters={() => setShowFilters(!showFilters)}
+      />
+
+      {/* KPIs Principais - Grid 4 colunas */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <KPICard
+          title="Total de Vendas"
+          value={kpis.totalVendas}
+          icon={<ShoppingCartIcon className="w-8 h-8" />}
+          color="primary"
+          subtitle={`${fmtBRL(kpis.receita)} em receita`}
+        />
+        <KPICard
+          title="Receita Líquida"
+          value={fmtBRL(kpis.receita)}
+          icon={<CurrencyDollarIcon className="w-8 h-8" />}
+          color="success"
+          subtitle={`Ticket: ${fmtBRL(kpis.ticket)}`}
+        />
+        <KPICard
+          title="A Receber"
+          value={fmtBRL(kpis.aReceber)}
+          icon={<ClockIcon className="w-8 h-8" />}
+          color="warning"
+          subtitle={`${kpis.fiadoVencido} fiados vencidos`}
+        />
+        <KPICard
+          title="Clientes Ativos"
+          value={kpis.clientesAtivos}
+          icon={<UsersIcon className="w-8 h-8" />}
+          color="primary"
+          subtitle={`${kpis.clientesNovos} novos no período`}
+        />
+      </div>
+
+      {/* Segunda linha de KPIs */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <KPICard
+          title="Ordens de Serviço"
+          value={kpis.totalOrdens}
+          icon={<WrenchScrewdriverIcon className="w-8 h-8" />}
+          color="primary"
+          subtitle={`${kpis.ordensConcluidas} concluídas`}
+        />
+        <KPICard
+          title="Valor em Ordens"
+          value={fmtBRL(kpis.valorOrdens)}
+          icon={<CurrencyDollarIcon className="w-8 h-8" />}
+          color="success"
+          subtitle={`Ticket: ${fmtBRL(kpis.ticketOrdem)}`}
+        />
+        <KPICard
+          title="Valor em Estoque"
+          value={fmtBRL(estoqueInfo.valorTotal)}
+          icon={<Battery100Icon className="w-8 h-8" />}
+          color="default"
+          subtitle={`${estoqueInfo.totalProdutos} produtos`}
+        />
+        <KPICard
+          title="Taxa de Devolução"
+          value={`${kpis.taxaDevolucao.toFixed(1)}%`}
+          icon={<ArrowTrendingUpIcon className="w-8 h-8" />}
+          color={kpis.taxaDevolucao > 5 ? "danger" : "success"}
+          subtitle={`${kpis.totalDevolucoes} devoluções`}
+        />
+      </div>
+
+      {/* Gráficos - Grid 2 colunas */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        <VendasChart data={chartData} />
+        <ProdutosChart data={produtosVendidos} />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        <FormasPagamentoChart data={formasPagamento} />
+        <OrdensStatus ordens={ordensFiltradasPeriodo} />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        <EstoqueStatus info={estoqueInfo} />
         <Card>
-          <CardBody className="flex flex-col gap-4 sm:flex-row">
-            <Input
-              label="Data Início"
-              type="date"
-              size="sm"
-              value={dateStart}
-              onChange={(e) => setDateStart(e.target.value)}
-              className="max-w-xs"
-            />
-            <Input
-              label="Data Fim"
-              type="date"
-              size="sm"
-              value={dateEnd}
-              onChange={(e) => setDateEnd(e.target.value)}
-              className="max-w-xs"
-            />
-            <Button
-              variant="flat"
-              size="sm"
-              onPress={() => {
-                setDateStart("");
-                setDateEnd("");
-                setSelectedPeriod("30");
-              }}
-            >
-              Limpar
-            </Button>
+          <CardBody>
+            <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+              🏆 Top 5 Clientes
+            </h3>
+            <div className="space-y-3">
+              {topClientes.slice(0, 5).map((cliente, index) => (
+                <div
+                  key={index}
+                  className="flex items-center justify-between p-3 bg-default-50 rounded-lg"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-primary-100 text-primary-600 rounded-full flex items-center justify-center font-bold text-sm">
+                      {index + 1}
+                    </div>
+                    <div>
+                      <p className="font-semibold text-sm">{cliente.nome}</p>
+                      <p className="text-xs text-default-500">
+                        {cliente.vendas} compras
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-bold text-success-600">
+                      {fmtBRL(cliente.total)}
+                    </p>
+                    <p className="text-xs text-default-500">
+                      Ticket: {fmtBRL(cliente.ticket)}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
           </CardBody>
         </Card>
-      )}
+      </div>
 
-      {loading ? (
-        <div className="flex justify-center py-24">
-          <Spinner size="lg" />
-        </div>
-      ) : (
-        <>
-          {/* KPIs Principais */}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
-            <Card className="bg-gradient-to-br from-blue-500/10 to-blue-600/5">
-              <CardBody className="p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <ShoppingCartIcon className="w-5 h-5 text-blue-500" />
-                  <Chip size="sm" variant="flat" color="primary">
-                    {kpis.totalVendas}
-                  </Chip>
-                </div>
-                <p className="text-xs text-default-500 uppercase tracking-wide">
-                  Vendas
-                </p>
-                <p className="text-lg font-bold">{fmtBRL(kpis.receita)}</p>
-                <p className="text-xs text-default-400">
-                  Ticket: {fmtBRL(kpis.ticket)}
-                </p>
-              </CardBody>
-            </Card>
-
-            <Card className="bg-gradient-to-br from-green-500/10 to-green-600/5">
-              <CardBody className="p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <CurrencyDollarIcon className="w-5 h-5 text-green-500" />
-                  <Chip size="sm" variant="flat" color="success">
-                    {kpis.margemDesconto.toFixed(1)}%
-                  </Chip>
-                </div>
-                <p className="text-xs text-default-500 uppercase tracking-wide">
-                  Receita Bruta
-                </p>
-                <p className="text-lg font-bold">{fmtBRL(kpis.receitaBruta)}</p>
-                <p className="text-xs text-default-400">
-                  Desc: {fmtBRL(kpis.descontos)}
-                </p>
-              </CardBody>
-            </Card>
-
-            <Card className="bg-gradient-to-br from-orange-500/10 to-orange-600/5">
-              <CardBody className="p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <ClockIcon className="w-5 h-5 text-orange-500" />
-                  <Badge content={kpis.fiadoVencido} color="danger" size="sm">
-                    <div className="w-2 h-2" />
-                  </Badge>
-                </div>
-                <p className="text-xs text-default-500 uppercase tracking-wide">
-                  A Receber
-                </p>
-                <p className="text-lg font-bold text-orange-600">
-                  {fmtBRL(kpis.aReceber)}
-                </p>
-                <p className="text-xs text-default-400">
-                  Pago: {fmtBRL(kpis.valorPago)}
-                </p>
-              </CardBody>
-            </Card>
-
-            <Card className="bg-gradient-to-br from-purple-500/10 to-purple-600/5">
-              <CardBody className="p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <UsersIcon className="w-5 h-5 text-purple-500" />
-                  <Chip size="sm" variant="flat" color="secondary">
-                    {clientes.length}
-                  </Chip>
-                </div>
-                <p className="text-xs text-default-500 uppercase tracking-wide">
-                  Clientes
-                </p>
-                <p className="text-lg font-bold">{kpis.clientesAtivos}</p>
-                <p className="text-xs text-default-400">Ativos no período</p>
-              </CardBody>
-            </Card>
-
-            <Card className="bg-gradient-to-br from-indigo-500/10 to-indigo-600/5">
-              <CardBody className="p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <WrenchScrewdriverIcon className="w-5 h-5 text-indigo-500" />
-                  <Badge
-                    content={kpis.ordensAtrasadas}
-                    color="danger"
-                    size="sm"
-                  >
-                    <Chip size="sm" variant="flat">
-                      {kpis.ordensAbertas}
-                    </Chip>
-                  </Badge>
-                </div>
-                <p className="text-xs text-default-500 uppercase tracking-wide">
-                  Ordens
-                </p>
-                <p className="text-lg font-bold">{ordens.length}</p>
-                <p className="text-xs text-default-400">
-                  Abertas: {kpis.ordensAbertas}
-                </p>
-              </CardBody>
-            </Card>
-
-            <Card className="bg-gradient-to-br from-red-500/10 to-red-600/5">
-              <CardBody className="p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <ArrowUturnLeftIcon className="w-5 h-5 text-red-500" />
-                  <Chip size="sm" variant="flat" color="danger">
-                    {devolucoes.length}
-                  </Chip>
-                </div>
-                <p className="text-xs text-default-500 uppercase tracking-wide">
-                  Devoluções
-                </p>
-                <p className="text-lg font-bold">
-                  {fmtBRL(kpis.totalDevolucoes)}
-                </p>
-                <p className="text-xs text-default-400">
-                  Créd: {fmtBRL(kpis.creditoGerado)}
-                </p>
-              </CardBody>
-            </Card>
-
-            <Card className="bg-gradient-to-br from-teal-500/10 to-teal-600/5">
-              <CardBody className="p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <BuildingStorefrontIcon className="w-5 h-5 text-teal-500" />
-                  <Chip size="sm" variant="flat" color="primary">
-                    {lojas.length}
-                  </Chip>
-                </div>
-                <p className="text-xs text-default-500 uppercase tracking-wide">
-                  Lojas
-                </p>
-                <p className="text-lg font-bold">
-                  {fmtBRL(analiseEstoque.valorEstoque)}
-                </p>
-                <p className="text-xs text-default-400">Valor estoque</p>
-              </CardBody>
-            </Card>
-
-            <Card className="bg-gradient-to-br from-amber-500/10 to-amber-600/5">
-              <CardBody className="p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <TruckIcon className="w-5 h-5 text-amber-500" />
-                  <Badge
-                    content={transferenciasPendentes}
-                    color="warning"
-                    size="sm"
-                  >
-                    <div className="w-2 h-2" />
-                  </Badge>
-                </div>
-                <p className="text-xs text-default-500 uppercase tracking-wide">
-                  Estoque
-                </p>
-                <p className="text-lg font-bold">{analiseEstoque.totalItens}</p>
-                <p className="text-xs text-default-400">
-                  Críticos: {analiseEstoque.itensCriticos}
-                </p>
-              </CardBody>
-            </Card>
-          </div>
-
-          {canViewRelatorios && (
-            <>
-              {/* Gráficos Principais */}
-              <div className="grid gap-6 lg:grid-cols-3">
-                <Card className="lg:col-span-2">
-                  <CardBody className="p-4">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="font-semibold">Evolução Financeira</h3>
-                      <Chip size="sm" variant="flat">
-                        {receitaTemporal.length} dias
-                      </Chip>
+      {/* Top Vendedores */}
+      {topVendedores.length > 0 && (
+        <Card className="mb-6">
+          <CardBody>
+            <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+              💼 Top 10 Vendedores
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {topVendedores.slice(0, 10).map((vendedor, index) => (
+                <div
+                  key={index}
+                  className="flex items-center justify-between p-4 bg-gradient-to-r from-primary-50 to-primary-100 border border-primary-200 rounded-lg"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-primary-500 text-white rounded-full flex items-center justify-center font-bold">
+                      {index + 1}
                     </div>
-                    <div className="h-80">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <ComposedChart data={receitaTemporal}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="data" fontSize={11} />
-                          <YAxis
-                            tickFormatter={(v) => (v / 1000).toFixed(0) + "k"}
-                            fontSize={11}
-                          />
-                          <RTooltip content={<CustomTooltip />} />
-                          <Bar dataKey="vendas" fill="#3B82F6" opacity={0.3} />
-                          <Line
-                            type="monotone"
-                            dataKey="receita"
-                            stroke="#10B981"
-                            strokeWidth={3}
-                            dot={false}
-                          />
-                          <Line
-                            type="monotone"
-                            dataKey="bruto"
-                            stroke="#8B5CF6"
-                            strokeWidth={2}
-                            strokeDasharray="5 5"
-                            dot={false}
-                          />
-                          <Area
-                            type="monotone"
-                            dataKey="devolucoes"
-                            stackId="1"
-                            stroke="#F43F5E"
-                            fill="#F43F5E"
-                            fillOpacity={0.3}
-                          />
-                        </ComposedChart>
-                      </ResponsiveContainer>
+                    <div>
+                      <p className="font-semibold">{vendedor.nome}</p>
+                      <p className="text-xs text-default-600">
+                        {vendedor.vendas} vendas
+                      </p>
                     </div>
-                  </CardBody>
-                </Card>
-
-                <Card>
-                  <CardBody className="p-4">
-                    <h3 className="font-semibold mb-4">Formas de Pagamento</h3>
-                    <div className="h-80">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={receitaPorPagamento}
-                            dataKey="value"
-                            nameKey="name"
-                            innerRadius={60}
-                            outerRadius={100}
-                            paddingAngle={3}
-                            stroke="none"
-                          >
-                            {receitaPorPagamento.map((_, i) => (
-                              <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                            ))}
-                          </Pie>
-                          <RTooltip content={<CustomTooltip />} />
-                          <Legend />
-                        </PieChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </CardBody>
-                </Card>
-              </div>
-
-              {/* Performance por Loja */}
-              {performanceLojas.length > 0 && (
-                <Card>
-                  <CardBody className="p-4">
-                    <h3 className="font-semibold mb-4">Performance por Loja</h3>
-                    <div className="h-64">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={performanceLojas}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="loja" />
-                          <YAxis tickFormatter={(v) => fmtBRL(v)} />
-                          <RTooltip content={<CustomTooltip />} />
-                          <Bar dataKey="receita" fill="#3B82F6" />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </CardBody>
-                </Card>
-              )}
-
-              {/* Top Rankings */}
-              <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
-                {/* Top Produtos */}
-                <Card>
-                  <CardBody className="p-4">
-                    <h3 className="font-semibold mb-4">Top Produtos (Valor)</h3>
-                    <div className="space-y-3 max-h-80 overflow-y-auto">
-                      {topProdutos.map((produto, idx) => (
-                        <div
-                          key={produto.nome}
-                          className="flex items-center justify-between p-2 rounded-lg bg-default-50 dark:bg-default-100/50"
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center text-white text-xs font-bold">
-                              {idx + 1}
-                            </div>
-                            <div>
-                              <p className="text-sm font-medium truncate max-w-32">
-                                {produto.nome}
-                              </p>
-                              <p className="text-xs text-default-500">
-                                Qtd: {produto.quantidade}
-                              </p>
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-sm font-semibold">
-                              {fmtBRL(produto.valor)}
-                            </p>
-                            {produto.margem && (
-                              <p className="text-xs text-success">
-                                {produto.margem.toFixed(1)}% margem
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </CardBody>
-                </Card>
-
-                {/* Top Clientes */}
-                <Card>
-                  <CardBody className="p-4">
-                    <h3 className="font-semibold mb-4">Top Clientes</h3>
-                    <div className="space-y-3 max-h-80 overflow-y-auto">
-                      {topClientes.map((cliente, idx) => (
-                        <div
-                          key={cliente.id}
-                          className="flex items-center justify-between p-2 rounded-lg bg-default-50 dark:bg-default-100/50"
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center text-white text-xs font-bold">
-                              {idx + 1}
-                            </div>
-                            <div>
-                              <p className="text-sm font-medium truncate max-w-32">
-                                {cliente.nome}
-                              </p>
-                              <p className="text-xs text-default-500">
-                                {cliente.vendas} compras
-                              </p>
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-sm font-semibold">
-                              {fmtBRL(cliente.valor)}
-                            </p>
-                            {cliente.credito > 0 && (
-                              <p className="text-xs text-warning">
-                                Créd: {fmtBRL(cliente.credito)}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </CardBody>
-                </Card>
-
-                {/* Top Vendedores */}
-                <Card>
-                  <CardBody className="p-4">
-                    <h3 className="font-semibold mb-4">Top Vendedores</h3>
-                    <div className="space-y-3 max-h-80 overflow-y-auto">
-                      {topVendedores.map((vendedor, idx) => (
-                        <div
-                          key={vendedor.id}
-                          className="flex items-center justify-between p-2 rounded-lg bg-default-50 dark:bg-default-100/50"
-                        >
-                          <div className="flex items-center gap-3">
-                            {vendedor.foto ? (
-                              <Avatar src={vendedor.foto} size="sm" />
-                            ) : (
-                              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-xs font-bold">
-                                {vendedor.nome.slice(0, 2).toUpperCase()}
-                              </div>
-                            )}
-                            <div>
-                              <p className="text-sm font-medium truncate max-w-32">
-                                {vendedor.nome}
-                              </p>
-                              <p className="text-xs text-default-500">
-                                {vendedor.vendas} vendas •{" "}
-                                {vendedor.ordens || 0} OS
-                              </p>
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-sm font-semibold">
-                              {fmtBRL(vendedor.receita)}
-                            </p>
-                            <p className="text-xs text-default-500">
-                              {vendedor.vendas > 0
-                                ? fmtBRL(vendedor.receita / vendedor.vendas)
-                                : "-"}{" "}
-                              ticket
-                            </p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </CardBody>
-                </Card>
-              </div>
-            </>
-          )}
-
-          {/* Status Cards */}
-          <div className="grid gap-6 lg:grid-cols-3">
-            {/* Estoque Crítico */}
-            <Card>
-              <CardBody className="p-4">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-semibold flex items-center gap-2">
-                    <ExclamationTriangleIcon className="w-5 h-5 text-warning" />
-                    Estoque Crítico
-                  </h3>
-                  <Chip size="sm" color="warning" variant="flat">
-                    {analiseEstoque.itensCriticos} itens
-                  </Chip>
-                </div>
-                <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {analiseEstoque.itensDetalhados.map((item) => {
-                    const quantidadeTotal = estoqueLojas
-                      .filter((el) => el.produto_id === item.id)
-                      .reduce((sum, el) => sum + Number(el.quantidade || 0), 0);
-
-                    return (
-                      <div
-                        key={item.id}
-                        className="flex items-center justify-between p-2 rounded bg-warning-50 dark:bg-warning-100/10"
-                      >
-                        <div>
-                          <p className="text-sm font-medium truncate">
-                            {item.descricao || "Item sem nome"}
-                          </p>
-                          <p className="text-xs text-default-500">
-                            {item.marca} {item.modelo}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-sm font-semibold">
-                            {quantidadeTotal}
-                          </p>
-                          <p className="text-xs text-warning">
-                            Min: {item.minimo}
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {analiseEstoque.itensCriticos === 0 && (
-                    <p className="text-sm text-default-500 text-center py-4">
-                      ✅ Nenhum item crítico
+                  </div>
+                  <div className="text-right">
+                    <p className="font-bold text-primary-700">
+                      {fmtBRL(vendedor.total)}
                     </p>
-                  )}
-                </div>
-              </CardBody>
-            </Card>
-
-            {/* Status Ordens */}
-            <Card>
-              <CardBody className="p-4">
-                <h3 className="font-semibold mb-4">Status das Ordens</h3>
-                <div className="space-y-3">
-                  {statusOrdens.map((status) => (
-                    <div
-                      key={status.status}
-                      className="flex items-center justify-between"
-                    >
-                      <span className="text-sm">{status.status}</span>
-                      <div className="flex items-center gap-2">
-                        <Chip size="sm" variant="flat">
-                          {status.total}
-                        </Chip>
-                        <span className="text-xs text-default-500">
-                          {fmtBRL(status.valor)}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {kpis.ordensAtrasadas > 0 && (
-                  <div className="mt-4 p-3 rounded-lg bg-danger-50 dark:bg-danger-100/10">
-                    <p className="text-sm font-medium text-danger">
-                      ⚠️ {kpis.ordensAtrasadas} ordens atrasadas
+                    <p className="text-xs text-default-600">
+                      {fmtBRL(vendedor.ticket)}
                     </p>
                   </div>
-                )}
-              </CardBody>
-            </Card>
-
-            {/* Resumo Financeiro */}
-            <Card>
-              <CardBody className="p-4">
-                <h3 className="font-semibold mb-4">Resumo Financeiro</h3>
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-default-600">
-                      Receita Bruta
-                    </span>
-                    <span className="font-semibold">
-                      {fmtBRL(kpis.receitaBruta)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-default-600">Descontos</span>
-                    <span className="font-semibold text-orange-600">
-                      -{fmtBRL(kpis.descontos)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-default-600">Devoluções</span>
-                    <span className="font-semibold text-red-600">
-                      -{fmtBRL(kpis.totalDevolucoes)}
-                    </span>
-                  </div>
-                  <hr className="border-default-200" />
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm font-semibold">
-                      Receita Líquida
-                    </span>
-                    <span className="font-bold text-lg text-success">
-                      {fmtBRL(kpis.receita - kpis.totalDevolucoes)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-default-600">A Receber</span>
-                    <span className="font-semibold text-warning">
-                      {fmtBRL(kpis.aReceber)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-default-600">
-                      Crédito Gerado
-                    </span>
-                    <span className="font-semibold text-primary">
-                      {fmtBRL(kpis.creditoGerado)}
-                    </span>
-                  </div>
                 </div>
-              </CardBody>
-            </Card>
-          </div>
-        </>
+              ))}
+            </div>
+          </CardBody>
+        </Card>
       )}
     </div>
   );

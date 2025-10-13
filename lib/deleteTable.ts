@@ -31,6 +31,19 @@ export async function deleteTable(
     usuarioId,
   });
 
+  // Configura o usuario_id na sessão do banco para o trigger usar
+  if (usuarioId) {
+    try {
+      await supabase.rpc("set_config", {
+        setting: "app.current_user_id",
+        value: usuarioId,
+      });
+      console.log("✅ Usuario ID configurado na sessão:", usuarioId);
+    } catch (error) {
+      console.warn("⚠️ Não foi possível configurar usuario_id:", error);
+    }
+  }
+
   // Busca os dados do registro antes de deletar para o log
   let dadosAnteriores: any = null;
   try {
@@ -91,51 +104,8 @@ export async function deleteTable(
 
   console.log("✅ Registro deletado com sucesso");
 
-  // Registra a ação na tabela de logs
-  try {
-    console.log("📝 Tentando registrar log...");
-
-    // Pega informações do navegador se não foram fornecidas
-    const finalIp = ip || null;
-    const finalUserAgent =
-      userAgent ||
-      (typeof navigator !== "undefined" ? navigator.userAgent : null);
-
-    const logData = {
-      usuario_id: usuarioId,
-      acao: `deletar_${table}`,
-      tabela: table,
-      registro_id: typeof id === "string" ? id : String(id),
-      dados_anteriores: dadosAnteriores,
-      dados_novos: null,
-      ip: finalIp,
-      user_agent: finalUserAgent,
-    };
-
-    console.log("📋 Dados do log:", logData);
-
-    const { data: logResult, error: logError } = await supabase
-      .from("logs")
-      .insert(logData)
-      .select();
-
-    if (logError) {
-      console.error("❌ Erro ao inserir log - message:", logError.message);
-      console.error("❌ Erro ao inserir log - details:", logError.details);
-      console.error("❌ Erro ao inserir log - hint:", logError.hint);
-      console.error("❌ Erro ao inserir log - code:", logError.code);
-      console.error("❌ Erro completo:", JSON.stringify(logError, null, 2));
-    } else {
-      console.log("✅ Log registrado com sucesso:", logResult);
-    }
-  } catch (logError) {
-    console.error("❌ Exceção ao registrar log:", logError);
-    console.error(
-      "❌ Exceção stringificada:",
-      JSON.stringify(logError, null, 2)
-    );
-    // Não propaga o erro do log para não quebrar a operação principal
-  }
+  // Log será criado automaticamente pelo trigger do banco de dados
+  // Não é necessário criar log manualmente aqui
 
   return { success: true, id };
 }

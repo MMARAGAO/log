@@ -26,7 +26,36 @@ export async function insertTable(
     table,
     values,
     usuarioId,
+    currentUser,
   });
+
+  // Configura o usuario_id na sessão do banco para o trigger usar
+  if (usuarioId) {
+    try {
+      console.log("🔧 Tentando configurar usuario_id na sessão...", usuarioId);
+      const { data, error } = await supabase.rpc("set_config", {
+        setting: "app.current_user_id",
+        value: usuarioId,
+      });
+
+      if (error) {
+        console.error("❌ ERRO ao configurar usuario_id:", error);
+        console.error("❌ Detalhes do erro:", JSON.stringify(error, null, 2));
+      } else {
+        console.log(
+          "✅ Usuario ID configurado na sessão com sucesso:",
+          usuarioId
+        );
+        console.log("✅ Resposta do RPC:", data);
+      }
+    } catch (error) {
+      console.error("⚠️ EXCEÇÃO ao configurar usuario_id:", error);
+      console.error("⚠️ Detalhes:", JSON.stringify(error, null, 2));
+    }
+  } else {
+    console.warn("⚠️ ATENÇÃO: usuarioId é NULL! Usuário não está logado?");
+    console.warn("⚠️ currentUser:", currentUser);
+  }
 
   let photoUrl = null;
 
@@ -75,6 +104,9 @@ export async function insertTable(
     // Remove a senha e adiciona o uid no objeto antes de inserir na tabela
     const { senha, ...rest } = values;
     insertValues = { ...rest, uuid: uid }; // <-- altere para uuid
+  } else {
+    // Para todas as outras tabelas, adiciona usuario_id automaticamente
+    insertValues = { ...values, usuario_id: usuarioId };
   }
 
   // 3. Inserir registro na tabela (com fotourl se existir)
@@ -94,59 +126,8 @@ export async function insertTable(
 
   console.log("✅ Registro inserido com sucesso:", data);
 
-  // 4. Registra a ação na tabela de logs
-  try {
-    console.log("📝 Tentando registrar log de inserção...");
-
-    // Pega informações do navegador se não foram fornecidas
-    const finalIp = ip || null;
-    const finalUserAgent =
-      userAgent ||
-      (typeof navigator !== "undefined" ? navigator.userAgent : null);
-
-    // Para cada registro inserido (pode ser array)
-    const registrosInseridos = Array.isArray(data) ? data : [data];
-
-    for (const registro of registrosInseridos) {
-      // Identifica o ID do registro inserido
-      const registroId = registro.uuid || registro.id || null;
-
-      const logData = {
-        usuario_id: usuarioId,
-        acao: `criar_${table}`,
-        tabela: table,
-        registro_id: registroId ? String(registroId) : null,
-        dados_anteriores: null, // null porque é uma inserção
-        dados_novos: registro,
-        ip: finalIp,
-        user_agent: finalUserAgent,
-      };
-
-      console.log("📋 Dados do log:", logData);
-
-      const { data: logResult, error: logError } = await supabase
-        .from("logs")
-        .insert(logData)
-        .select();
-
-      if (logError) {
-        console.error("❌ Erro ao inserir log - message:", logError.message);
-        console.error("❌ Erro ao inserir log - details:", logError.details);
-        console.error("❌ Erro ao inserir log - hint:", logError.hint);
-        console.error("❌ Erro ao inserir log - code:", logError.code);
-        console.error("❌ Erro completo:", JSON.stringify(logError, null, 2));
-      } else {
-        console.log("✅ Log registrado com sucesso:", logResult);
-      }
-    }
-  } catch (logError) {
-    console.error("❌ Exceção ao registrar log:", logError);
-    console.error(
-      "❌ Exceção stringificada:",
-      JSON.stringify(logError, null, 2)
-    );
-    // Não propaga o erro do log para não quebrar a operação principal
-  }
+  // 4. Log será criado automaticamente pelo trigger do banco de dados
+  // Não é necessário criar log manualmente aqui
 
   return data;
 }
