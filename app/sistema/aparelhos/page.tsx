@@ -390,10 +390,82 @@ export default function AparelhosPage() {
     iniciarLeituraAutomatica();
   };
 
+  const capturarCodigoBarrasManual = async () => {
+    console.log("📊 Captura manual de código de barras...");
+
+    if (!videoRef.current) {
+      toast.error("Erro: Câmera não inicializada");
+      return;
+    }
+
+    setIsScanningIMEI(true);
+    toast.loading("Lendo código de barras...", { id: "scanning" });
+
+    try {
+      if (!barcodeReaderRef.current) {
+        barcodeReaderRef.current = new BrowserMultiFormatReader();
+      }
+
+      // Leitura única (não contínua)
+      const result = await barcodeReaderRef.current.decodeOnceFromVideoDevice(
+        undefined,
+        videoRef.current
+      );
+
+      const codigoBarras = result.getText();
+      console.log("📊 Código detectado:", codigoBarras);
+
+      // Filtrar apenas códigos com 15 dígitos
+      if (/^\d{15}$/.test(codigoBarras)) {
+        console.log("✅ Código de 15 dígitos encontrado:", codigoBarras);
+
+        // Capturar imagem para preview
+        if (canvasRef.current && videoRef.current) {
+          const video = videoRef.current;
+          const canvas = canvasRef.current;
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          const context = canvas.getContext("2d");
+          if (context) {
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            setLastCapturedImage(canvas.toDataURL("image/png"));
+          }
+        }
+
+        setLastDetectedText(`✓ IMEI detectado:\n${codigoBarras}`);
+
+        // Preencher no campo IMEI
+        setFormCadastro((prev) => ({ ...prev, imei: codigoBarras }));
+
+        toast.success(`IMEI ${codigoBarras} detectado!`, { id: "scanning" });
+
+        // Fechar modal após sucesso
+        setTimeout(() => fecharCameraIMEI(), 1000);
+      } else {
+        console.log(`⚠️ Código ignorado (não tem 15 dígitos): ${codigoBarras}`);
+        setLastDetectedText(
+          `⚠️ Código encontrado mas não tem 15 dígitos:\n${codigoBarras}\n\nTente novamente posicionando apenas o IMEI.`
+        );
+        toast.error("Código encontrado mas não é um IMEI válido", {
+          id: "scanning",
+        });
+      }
+    } catch (error: any) {
+      console.error("❌ Erro ao ler código de barras:", error);
+      if (error.name === "NotFoundException") {
+        toast.error("Nenhum código de barras encontrado", { id: "scanning" });
+      } else {
+        toast.error("Erro ao ler código de barras", { id: "scanning" });
+      }
+    } finally {
+      setIsScanningIMEI(false);
+    }
+  };
+
   const capturarELerIMEI = async () => {
     // Verificar qual modo está ativo
     if (scanMode === "barcode") {
-      return lerCodigoBarras();
+      return capturarCodigoBarrasManual();
     }
 
     console.log("🎯 Iniciando captura de IMEI com OCR...");
@@ -3912,47 +3984,52 @@ export default function AparelhosPage() {
                   </Chip>
                 </div>
 
-                {/* Botão de captura estilo câmera de celular - apenas no modo OCR */}
-                {scanMode === "ocr" && (
-                  <div className="absolute bottom-8 inset-x-0 flex items-center justify-center">
-                    {/* Botão de reset (miniatura à esquerda) - posicionado absolutamente */}
-                    {lastCapturedImage && (
-                      <button
-                        onClick={() => {
-                          setLastCapturedImage(null);
-                          setLastDetectedText("");
-                          toast.success("Pronto para nova captura!");
-                        }}
-                        className="absolute left-8 w-12 h-12 rounded-lg overflow-hidden border-2 border-white/80 shadow-lg backdrop-blur-sm bg-white/20 hover:scale-110 transition-transform"
-                      >
-                        <img
-                          src={lastCapturedImage}
-                          alt="Última captura"
-                          className="w-full h-full object-cover"
-                        />
-                      </button>
-                    )}
-
-                    {/* Botão principal de captura - estilo iPhone - sempre centralizado */}
+                {/* Botão de captura estilo câmera de celular */}
+                <div className="absolute bottom-8 inset-x-0 flex items-center justify-center">
+                  {/* Botão de reset (miniatura à esquerda) - posicionado absolutamente */}
+                  {lastCapturedImage && (
                     <button
-                      onClick={capturarELerIMEI}
-                      disabled={isScanningIMEI}
-                      className="relative group disabled:opacity-50 disabled:cursor-not-allowed"
+                      onClick={() => {
+                        setLastCapturedImage(null);
+                        setLastDetectedText("");
+                        toast.success("Pronto para nova captura!");
+                      }}
+                      className="absolute left-8 w-12 h-12 rounded-lg overflow-hidden border-2 border-white/80 shadow-lg backdrop-blur-sm bg-white/20 hover:scale-110 transition-transform"
                     >
-                      {/* Anel externo */}
-                      <div className="w-20 h-20 rounded-full border-4 border-white/90 shadow-2xl backdrop-blur-md bg-white/10 flex items-center justify-center group-hover:scale-110 transition-transform">
-                        {/* Círculo interno */}
-                        <div className="w-16 h-16 rounded-full bg-white shadow-inner flex items-center justify-center group-active:scale-90 transition-transform">
-                          {isScanningIMEI ? (
-                            <Spinner size="sm" color="default" />
-                          ) : (
-                            <div className="w-14 h-14 rounded-full bg-white border-2 border-gray-200"></div>
-                          )}
-                        </div>
-                      </div>
+                      <img
+                        src={lastCapturedImage}
+                        alt="Última captura"
+                        className="w-full h-full object-cover"
+                      />
                     </button>
-                  </div>
-                )}
+                  )}
+
+                  {/* Botão principal de captura - estilo iPhone - sempre centralizado */}
+                  <button
+                    onClick={capturarELerIMEI}
+                    disabled={isScanningIMEI}
+                    className="relative group disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {/* Anel externo */}
+                    <div className="w-20 h-20 rounded-full border-4 border-white/90 shadow-2xl backdrop-blur-md bg-white/10 flex items-center justify-center group-hover:scale-110 transition-transform">
+                      {/* Círculo interno */}
+                      <div className="w-16 h-16 rounded-full bg-white shadow-inner flex items-center justify-center group-active:scale-90 transition-transform">
+                        {isScanningIMEI ? (
+                          <Spinner size="sm" color="default" />
+                        ) : (
+                          <div className="w-14 h-14 rounded-full bg-white border-2 border-gray-200"></div>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+
+                  {/* Texto de ajuda no modo barcode */}
+                  {scanMode === "barcode" && !isScanningIMEI && (
+                    <div className="absolute bottom-[-40px] left-1/2 transform -translate-x-1/2 text-white text-sm text-center backdrop-blur-sm bg-black/30 px-4 py-2 rounded-full">
+                      Escaneando... ou clique para capturar
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Resultado do OCR */}
