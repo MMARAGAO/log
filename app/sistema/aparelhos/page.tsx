@@ -71,6 +71,7 @@ import type {
 import {
   formatarIMEI,
   validarIMEI,
+  consultarIMEI,
   calcularValorFinal,
   formatarMoeda,
   formatarDataHora,
@@ -181,6 +182,10 @@ export default function AparelhosPage() {
   const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
   const [isScanningIMEI, setIsScanningIMEI] = useState(false);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const [lastCapturedImage, setLastCapturedImage] = useState<string | null>(
+    null
+  );
+  const [lastDetectedText, setLastDetectedText] = useState<string>("");
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -260,13 +265,16 @@ export default function AparelhosPage() {
       }, 100);
     } catch (error: any) {
       console.error("Erro ao acessar câmera:", error);
-      
+
       // Mensagens específicas para diferentes erros
       if (error.name === "NotAllowedError") {
         toast.error("Permissão de câmera negada. Habilite nas configurações.");
       } else if (error.name === "NotFoundError") {
         toast.error("Nenhuma câmera encontrada no dispositivo.");
-      } else if (error.name === "NotSupportedError" || error.name === "TypeError") {
+      } else if (
+        error.name === "NotSupportedError" ||
+        error.name === "TypeError"
+      ) {
         toast.error(
           "Câmera não suportada. Use HTTPS ou digite o IMEI manualmente."
         );
@@ -283,10 +291,21 @@ export default function AparelhosPage() {
     }
     setIsCameraModalOpen(false);
     setIsScanningIMEI(false);
+    setLastCapturedImage(null);
+    setLastDetectedText("");
   };
 
   const capturarELerIMEI = async () => {
-    if (!videoRef.current || !canvasRef.current) return;
+    console.log("🎯 Iniciando captura de IMEI...");
+
+    if (!videoRef.current || !canvasRef.current) {
+      console.error("❌ Refs não disponíveis:", {
+        video: !!videoRef.current,
+        canvas: !!canvasRef.current,
+      });
+      toast.error("Erro: Câmera não inicializada");
+      return;
+    }
 
     setIsScanningIMEI(true);
     toast.loading("Lendo IMEI...", { id: "scanning" });
@@ -294,6 +313,17 @@ export default function AparelhosPage() {
     try {
       const video = videoRef.current;
       const canvas = canvasRef.current;
+
+      console.log("📹 Vídeo dimensões:", {
+        videoWidth: video.videoWidth,
+        videoHeight: video.videoHeight,
+        readyState: video.readyState,
+      });
+
+      if (video.videoWidth === 0 || video.videoHeight === 0) {
+        throw new Error("Vídeo não está pronto. Aguarde a câmera carregar.");
+      }
+
       const context = canvas.getContext("2d");
 
       if (!context) {
@@ -307,10 +337,65 @@ export default function AparelhosPage() {
       // Desenhar frame atual do vídeo no canvas
       context.drawImage(video, 0, 0, canvas.width, canvas.height);
 
+      // Pré-processar imagem para melhorar OCR
+      const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+      const data = imageData.data;
+
+      // Primeira passada: Converter para escala de cinza
+      const grayValues: number[] = [];
+      for (let i = 0; i < data.length; i += 4) {
+        const gray =
+          data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+        grayValues.push(gray);
+      }
+
+      // Calcular threshold usando método de Otsu simplificado
+      const avgGray = grayValues.reduce((a, b) => a + b, 0) / grayValues.length;
+      const threshold = avgGray; // Usar média como threshold
+
+      // Segunda passada: Aplicar threshold binário (preto e branco puro)
+      for (let i = 0; i < data.length; i += 4) {
+        const gray = grayValues[i / 4];
+
+        // Se o fundo é escuro (como sua foto), inverter as cores
+        // Texto branco em fundo preto -> Texto preto em fundo branco
+        const binaryValue = gray > threshold ? 255 : 0;
+
+        // Aumentar contraste adicional
+        const finalValue = binaryValue > 127 ? 255 : 0;
+
+        data[i] = data[i + 1] = data[i + 2] = finalValue;
+      }
+
+      context.putImageData(imageData, 0, 0);
+
+      // Salvar imagem processada para preview
+      const capturedImageUrl = canvas.toDataURL("image/png");
+      setLastCapturedImage(capturedImageUrl);
+
+      console.log("✅ Frame capturado e processado no canvas");
+
       // Criar worker do Tesseract
+      console.log("🔄 Carregando Tesseract...");
+      toast.loading("Carregando OCR...", { id: "scanning" });
+
       const worker = await createWorker("eng", 1, {
-        logger: (m) => console.log(m),
+        logger: (m) => {
+          console.log("Tesseract:", m);
+          if (m.status === "recognizing text") {
+            toast.loading(`Lendo texto... ${Math.round(m.progress * 100)}%`, {
+              id: "scanning",
+            });
+          }
+        },
       });
+
+      // Configurar para reconhecer apenas números
+      await worker.setParameters({
+        tessedit_char_whitelist: "0123456789",
+      });
+
+      console.log("✅ Worker criado, iniciando reconhecimento...");
 
       // Reconhecer texto na imagem
       const {
@@ -319,42 +404,135 @@ export default function AparelhosPage() {
 
       await worker.terminate();
 
-      console.log("Texto detectado:", text);
+      console.log("📝 Texto detectado:", text);
 
       // Extrair números (IMEI tem 15 dígitos)
       const numeros = text.replace(/\D/g, "");
-      const imeiCandidatos = numeros.match(/\d{15}/g);
+      console.log("🔢 Números extraídos:", numeros);
+      console.log("📏 Total de números:", numeros.length);
 
-      if (imeiCandidatos && imeiCandidatos.length > 0) {
-        const imeiDetectado = imeiCandidatos[0];
+      // Tentar encontrar todas as sequências de 15 dígitos usando janela deslizante
+      let imeiCandidatos: string[] = [];
 
-        // Validar IMEI
-        if (validarIMEI(imeiDetectado)) {
-          setFormCadastro({
-            ...formCadastro,
-            imei: imeiDetectado,
-          });
-          toast.success(`IMEI detectado: ${formatarIMEI(imeiDetectado)}`, {
-            id: "scanning",
-          });
-          fecharCameraIMEI();
-        } else {
-          toast.error(
-            "IMEI detectado mas inválido. Tente novamente ou digite manualmente.",
-            { id: "scanning" }
+      if (numeros.length >= 15) {
+        console.log("⚠️ Extraindo todas as janelas de 15 dígitos...");
+        for (let i = 0; i <= numeros.length - 15; i++) {
+          const candidato = numeros.substring(i, i + 15);
+          imeiCandidatos.push(candidato);
+        }
+      }
+
+      console.log(
+        `🎯 ${imeiCandidatos.length} candidatos de 15 dígitos encontrados`
+      );
+      if (imeiCandidatos.length > 0) {
+        console.log("Candidatos:", imeiCandidatos.slice(0, 5)); // Mostra os 5 primeiros
+      }
+
+      // Filtrar apenas candidatos válidos usando algoritmo Luhn
+      const imeiValidos = imeiCandidatos.filter((imei) => validarIMEI(imei));
+      console.log(
+        `✓ ${imeiValidos.length} IMEI(s) válido(s) encontrado(s):`,
+        imeiValidos
+      );
+
+      // Atualizar display com informações úteis
+      if (imeiValidos.length > 0) {
+        setLastDetectedText(
+          `✓ ${imeiValidos.length} IMEI(s) válido(s):\n${imeiValidos.map((i) => formatarIMEI(i)).join("\n")}`
+        );
+      } else if (imeiCandidatos.length > 0) {
+        setLastDetectedText(
+          `❌ ${imeiCandidatos.length} candidatos testados\nNenhum válido\n\n${numeros.length} dígitos: ${numeros.substring(0, 35)}${numeros.length > 35 ? "..." : ""}`
+        );
+      } else if (numeros.length > 0) {
+        setLastDetectedText(
+          `${numeros.length} dígitos detectados\n(precisa 15 para IMEI)\n\nNúmeros: ${numeros}`
+        );
+      } else {
+        setLastDetectedText("Nenhum número detectado");
+      }
+
+      if (imeiValidos.length > 0) {
+        const imeiDetectado = imeiValidos[0]; // Pega o primeiro válido
+        console.log("📱 IMEI selecionado:", imeiDetectado);
+
+        if (imeiValidos.length > 1) {
+          console.warn("⚠️ Múltiplos IMEIs válidos encontrados:", imeiValidos);
+          toast.success(
+            `${imeiValidos.length} IMEIs detectados. Usando o primeiro: ${formatarIMEI(imeiDetectado)}`,
+            { id: "scanning", duration: 3000 }
           );
         }
+
+        // Consultar informações do IMEI online (opcional)
+        toast.loading("Consultando base de dados do IMEI...", {
+          id: "scanning",
+        });
+
+        const infoIMEI = await consultarIMEI(imeiDetectado);
+        console.log("📡 Informações do IMEI:", infoIMEI);
+
+        // Usar o primeiro IMEI válido
+        setIsScanningIMEI(false);
+
+        // Preencher campos automaticamente se tiver informações
+        setFormCadastro({
+          ...formCadastro,
+          imei: imeiDetectado,
+          marca: infoIMEI.marca || formCadastro.marca,
+          modelo: infoIMEI.modelo || formCadastro.modelo,
+        });
+
+        // Mostrar resultado
+        if (infoIMEI.marca && infoIMEI.modelo) {
+          toast.success(
+            `IMEI detectado: ${formatarIMEI(imeiDetectado)}\n${infoIMEI.marca} ${infoIMEI.modelo}`,
+            {
+              id: "scanning",
+              duration: 3000,
+            }
+          );
+        } else {
+          toast.success(`IMEI detectado: ${formatarIMEI(imeiDetectado)}`, {
+            id: "scanning",
+            duration: 2000,
+          });
+        }
+
+        // Fechar modal após pequeno delay para mostrar o sucesso
+        setTimeout(() => {
+          fecharCameraIMEI();
+        }, 500);
       } else {
-        toast.error(
-          "Nenhum IMEI detectado. Posicione a câmera melhor e tente novamente.",
-          { id: "scanning" }
-        );
+        // Nenhum IMEI válido encontrado
+        let mensagem = "";
+
+        if (numeros.length === 0) {
+          mensagem =
+            "Nenhum número detectado. Certifique-se que o IMEI está visível e bem iluminado.";
+        } else if (numeros.length < 15) {
+          mensagem = `Detectado apenas ${numeros.length} dígitos. IMEI precisa ter 15. Ajuste o foco e tente novamente.`;
+        } else {
+          mensagem = `Detectado ${numeros.length} dígitos mas nenhum IMEI válido. ${imeiCandidatos.length} candidatos testados.`;
+          console.warn(
+            "❌ Candidatos testados mas inválidos:",
+            imeiCandidatos.slice(0, 3)
+          );
+        }
+
+        toast.error(mensagem, { id: "scanning", duration: 5000 });
+        setIsScanningIMEI(false);
       }
-    } catch (error) {
-      console.error("Erro ao processar imagem:", error);
-      toast.error("Erro ao ler IMEI. Tente novamente.", { id: "scanning" });
-    } finally {
+    } catch (error: any) {
+      console.error("❌ Erro ao processar imagem:", error);
+      toast.error(`Erro: ${error.message || "Tente novamente"}`, {
+        id: "scanning",
+        duration: 4000,
+      });
       setIsScanningIMEI(false);
+    } finally {
+      // Não resetar isScanningIMEI aqui, já foi feito acima
     }
   };
 
@@ -3456,40 +3634,92 @@ export default function AparelhosPage() {
       <Modal
         isOpen={isCameraModalOpen}
         onClose={fecharCameraIMEI}
-        size="3xl"
+        size="4xl"
         backdrop="blur"
+        scrollBehavior="outside"
+        classNames={{
+          base: "bg-gradient-to-br from-white to-gray-50 dark:from-gray-900 dark:to-gray-800",
+        }}
       >
         <ModalContent>
-          <ModalHeader>
-            <div className="flex items-center gap-2">
-              <CameraIcon className="w-6 h-6" />
-              <span>Ler IMEI com Câmera</span>
+          <ModalHeader className="flex flex-col gap-1 pb-4 border-b border-gray-200 dark:border-gray-700">
+            <div className="flex items-center justify-between w-full">
+              <div className="flex items-center gap-3">
+                <div className="bg-gray-700 dark:bg-gray-600 p-2.5 rounded-xl">
+                  <CameraIcon className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold">Scanner de IMEI</h2>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 font-normal">
+                    Detecção automática usando OCR
+                  </p>
+                </div>
+              </div>
+              <Chip
+                color="success"
+                variant="flat"
+                size="sm"
+                startContent={
+                  <div className="w-2 h-2 rounded-full bg-success animate-pulse" />
+                }
+              >
+                Câmera Ativa
+              </Chip>
             </div>
           </ModalHeader>
-          <ModalBody>
-            <div className="space-y-4">
-              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 text-sm">
-                <p className="font-semibold mb-2 text-blue-800 dark:text-blue-300">
-                  ⚠️ Requisitos para usar a câmera:
-                </p>
-                <ul className="list-disc list-inside space-y-1 text-blue-700 dark:text-blue-400">
-                  <li>Acesso via HTTPS (necessário no iOS/Safari)</li>
-                  <li>Permissão de câmera habilitada no navegador</li>
-                  <li>Se não funcionar, digite o IMEI manualmente</li>
-                </ul>
+          <ModalBody className="py-6">
+            <div className="space-y-6">
+              {/* Instrucções rápidas */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+                  <div className="flex items-start gap-3">
+                    <div className="bg-gray-700 dark:bg-gray-600 text-white rounded-lg p-2 text-xl font-bold">
+                      1
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-semibold text-gray-900 dark:text-gray-100 text-sm">
+                        Posicione
+                      </p>
+                      <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                        IMEI dentro do quadro
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+                  <div className="flex items-start gap-3">
+                    <div className="bg-gray-700 dark:bg-gray-600 text-white rounded-lg p-2 text-xl font-bold">
+                      2
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-semibold text-gray-900 dark:text-gray-100 text-sm">
+                        Foque
+                      </p>
+                      <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                        Aguarde imagem nítida
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+                  <div className="flex items-start gap-3">
+                    <div className="bg-gray-700 dark:bg-gray-600 text-white rounded-lg p-2 text-xl font-bold">
+                      3
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-semibold text-gray-900 dark:text-gray-100 text-sm">
+                        Capture
+                      </p>
+                      <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                        Clique no botão abaixo
+                      </p>
+                    </div>
+                  </div>
+                </div>
               </div>
 
-              <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-4 text-sm">
-                <p className="font-semibold mb-2">📱 Como usar:</p>
-                <ul className="list-disc list-inside space-y-1 text-gray-600 dark:text-gray-400">
-                  <li>Posicione o IMEI na etiqueta do aparelho</li>
-                  <li>Mantenha a câmera estável e bem iluminada</li>
-                  <li>Clique em "Capturar e Ler" quando estiver focado</li>
-                  <li>O IMEI deve ter 15 dígitos visíveis</li>
-                </ul>
-              </div>
-
-              <div className="relative bg-black rounded-lg overflow-hidden aspect-video">
+              {/* Preview da câmera */}
+              <div className="relative bg-gradient-to-br from-gray-900 to-black rounded-2xl overflow-hidden shadow-2xl border-4 border-gray-700">
                 <video
                   ref={videoRef}
                   autoPlay
@@ -3499,34 +3729,161 @@ export default function AparelhosPage() {
                 />
                 <canvas ref={canvasRef} className="hidden" />
 
-                {/* Overlay de guia */}
+                {/* Overlay de guia modernizado */}
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <div className="border-4 border-dashed border-primary w-3/4 h-1/3 rounded-lg flex items-center justify-center">
-                    <span className="bg-primary text-white px-4 py-2 rounded-lg font-semibold">
-                      Posicione o IMEI aqui
-                    </span>
+                  {/* Cantos do scanner */}
+                  <div className="relative w-3/4 h-1/2">
+                    {/* Canto superior esquerdo */}
+                    <div className="absolute top-0 left-0 w-12 h-12 border-l-4 border-t-4 border-white/70 rounded-tl-xl"></div>
+                    {/* Canto superior direito */}
+                    <div className="absolute top-0 right-0 w-12 h-12 border-r-4 border-t-4 border-white/70 rounded-tr-xl"></div>
+                    {/* Canto inferior esquerdo */}
+                    <div className="absolute bottom-0 left-0 w-12 h-12 border-l-4 border-b-4 border-white/70 rounded-bl-xl"></div>
+                    {/* Canto inferior direito */}
+                    <div className="absolute bottom-0 right-0 w-12 h-12 border-r-4 border-b-4 border-white/70 rounded-br-xl"></div>
+
+                    {/* Linha de scan animada */}
+                    <div className="absolute inset-0 overflow-hidden">
+                      <div
+                        className="absolute w-full h-1 bg-gradient-to-r from-transparent via-white/60 to-transparent animate-pulse shadow-lg shadow-white/30"
+                        style={{ top: "50%" }}
+                      ></div>
+                    </div>
+
+                    {/* Label central */}
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="bg-black/20 text-white/60 px-6 py-3 rounded-xl font-bold text-lg shadow-xl backdrop-blur-sm border border-white/20">
+                        📱 Posicione o IMEI aqui
+                      </div>
+                    </div>
                   </div>
                 </div>
+
+                {/* Indicadores de status nos cantos */}
+                <div className="absolute top-4 left-4">
+                  <Chip
+                    size="sm"
+                    variant="flat"
+                    color="success"
+                    startContent={
+                      <div className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
+                    }
+                  >
+                    AO VIVO
+                  </Chip>
+                </div>
+                <div className="absolute top-4 right-4">
+                  <Chip size="sm" variant="flat" color="warning">
+                    15 dígitos
+                  </Chip>
+                </div>
+
+                {/* Botão de captura estilo câmera de celular */}
+                <div className="absolute bottom-8 inset-x-0 flex items-center justify-center">
+                  {/* Botão de reset (miniatura à esquerda) - posicionado absolutamente */}
+                  {lastCapturedImage && (
+                    <button
+                      onClick={() => {
+                        setLastCapturedImage(null);
+                        setLastDetectedText("");
+                        toast.success("Pronto para nova captura!");
+                      }}
+                      className="absolute left-8 w-12 h-12 rounded-lg overflow-hidden border-2 border-white/80 shadow-lg backdrop-blur-sm bg-white/20 hover:scale-110 transition-transform"
+                    >
+                      <img
+                        src={lastCapturedImage}
+                        alt="Última captura"
+                        className="w-full h-full object-cover"
+                      />
+                    </button>
+                  )}
+
+                  {/* Botão principal de captura - estilo iPhone - sempre centralizado */}
+                  <button
+                    onClick={capturarELerIMEI}
+                    disabled={isScanningIMEI}
+                    className="relative group disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {/* Anel externo */}
+                    <div className="w-20 h-20 rounded-full border-4 border-white/90 shadow-2xl backdrop-blur-md bg-white/10 flex items-center justify-center group-hover:scale-110 transition-transform">
+                      {/* Círculo interno */}
+                      <div className="w-16 h-16 rounded-full bg-white shadow-inner flex items-center justify-center group-active:scale-90 transition-transform">
+                        {isScanningIMEI ? (
+                          <Spinner size="sm" color="default" />
+                        ) : (
+                          <div className="w-14 h-14 rounded-full bg-white border-2 border-gray-200"></div>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                </div>
               </div>
+
+              {/* Resultado do OCR */}
+              {lastDetectedText && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <div className="h-px flex-1 bg-gradient-to-r from-transparent via-gray-300 dark:via-gray-600 to-transparent"></div>
+                    <p className="font-bold text-sm text-gray-700 dark:text-gray-300">
+                      📸 RESULTADO DA LEITURA
+                    </p>
+                    <div className="h-px flex-1 bg-gradient-to-r from-transparent via-gray-300 dark:via-gray-600 to-transparent"></div>
+                  </div>
+
+                  <div className="bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900 rounded-xl p-6 border-2 border-gray-200 dark:border-gray-700 shadow-lg">
+                    <div className="flex items-center justify-between mb-4">
+                      <p className="font-semibold text-sm text-gray-700 dark:text-gray-300 uppercase tracking-wide">
+                        OCR - Texto Detectado
+                      </p>
+                      {lastDetectedText.includes("✓") ? (
+                        <Chip size="sm" color="success" variant="flat">
+                          ✓ Válido
+                        </Chip>
+                      ) : lastDetectedText.includes("❌") ? (
+                        <Chip size="sm" color="danger" variant="flat">
+                          ✗ Inválido
+                        </Chip>
+                      ) : (
+                        <Chip size="sm" color="warning" variant="flat">
+                          ⚠ Incompleto
+                        </Chip>
+                      )}
+                    </div>
+                    <div className="bg-white dark:bg-gray-950 rounded-lg p-4 border border-gray-300 dark:border-gray-600">
+                      <p className="text-sm font-mono font-bold text-gray-900 dark:text-gray-100 whitespace-pre-line break-all">
+                        {lastDetectedText}
+                      </p>
+                    </div>
+
+                    {/* Dicas rápidas */}
+                    {!lastDetectedText.includes("✓") && (
+                      <div className="mt-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg p-3 border border-orange-200 dark:border-orange-800">
+                        <p className="font-semibold text-xs text-orange-800 dark:text-orange-300 mb-2">
+                          💡 Não funcionou?
+                        </p>
+                        <ul className="text-xs text-orange-700 dark:text-orange-400 space-y-1">
+                          <li>• Aproxime ou afaste a câmera</li>
+                          <li>• Melhore a iluminação</li>
+                          <li>• Limpe a lente da câmera</li>
+                          <li>• Digite manualmente se necessário</li>
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </ModalBody>
-          <ModalFooter>
-            <Button color="danger" variant="light" onPress={fecharCameraIMEI}>
-              Cancelar
-            </Button>
+          <ModalFooter className="border-t border-gray-200 dark:border-gray-700 pt-4">
             <Button
-              color="primary"
-              onPress={capturarELerIMEI}
-              isDisabled={isScanningIMEI}
-              startContent={
-                isScanningIMEI ? (
-                  <Spinner size="sm" color="white" />
-                ) : (
-                  <CameraIcon className="w-5 h-5" />
-                )
-              }
+              color="danger"
+              variant="light"
+              onPress={fecharCameraIMEI}
+              size="lg"
+              className="font-semibold"
+              startContent={<XMarkIcon className="w-5 h-5" />}
             >
-              {isScanningIMEI ? "Lendo..." : "Capturar e Ler"}
+              Fechar
             </Button>
           </ModalFooter>
         </ModalContent>
