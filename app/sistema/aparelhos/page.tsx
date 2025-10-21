@@ -197,6 +197,17 @@ export default function AparelhosPage() {
     checkTableExists();
   }, []);
 
+  // Iniciar leitura automática quando o modo de código de barras for ativado
+  useEffect(() => {
+    if (isCameraModalOpen && scanMode === "barcode" && videoRef.current) {
+      // Aguardar um pouco para a câmera iniciar
+      const timer = setTimeout(() => {
+        iniciarLeituraAutomatica();
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [isCameraModalOpen, scanMode]);
+
   // Funções do carrossel de fotos
   const handlePrevPhoto = (itemId: number, totalFotos: number) => {
     setCarouselIndex((prev) => ({
@@ -301,60 +312,82 @@ export default function AparelhosPage() {
     setLastDetectedText("");
   };
 
-  const lerCodigoBarras = async () => {
-    console.log("📊 Iniciando leitura de código de barras...");
+  const iniciarLeituraAutomatica = async () => {
+    console.log("📊 Iniciando leitura automática de código de barras...");
 
     if (!videoRef.current) {
       toast.error("Erro: Câmera não inicializada");
       return;
     }
 
-    setIsScanningIMEI(true);
-    toast.loading("Lendo código de barras...", { id: "scanning" });
-
     try {
       if (!barcodeReaderRef.current) {
         barcodeReaderRef.current = new BrowserMultiFormatReader();
       }
 
-      const result = await barcodeReaderRef.current.decodeOnceFromVideoDevice(
+      // Leitura contínua
+      barcodeReaderRef.current.decodeFromVideoDevice(
         undefined,
-        videoRef.current
-      );
+        videoRef.current,
+        (result, error) => {
+          if (result) {
+            const codigoBarras = result.getText();
+            console.log("📊 Código detectado:", codigoBarras);
 
-      console.log("✅ Código de barras detectado:", result.getText());
+            // Filtrar apenas códigos com 15 dígitos
+            if (/^\d{15}$/.test(codigoBarras)) {
+              console.log("✅ Código de 15 dígitos encontrado:", codigoBarras);
 
-      const codigoBarras = result.getText();
+              // Capturar imagem para preview
+              if (canvasRef.current && videoRef.current) {
+                const video = videoRef.current;
+                const canvas = canvasRef.current;
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                const context = canvas.getContext("2d");
+                if (context) {
+                  context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                  setLastCapturedImage(canvas.toDataURL("image/png"));
+                }
+              }
 
-      // Capturar imagem para preview
-      if (canvasRef.current && videoRef.current) {
-        const video = videoRef.current;
-        const canvas = canvasRef.current;
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        const context = canvas.getContext("2d");
-        if (context) {
-          context.drawImage(video, 0, 0, canvas.width, canvas.height);
-          setLastCapturedImage(canvas.toDataURL("image/png"));
+              setLastDetectedText(`✓ IMEI detectado:\n${codigoBarras}`);
+
+              // Preencher no campo IMEI
+              setFormCadastro((prev) => ({ ...prev, imei: codigoBarras }));
+
+              toast.success(`IMEI ${codigoBarras} detectado!`, {
+                id: "scanning",
+              });
+
+              // Parar leitura e fechar modal após sucesso
+              barcodeReaderRef.current = null;
+              setTimeout(() => fecharCameraIMEI(), 1000);
+            } else {
+              console.log(
+                `⚠️ Código ignorado (não tem 15 dígitos): ${codigoBarras}`
+              );
+            }
+          }
+
+          if (error && error.name !== "NotFoundException") {
+            console.error("❌ Erro na leitura:", error);
+          }
         }
-      }
-
-      setLastDetectedText(`✓ Código de barras lido:\n${codigoBarras}`);
-
-      // Preencher no campo IMEI
-      setFormCadastro((prev) => ({ ...prev, imei: codigoBarras }));
-
-      toast.success("Código de barras lido com sucesso!", { id: "scanning" });
-      setTimeout(() => fecharCameraIMEI(), 500);
-    } catch (error: any) {
-      console.error("❌ Erro ao ler código de barras:", error);
-      setLastDetectedText(
-        `❌ Não foi possível ler o código de barras.\n\nErro: ${error.message || "Desconhecido"}`
       );
-      toast.error("Código de barras não detectado", { id: "scanning" });
-    } finally {
-      setIsScanningIMEI(false);
+
+      toast.loading("Escaneando... Aproxime o código de barras", {
+        id: "scanning",
+      });
+    } catch (error: any) {
+      console.error("❌ Erro ao iniciar leitura automática:", error);
+      toast.error("Erro ao iniciar scanner", { id: "scanning" });
     }
+  };
+
+  const lerCodigoBarras = async () => {
+    // Esta função agora apenas inicia a leitura automática
+    iniciarLeituraAutomatica();
   };
 
   const capturarELerIMEI = async () => {
@@ -1468,7 +1501,7 @@ export default function AparelhosPage() {
             Cadastro, estoque e vendas de aparelhos celulares
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="lg:flex lg:items-center lg:gap-4 gap-2 flex flex-col">
           <Button
             color="secondary"
             variant="flat"
@@ -3870,7 +3903,7 @@ export default function AparelhosPage() {
                       <div className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
                     }
                   >
-                    AO VIVO
+                    {scanMode === "barcode" ? "ESCANEANDO" : "AO VIVO"}
                   </Chip>
                 </div>
                 <div className="absolute top-4 right-4">
@@ -3879,45 +3912,47 @@ export default function AparelhosPage() {
                   </Chip>
                 </div>
 
-                {/* Botão de captura estilo câmera de celular */}
-                <div className="absolute bottom-8 inset-x-0 flex items-center justify-center">
-                  {/* Botão de reset (miniatura à esquerda) - posicionado absolutamente */}
-                  {lastCapturedImage && (
-                    <button
-                      onClick={() => {
-                        setLastCapturedImage(null);
-                        setLastDetectedText("");
-                        toast.success("Pronto para nova captura!");
-                      }}
-                      className="absolute left-8 w-12 h-12 rounded-lg overflow-hidden border-2 border-white/80 shadow-lg backdrop-blur-sm bg-white/20 hover:scale-110 transition-transform"
-                    >
-                      <img
-                        src={lastCapturedImage}
-                        alt="Última captura"
-                        className="w-full h-full object-cover"
-                      />
-                    </button>
-                  )}
+                {/* Botão de captura estilo câmera de celular - apenas no modo OCR */}
+                {scanMode === "ocr" && (
+                  <div className="absolute bottom-8 inset-x-0 flex items-center justify-center">
+                    {/* Botão de reset (miniatura à esquerda) - posicionado absolutamente */}
+                    {lastCapturedImage && (
+                      <button
+                        onClick={() => {
+                          setLastCapturedImage(null);
+                          setLastDetectedText("");
+                          toast.success("Pronto para nova captura!");
+                        }}
+                        className="absolute left-8 w-12 h-12 rounded-lg overflow-hidden border-2 border-white/80 shadow-lg backdrop-blur-sm bg-white/20 hover:scale-110 transition-transform"
+                      >
+                        <img
+                          src={lastCapturedImage}
+                          alt="Última captura"
+                          className="w-full h-full object-cover"
+                        />
+                      </button>
+                    )}
 
-                  {/* Botão principal de captura - estilo iPhone - sempre centralizado */}
-                  <button
-                    onClick={capturarELerIMEI}
-                    disabled={isScanningIMEI}
-                    className="relative group disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {/* Anel externo */}
-                    <div className="w-20 h-20 rounded-full border-4 border-white/90 shadow-2xl backdrop-blur-md bg-white/10 flex items-center justify-center group-hover:scale-110 transition-transform">
-                      {/* Círculo interno */}
-                      <div className="w-16 h-16 rounded-full bg-white shadow-inner flex items-center justify-center group-active:scale-90 transition-transform">
-                        {isScanningIMEI ? (
-                          <Spinner size="sm" color="default" />
-                        ) : (
-                          <div className="w-14 h-14 rounded-full bg-white border-2 border-gray-200"></div>
-                        )}
+                    {/* Botão principal de captura - estilo iPhone - sempre centralizado */}
+                    <button
+                      onClick={capturarELerIMEI}
+                      disabled={isScanningIMEI}
+                      className="relative group disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {/* Anel externo */}
+                      <div className="w-20 h-20 rounded-full border-4 border-white/90 shadow-2xl backdrop-blur-md bg-white/10 flex items-center justify-center group-hover:scale-110 transition-transform">
+                        {/* Círculo interno */}
+                        <div className="w-16 h-16 rounded-full bg-white shadow-inner flex items-center justify-center group-active:scale-90 transition-transform">
+                          {isScanningIMEI ? (
+                            <Spinner size="sm" color="default" />
+                          ) : (
+                            <div className="w-14 h-14 rounded-full bg-white border-2 border-gray-200"></div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  </button>
-                </div>
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Resultado do OCR */}
