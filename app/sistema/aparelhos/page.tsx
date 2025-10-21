@@ -182,6 +182,7 @@ export default function AparelhosPage() {
   // Estados para Leitor de IMEI com Câmera
   const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
   const [isScanningIMEI, setIsScanningIMEI] = useState(false);
+  const [isRequestingCamera, setIsRequestingCamera] = useState(false); // Novo estado para controle de permissão
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [lastCapturedImage, setLastCapturedImage] = useState<string | null>(
     null
@@ -254,37 +255,66 @@ export default function AparelhosPage() {
   };
 
   // Funções para Leitor de IMEI com Câmera
-  const abrirCameraIMEI = async () => {
+  const abrirCameraIMEI = () => {
+    console.log("🔵 Abrindo modal de câmera");
+    setIsCameraModalOpen(true);
+  };
+
+  const solicitarPermissaoCamera = async () => {
+    setIsRequestingCamera(true);
+    console.log("� Solicitando acesso à câmera...");
+
     try {
       // Verificar se a API de mídia está disponível
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         toast.error(
           "Câmera não disponível. Use HTTPS ou um navegador compatível."
         );
+        // NÃO fechar o modal - deixar usuário ver a mensagem
+        setIsRequestingCamera(false);
         return;
       }
 
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" }, // Câmera traseira
+        video: {
+          facingMode: "environment", // Câmera traseira
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          // Valores ideais, mas aceita o que a câmera suportar
+        },
       });
-      setCameraStream(stream);
-      setIsCameraModalOpen(true);
 
-      // Aguardar o modal abrir e o vídeo estar disponível
+      console.log("✅ Câmera acessada com sucesso");
+      setCameraStream(stream);
+      setIsRequestingCamera(false);
+
+      // Aguardar o vídeo estar disponível
       setTimeout(() => {
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
-          videoRef.current.play();
+          videoRef.current.play().catch((e) => {
+            console.error("Erro ao reproduzir vídeo:", e);
+          });
         }
       }, 100);
     } catch (error: any) {
-      console.error("Erro ao acessar câmera:", error);
+      console.error("❌ Erro ao acessar câmera:", error);
+      console.error("Nome do erro:", error.name);
+      console.error("Mensagem:", error.message);
+
+      setIsRequestingCamera(false);
 
       // Mensagens específicas para diferentes erros
       if (error.name === "NotAllowedError") {
         toast.error("Permissão de câmera negada. Habilite nas configurações.");
       } else if (error.name === "NotFoundError") {
         toast.error("Nenhuma câmera encontrada no dispositivo.");
+      } else if (error.name === "OverconstrainedError") {
+        toast.error(
+          "Câmera não suporta a resolução solicitada. Tentando com configurações básicas..."
+        );
+        // Tentar novamente com configurações mais simples
+        setTimeout(() => solicitarPermissaoCameraBasica(), 1000);
       } else if (
         error.name === "NotSupportedError" ||
         error.name === "TypeError"
@@ -293,12 +323,51 @@ export default function AparelhosPage() {
           "Câmera não suportada. Use HTTPS ou digite o IMEI manualmente."
         );
       } else {
-        toast.error("Não foi possível acessar a câmera. Digite manualmente.");
+        toast.error(
+          `Erro ao acessar câmera: ${error.message || "Desconhecido"}`
+        );
       }
+
+      // NÃO fechar o modal automaticamente, deixar usuário decidir
+    }
+  };
+
+  // Função alternativa com configurações mínimas para câmeras com limitações
+  const solicitarPermissaoCameraBasica = async () => {
+    console.log("📱 Tentando com configurações básicas da câmera...");
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: "environment", // Apenas câmera traseira
+        },
+      });
+
+      console.log("✅ Câmera acessada com configurações básicas");
+      setCameraStream(stream);
+      setIsRequestingCamera(false);
+      toast.success("Câmera ativada com sucesso!");
+
+      // Aguardar o vídeo estar disponível
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play().catch((e) => {
+            console.error("Erro ao reproduzir vídeo:", e);
+          });
+        }
+      }, 100);
+    } catch (error: any) {
+      console.error("❌ Erro mesmo com configurações básicas:", error);
+      toast.error(
+        "Não foi possível acessar a câmera. Tente digitar manualmente."
+      );
+      setIsRequestingCamera(false);
     }
   };
 
   const fecharCameraIMEI = () => {
+    console.log("🔴 fecharCameraIMEI chamado - Fechando modal");
     if (cameraStream) {
       cameraStream.getTracks().forEach((track) => track.stop());
       setCameraStream(null);
@@ -310,6 +379,7 @@ export default function AparelhosPage() {
     setIsScanningIMEI(false);
     setLastCapturedImage(null);
     setLastDetectedText("");
+    setIsRequestingCamera(false); // Resetar também o estado de solicitação
   };
 
   const iniciarLeituraAutomatica = async () => {
@@ -323,6 +393,13 @@ export default function AparelhosPage() {
     try {
       if (!barcodeReaderRef.current) {
         barcodeReaderRef.current = new BrowserMultiFormatReader();
+        // Configurar hints para melhorar detecção de códigos pequenos
+        console.log(
+          "🔧 Configurando scanner com modo TRY_HARDER para códigos pequenos"
+        );
+        const hints = new Map();
+        hints.set(2, true); // TRY_HARDER - mais preciso mas mais lento
+        barcodeReaderRef.current.hints = hints;
       }
 
       // Leitura contínua
@@ -376,9 +453,13 @@ export default function AparelhosPage() {
         }
       );
 
-      toast.loading("Escaneando... Aproxime o código de barras", {
-        id: "scanning",
-      });
+      toast.loading(
+        "📊 Escaneando... Se o código for pequeno, aproxime BEM da câmera",
+        {
+          id: "scanning",
+          duration: 15000, // Toast fica por 15 segundos
+        }
+      );
     } catch (error: any) {
       console.error("❌ Erro ao iniciar leitura automática:", error);
       toast.error("Erro ao iniciar scanner", { id: "scanning" });
@@ -1406,130 +1487,6 @@ export default function AparelhosPage() {
     }
   };
 
-  const preencherDadosTeste = () => {
-    const marcas = ["Apple", "Samsung", "Xiaomi", "Motorola", "LG"];
-    const modelos = [
-      "iPhone 13",
-      "Galaxy S21",
-      "Redmi Note 10",
-      "Moto G60",
-      "K41S",
-    ];
-    const cores = ["Preto", "Branco", "Azul", "Vermelho", "Cinza"];
-    const capacidades = ["64GB", "128GB", "256GB", "512GB"];
-    const estados: Array<"novo" | "seminovo" | "usado"> = [
-      "novo",
-      "seminovo",
-      "usado",
-    ];
-
-    const randomMarca = marcas[Math.floor(Math.random() * marcas.length)];
-    const randomModelo = modelos[Math.floor(Math.random() * modelos.length)];
-    const randomCor = cores[Math.floor(Math.random() * cores.length)];
-    const randomCapacidade =
-      capacidades[Math.floor(Math.random() * capacidades.length)];
-    const randomEstado = estados[Math.floor(Math.random() * estados.length)];
-
-    // Gerar IMEI válido com 15 dígitos
-    const gerarIMEIValido = () => {
-      // Gerar os primeiros 14 dígitos
-      let imei = "35";
-      for (let i = 0; i < 12; i++) {
-        imei += Math.floor(Math.random() * 10);
-      }
-
-      // Calcular dígito verificador usando algoritmo de Luhn
-      let sum = 0;
-      for (let i = 0; i < 14; i++) {
-        let digit = parseInt(imei[i]);
-        if (i % 2 === 1) {
-          digit *= 2;
-          if (digit > 9) digit -= 9;
-        }
-        sum += digit;
-      }
-      const checkDigit = (10 - (sum % 10)) % 10;
-
-      return imei + checkDigit;
-    };
-
-    const randomIMEI = gerarIMEIValido();
-
-    const dadosTeste: Partial<EstoqueAparelho> = {
-      marca: randomMarca,
-      modelo: randomModelo,
-      imei: randomIMEI,
-      serial: `SN${Math.random().toString(36).substring(2, 10).toUpperCase()}`,
-      cor: randomCor,
-      capacidade: randomCapacidade,
-      estado: randomEstado,
-      status: "disponivel" as StatusAparelho,
-      bateria: Math.floor(Math.random() * 30) + 70, // Entre 70% e 100%
-      preco_compra: Math.floor(Math.random() * 2000) + 500,
-      preco_venda: Math.floor(Math.random() * 3000) + 1000,
-      garantia_fornecedor_meses: 3,
-      loja_id: lojas.length > 0 ? lojas[0].id : undefined,
-      observacoes:
-        "Aparelho em perfeito estado, sem arranhões ou defeitos aparentes. Testado e funcionando 100%.",
-      acessorios: ["Carregador", "Cabo USB", "Fone de Ouvido"],
-      defeitos: [],
-      fotos: [],
-    };
-
-    console.log("📝 Dados de teste gerados:", dadosTeste);
-    setFormCadastro(dadosTeste);
-
-    toast.success("Formulário preenchido com dados de teste!");
-  };
-
-  const preencherVendaTeste = () => {
-    const nomes = [
-      "João Silva",
-      "Maria Santos",
-      "Pedro Oliveira",
-      "Ana Costa",
-      "Carlos Souza",
-    ];
-    const telefones = ["(11) 98765-4321", "(21) 99876-5432", "(31) 97654-3210"];
-    const emails = ["joao@email.com", "maria@email.com", "pedro@email.com"];
-    const formasPagamento: Array<"dinheiro" | "pix" | "debito" | "credito"> = [
-      "dinheiro",
-      "pix",
-      "debito",
-      "credito",
-    ];
-
-    const randomNome = nomes[Math.floor(Math.random() * nomes.length)];
-    const randomTelefone =
-      telefones[Math.floor(Math.random() * telefones.length)];
-    const randomEmail = emails[Math.floor(Math.random() * emails.length)];
-    const randomFormaPagamento =
-      formasPagamento[Math.floor(Math.random() * formasPagamento.length)];
-    const valorBase = formVenda.valor_aparelho || 2000;
-    const descontoAleatorio = Math.floor(Math.random() * 200);
-
-    setFormVenda({
-      ...formVenda,
-      cliente_nome: randomNome,
-      cliente_telefone: randomTelefone,
-      cliente_email: randomEmail,
-      cliente_cpf: `${Math.floor(Math.random() * 900 + 100)}.${Math.floor(Math.random() * 900 + 100)}.${Math.floor(Math.random() * 900 + 100)}-${Math.floor(Math.random() * 90 + 10)}`,
-      desconto: descontoAleatorio,
-      valor_final: calcularValorFinal(valorBase, descontoAleatorio),
-      forma_pagamento: randomFormaPagamento,
-      parcelas:
-        randomFormaPagamento === "credito"
-          ? Math.floor(Math.random() * 12) + 1
-          : 1,
-      garantia_meses: 3,
-      loja_id: lojas.length > 0 ? lojas[0].id : undefined,
-      aparelho_observacoes:
-        "Cliente satisfeito com a compra. Aparelho entregue testado e funcionando.",
-    });
-
-    toast.success("Formulário de venda preenchido com dados de teste!");
-  };
-
   const filteredEstoque = estoque.filter(
     (item) =>
       item.marca?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -2033,26 +1990,6 @@ export default function AparelhosPage() {
                   {modalType === "detalhes-venda" && "Detalhes da Venda"}
                   {modalType === "editar-venda" && "Editar Venda"}
                 </div>
-                {modalType === "cadastro" && !selectedAparelho && (
-                  <Button
-                    size="sm"
-                    color="warning"
-                    variant="flat"
-                    onPress={preencherDadosTeste}
-                  >
-                    🎲 Preencher Teste
-                  </Button>
-                )}
-                {modalType === "venda" && (
-                  <Button
-                    size="sm"
-                    color="warning"
-                    variant="flat"
-                    onPress={preencherVendaTeste}
-                  >
-                    🎲 Preencher Teste
-                  </Button>
-                )}
               </ModalHeader>
               <ModalBody>
                 {modalType === "cadastro" && (
@@ -2099,7 +2036,10 @@ export default function AparelhosPage() {
                         isIconOnly
                         color="primary"
                         variant="flat"
-                        onPress={abrirCameraIMEI}
+                        onPress={() => {
+                          console.log("🟢 Botão de câmera clicado!");
+                          abrirCameraIMEI();
+                        }}
                         className="mb-6"
                         title="Ler IMEI com câmera (requer HTTPS)"
                       >
@@ -3809,6 +3749,8 @@ export default function AparelhosPage() {
         size="4xl"
         backdrop="blur"
         scrollBehavior="outside"
+        isDismissable={false}
+        hideCloseButton={false}
         classNames={{
           base: "bg-gradient-to-br from-white to-gray-50 dark:from-gray-900 dark:to-gray-800",
         }}
@@ -3834,14 +3776,18 @@ export default function AparelhosPage() {
                 </div>
               </div>
               <Chip
-                color="success"
+                color={cameraStream ? "success" : "warning"}
                 variant="flat"
                 size="sm"
                 startContent={
-                  <div className="w-2 h-2 rounded-full bg-success animate-pulse" />
+                  cameraStream ? (
+                    <div className="w-2 h-2 rounded-full bg-success animate-pulse" />
+                  ) : (
+                    <div className="w-2 h-2 rounded-full bg-warning" />
+                  )
                 }
               >
-                Câmera Ativa
+                {cameraStream ? "Câmera Ativa" : "Câmera Inativa"}
               </Chip>
             </div>
           </ModalHeader>
@@ -3868,6 +3814,24 @@ export default function AparelhosPage() {
                   📊 Código de Barras
                 </Button>
               </div>
+
+              {/* Dica especial para códigos pequenos */}
+              {scanMode === "barcode" && (
+                <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3">
+                  <div className="flex items-start gap-2">
+                    <span className="text-xl">💡</span>
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-yellow-800 dark:text-yellow-300">
+                        Dica para Códigos Pequenos
+                      </p>
+                      <p className="text-xs text-yellow-700 dark:text-yellow-400 mt-1">
+                        Aproxime BEM o código da câmera (5-10cm) e mantenha
+                        firme. Use boa iluminação!
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Instrucções rápidas */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -3900,7 +3864,7 @@ export default function AparelhosPage() {
                       <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
                         {scanMode === "ocr"
                           ? "Aguarde imagem nítida"
-                          : "Alinhe as barras horizontalmente"}
+                          : "Se pequeno, APROXIME BEM da câmera"}
                       </p>
                     </div>
                   </div>
@@ -3923,7 +3887,50 @@ export default function AparelhosPage() {
               </div>
 
               {/* Preview da câmera */}
-              <div className="relative bg-gradient-to-br from-gray-900 to-black rounded-2xl overflow-hidden shadow-2xl border-4 border-gray-700">
+              <div className="relative bg-gradient-to-br from-gray-900 to-black rounded-2xl overflow-hidden shadow-2xl border-4 border-gray-700 min-h-[500px]">
+                {/* Botão para ativar câmera se não estiver ativa */}
+                {!cameraStream && !isRequestingCamera && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-gray-900/95 z-50 pointer-events-auto">
+                    <div className="text-center space-y-4 p-8 pointer-events-auto">
+                      <div className="text-6xl mb-4">📷</div>
+                      <h3 className="text-white text-xl font-bold">
+                        Câmera Desativada
+                      </h3>
+                      <p className="text-gray-300 text-sm max-w-md">
+                        Clique no botão abaixo para ativar a câmera e começar a
+                        escanear
+                      </p>
+                      <Button
+                        color="primary"
+                        size="lg"
+                        onPress={() => {
+                          console.log("🟢 Botão Ativar Câmera clicado!");
+                          solicitarPermissaoCamera();
+                        }}
+                        className="mt-4 pointer-events-auto cursor-pointer"
+                        startContent={<CameraIcon className="w-5 h-5" />}
+                      >
+                        Ativar Câmera
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Loading quando estiver solicitando permissão */}
+                {isRequestingCamera && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-gray-900/95 z-50">
+                    <div className="text-center space-y-4 p-8">
+                      <Spinner size="lg" color="primary" />
+                      <p className="text-white text-lg font-semibold">
+                        Solicitando permissão da câmera...
+                      </p>
+                      <p className="text-gray-300 text-sm">
+                        Permita o acesso nas configurações do navegador
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 <video
                   ref={videoRef}
                   autoPlay
@@ -3933,103 +3940,111 @@ export default function AparelhosPage() {
                 />
                 <canvas ref={canvasRef} className="hidden" />
 
-                {/* Overlay de guia modernizado */}
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  {/* Cantos do scanner */}
-                  <div className="relative w-3/4 h-1/2">
-                    {/* Canto superior esquerdo */}
-                    <div className="absolute top-0 left-0 w-12 h-12 border-l-4 border-t-4 border-white/70 rounded-tl-xl"></div>
-                    {/* Canto superior direito */}
-                    <div className="absolute top-0 right-0 w-12 h-12 border-r-4 border-t-4 border-white/70 rounded-tr-xl"></div>
-                    {/* Canto inferior esquerdo */}
-                    <div className="absolute bottom-0 left-0 w-12 h-12 border-l-4 border-b-4 border-white/70 rounded-bl-xl"></div>
-                    {/* Canto inferior direito */}
-                    <div className="absolute bottom-0 right-0 w-12 h-12 border-r-4 border-b-4 border-white/70 rounded-br-xl"></div>
+                {/* Overlay de guia modernizado - só aparece quando a câmera está ativa */}
+                {cameraStream && (
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
+                    {/* Cantos do scanner */}
+                    <div className="relative w-3/4 h-1/2">
+                      {/* Canto superior esquerdo */}
+                      <div className="absolute top-0 left-0 w-12 h-12 border-l-4 border-t-4 border-white/70 rounded-tl-xl"></div>
+                      {/* Canto superior direito */}
+                      <div className="absolute top-0 right-0 w-12 h-12 border-r-4 border-t-4 border-white/70 rounded-tr-xl"></div>
+                      {/* Canto inferior esquerdo */}
+                      <div className="absolute bottom-0 left-0 w-12 h-12 border-l-4 border-b-4 border-white/70 rounded-bl-xl"></div>
+                      {/* Canto inferior direito */}
+                      <div className="absolute bottom-0 right-0 w-12 h-12 border-r-4 border-b-4 border-white/70 rounded-br-xl"></div>
 
-                    {/* Linha de scan animada */}
-                    <div className="absolute inset-0 overflow-hidden">
-                      <div
-                        className="absolute w-full h-1 bg-gradient-to-r from-transparent via-white/60 to-transparent animate-pulse shadow-lg shadow-white/30"
-                        style={{ top: "50%" }}
-                      ></div>
-                    </div>
+                      {/* Linha de scan animada */}
+                      <div className="absolute inset-0 overflow-hidden">
+                        <div
+                          className="absolute w-full h-1 bg-gradient-to-r from-transparent via-white/60 to-transparent animate-pulse shadow-lg shadow-white/30"
+                          style={{ top: "50%" }}
+                        ></div>
+                      </div>
 
-                    {/* Label central */}
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="bg-black/20 text-white/60 px-6 py-3 rounded-xl font-bold text-lg shadow-xl backdrop-blur-sm border border-white/20">
-                        {scanMode === "ocr"
-                          ? "📱 Posicione o IMEI aqui"
-                          : "📊 Posicione o código de barras aqui"}
+                      {/* Label central */}
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="bg-black/20 text-white/60 px-6 py-3 rounded-xl font-bold text-lg shadow-xl backdrop-blur-sm border border-white/20">
+                          {scanMode === "ocr"
+                            ? "📱 Posicione o IMEI aqui"
+                            : "📊 Posicione o código de barras aqui"}
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
+                )}
 
-                {/* Indicadores de status nos cantos */}
-                <div className="absolute top-4 left-4">
-                  <Chip
-                    size="sm"
-                    variant="flat"
-                    color="success"
-                    startContent={
-                      <div className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
-                    }
-                  >
-                    {scanMode === "barcode" ? "ESCANEANDO" : "AO VIVO"}
-                  </Chip>
-                </div>
-                <div className="absolute top-4 right-4">
-                  <Chip size="sm" variant="flat" color="warning">
-                    15 dígitos
-                  </Chip>
-                </div>
+                {/* Indicadores de status nos cantos - só aparece quando a câmera está ativa */}
+                {cameraStream && (
+                  <>
+                    <div className="absolute top-4 left-4 z-30">
+                      <Chip
+                        size="sm"
+                        variant="flat"
+                        color="success"
+                        startContent={
+                          <div className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
+                        }
+                      >
+                        {scanMode === "barcode" ? "ESCANEANDO" : "AO VIVO"}
+                      </Chip>
+                    </div>
+                    <div className="absolute top-4 right-4 z-30">
+                      <Chip size="sm" variant="flat" color="warning">
+                        15 dígitos
+                      </Chip>
+                    </div>
+                  </>
+                )}
 
-                {/* Botão de captura estilo câmera de celular */}
-                <div className="absolute bottom-8 inset-x-0 flex items-center justify-center">
-                  {/* Botão de reset (miniatura à esquerda) - posicionado absolutamente */}
-                  {lastCapturedImage && (
+                {/* Botão de captura estilo câmera de celular - só aparece quando a câmera está ativa */}
+                {cameraStream && (
+                  <div className="absolute bottom-8 inset-x-0 flex items-center justify-center z-30">
+                    {/* Botão de reset (miniatura à esquerda) - posicionado absolutamente */}
+                    {lastCapturedImage && (
+                      <button
+                        onClick={() => {
+                          setLastCapturedImage(null);
+                          setLastDetectedText("");
+                          toast.success("Pronto para nova captura!");
+                        }}
+                        className="absolute left-8 w-12 h-12 rounded-lg overflow-hidden border-2 border-white/80 shadow-lg backdrop-blur-sm bg-white/20 hover:scale-110 transition-transform"
+                      >
+                        <img
+                          src={lastCapturedImage}
+                          alt="Última captura"
+                          className="w-full h-full object-cover"
+                        />
+                      </button>
+                    )}
+
+                    {/* Botão principal de captura - estilo iPhone - sempre centralizado */}
                     <button
-                      onClick={() => {
-                        setLastCapturedImage(null);
-                        setLastDetectedText("");
-                        toast.success("Pronto para nova captura!");
-                      }}
-                      className="absolute left-8 w-12 h-12 rounded-lg overflow-hidden border-2 border-white/80 shadow-lg backdrop-blur-sm bg-white/20 hover:scale-110 transition-transform"
+                      onClick={capturarELerIMEI}
+                      disabled={isScanningIMEI}
+                      className="relative group disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <img
-                        src={lastCapturedImage}
-                        alt="Última captura"
-                        className="w-full h-full object-cover"
-                      />
-                    </button>
-                  )}
-
-                  {/* Botão principal de captura - estilo iPhone - sempre centralizado */}
-                  <button
-                    onClick={capturarELerIMEI}
-                    disabled={isScanningIMEI}
-                    className="relative group disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {/* Anel externo */}
-                    <div className="w-20 h-20 rounded-full border-4 border-white/90 shadow-2xl backdrop-blur-md bg-white/10 flex items-center justify-center group-hover:scale-110 transition-transform">
-                      {/* Círculo interno */}
-                      <div className="w-16 h-16 rounded-full bg-white shadow-inner flex items-center justify-center group-active:scale-90 transition-transform">
-                        {isScanningIMEI ? (
-                          <Spinner size="sm" color="default" />
-                        ) : (
-                          <div className="w-14 h-14 rounded-full bg-white border-2 border-gray-200"></div>
-                        )}
+                      {/* Anel externo */}
+                      <div className="w-20 h-20 rounded-full border-4 border-white/90 shadow-2xl backdrop-blur-md bg-white/10 flex items-center justify-center group-hover:scale-110 transition-transform">
+                        {/* Círculo interno */}
+                        <div className="w-16 h-16 rounded-full bg-white shadow-inner flex items-center justify-center group-active:scale-90 transition-transform">
+                          {isScanningIMEI ? (
+                            <Spinner size="sm" color="default" />
+                          ) : (
+                            <div className="w-14 h-14 rounded-full bg-white border-2 border-gray-200"></div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  </button>
+                    </button>
 
-                  {/* Texto de ajuda no modo barcode */}
-                  {scanMode === "barcode" && !isScanningIMEI && (
-                    <div className="absolute bottom-[-40px] left-1/2 transform -translate-x-1/2 text-white text-sm text-center backdrop-blur-sm bg-black/30 px-4 py-2 rounded-full">
-                      Escaneando... ou clique para capturar
-                    </div>
-                  )}
-                </div>
+                    {/* Texto de ajuda no modo barcode */}
+                    {scanMode === "barcode" && !isScanningIMEI && (
+                      <div className="absolute bottom-[-40px] left-1/2 transform -translate-x-1/2 text-white text-sm text-center backdrop-blur-sm bg-black/30 px-4 py-2 rounded-full">
+                        Escaneando... ou clique para capturar
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Resultado do OCR */}
