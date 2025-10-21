@@ -34,6 +34,7 @@ import {
 } from "@heroui/react";
 import toast from "react-hot-toast";
 import { createWorker } from "tesseract.js";
+import { BrowserMultiFormatReader } from "@zxing/browser";
 import {
   PlusIcon,
   PencilIcon,
@@ -186,8 +187,10 @@ export default function AparelhosPage() {
     null
   );
   const [lastDetectedText, setLastDetectedText] = useState<string>("");
+  const [scanMode, setScanMode] = useState<"ocr" | "barcode">("ocr"); // Modo de leitura: OCR ou código de barras
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const barcodeReaderRef = useRef<BrowserMultiFormatReader | null>(null);
 
   useEffect(() => {
     loadData();
@@ -289,14 +292,78 @@ export default function AparelhosPage() {
       cameraStream.getTracks().forEach((track) => track.stop());
       setCameraStream(null);
     }
+    if (barcodeReaderRef.current) {
+      barcodeReaderRef.current = null;
+    }
     setIsCameraModalOpen(false);
     setIsScanningIMEI(false);
     setLastCapturedImage(null);
     setLastDetectedText("");
   };
 
+  const lerCodigoBarras = async () => {
+    console.log("📊 Iniciando leitura de código de barras...");
+
+    if (!videoRef.current) {
+      toast.error("Erro: Câmera não inicializada");
+      return;
+    }
+
+    setIsScanningIMEI(true);
+    toast.loading("Lendo código de barras...", { id: "scanning" });
+
+    try {
+      if (!barcodeReaderRef.current) {
+        barcodeReaderRef.current = new BrowserMultiFormatReader();
+      }
+
+      const result = await barcodeReaderRef.current.decodeOnceFromVideoDevice(
+        undefined,
+        videoRef.current
+      );
+
+      console.log("✅ Código de barras detectado:", result.getText());
+
+      const codigoBarras = result.getText();
+
+      // Capturar imagem para preview
+      if (canvasRef.current && videoRef.current) {
+        const video = videoRef.current;
+        const canvas = canvasRef.current;
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const context = canvas.getContext("2d");
+        if (context) {
+          context.drawImage(video, 0, 0, canvas.width, canvas.height);
+          setLastCapturedImage(canvas.toDataURL("image/png"));
+        }
+      }
+
+      setLastDetectedText(`✓ Código de barras lido:\n${codigoBarras}`);
+
+      // Preencher no campo IMEI
+      setFormCadastro((prev) => ({ ...prev, imei: codigoBarras }));
+
+      toast.success("Código de barras lido com sucesso!", { id: "scanning" });
+      setTimeout(() => fecharCameraIMEI(), 500);
+    } catch (error: any) {
+      console.error("❌ Erro ao ler código de barras:", error);
+      setLastDetectedText(
+        `❌ Não foi possível ler o código de barras.\n\nErro: ${error.message || "Desconhecido"}`
+      );
+      toast.error("Código de barras não detectado", { id: "scanning" });
+    } finally {
+      setIsScanningIMEI(false);
+    }
+  };
+
   const capturarELerIMEI = async () => {
-    console.log("🎯 Iniciando captura de IMEI...");
+    // Verificar qual modo está ativo
+    if (scanMode === "barcode") {
+      return lerCodigoBarras();
+    }
+
+    console.log("🎯 Iniciando captura de IMEI com OCR...");
 
     if (!videoRef.current || !canvasRef.current) {
       console.error("❌ Refs não disponíveis:", {
@@ -3649,9 +3716,15 @@ export default function AparelhosPage() {
                   <CameraIcon className="w-6 h-6 text-white" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold">Scanner de IMEI</h2>
+                  <h2 className="text-xl font-bold">
+                    {scanMode === "ocr"
+                      ? "Scanner de IMEI"
+                      : "Leitor de Código de Barras"}
+                  </h2>
                   <p className="text-sm text-gray-500 dark:text-gray-400 font-normal">
-                    Detecção automática usando OCR
+                    {scanMode === "ocr"
+                      ? "Detecção automática usando OCR"
+                      : "Leitura automática de códigos de barras"}
                   </p>
                 </div>
               </div>
@@ -3669,6 +3742,28 @@ export default function AparelhosPage() {
           </ModalHeader>
           <ModalBody className="py-6">
             <div className="space-y-6">
+              {/* Seletor de modo de leitura */}
+              <div className="flex items-center justify-center gap-2">
+                <Button
+                  size="sm"
+                  variant={scanMode === "ocr" ? "solid" : "flat"}
+                  color={scanMode === "ocr" ? "primary" : "default"}
+                  onPress={() => setScanMode("ocr")}
+                  className="flex-1 max-w-xs"
+                >
+                  📝 Números (OCR)
+                </Button>
+                <Button
+                  size="sm"
+                  variant={scanMode === "barcode" ? "solid" : "flat"}
+                  color={scanMode === "barcode" ? "primary" : "default"}
+                  onPress={() => setScanMode("barcode")}
+                  className="flex-1 max-w-xs"
+                >
+                  📊 Código de Barras
+                </Button>
+              </div>
+
               {/* Instrucções rápidas */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
@@ -3681,7 +3776,9 @@ export default function AparelhosPage() {
                         Posicione
                       </p>
                       <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                        IMEI dentro do quadro
+                        {scanMode === "ocr"
+                          ? "IMEI dentro do quadro"
+                          : "Código de barras no centro"}
                       </p>
                     </div>
                   </div>
@@ -3696,7 +3793,9 @@ export default function AparelhosPage() {
                         Foque
                       </p>
                       <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                        Aguarde imagem nítida
+                        {scanMode === "ocr"
+                          ? "Aguarde imagem nítida"
+                          : "Alinhe as barras horizontalmente"}
                       </p>
                     </div>
                   </div>
@@ -3753,7 +3852,9 @@ export default function AparelhosPage() {
                     {/* Label central */}
                     <div className="absolute inset-0 flex items-center justify-center">
                       <div className="bg-black/20 text-white/60 px-6 py-3 rounded-xl font-bold text-lg shadow-xl backdrop-blur-sm border border-white/20">
-                        📱 Posicione o IMEI aqui
+                        {scanMode === "ocr"
+                          ? "📱 Posicione o IMEI aqui"
+                          : "📊 Posicione o código de barras aqui"}
                       </div>
                     </div>
                   </div>

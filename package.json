@@ -26,6 +26,8 @@
     "@react-aria/ssr": "3.9.10",
     "@react-aria/visually-hidden": "3.8.26",
     "@supabase/supabase-js": "^2.55.0",
+    "@zxing/browser": "^0.1.5",
+    "@zxing/library": "^0.21.3",
     "clsx": "2.1.1",
     "express": "^5.1.0",
     "express-ws": "^5.0.2",
