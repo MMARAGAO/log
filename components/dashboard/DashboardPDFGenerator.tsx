@@ -32,7 +32,7 @@ export class DashboardPDFGenerator {
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(20);
     doc.setFont("helvetica", "bold");
-    doc.text("📊 Relatório de Dashboard", pageWidth / 2, 15, {
+    doc.text("Relatório de Dashboard", pageWidth / 2, 15, {
       align: "center",
     });
 
@@ -58,7 +58,7 @@ export class DashboardPDFGenerator {
     doc.setTextColor(0, 0, 0);
     doc.setFontSize(14);
     doc.setFont("helvetica", "bold");
-    doc.text("💰 Indicadores Principais", 14, yPos);
+    doc.text("Indicadores Principais", 14, yPos);
     yPos += 10;
 
     const kpiData = [
@@ -105,7 +105,7 @@ export class DashboardPDFGenerator {
     // ===== SEÇÃO 2: VENDAS E DEVOLUÇÕES =====
     doc.setFontSize(14);
     doc.setFont("helvetica", "bold");
-    doc.text("📈 Vendas e Devoluções", 14, yPos);
+    doc.text("Vendas e Devoluções", 14, yPos);
     yPos += 10;
 
     const vendasDevolData = [
@@ -140,7 +140,7 @@ export class DashboardPDFGenerator {
     // ===== SEÇÃO 3: ORDENS DE SERVIÇO =====
     doc.setFontSize(14);
     doc.setFont("helvetica", "bold");
-    doc.text("🔧 Ordens de Serviço", 14, yPos);
+    doc.text("Ordens de Serviço", 14, yPos);
     yPos += 10;
 
     const ordensData = [
@@ -187,7 +187,7 @@ export class DashboardPDFGenerator {
     // ===== SEÇÃO 4: TOP 10 PRODUTOS =====
     doc.setFontSize(14);
     doc.setFont("helvetica", "bold");
-    doc.text("📦 Top 10 Produtos Mais Vendidos", 14, yPos);
+    doc.text("Top 10 Produtos Mais Vendidos", 14, yPos);
     yPos += 10;
 
     const produtosData = produtos
@@ -217,7 +217,7 @@ export class DashboardPDFGenerator {
     // ===== SEÇÃO 5: FORMAS DE PAGAMENTO =====
     doc.setFontSize(14);
     doc.setFont("helvetica", "bold");
-    doc.text("💳 Formas de Pagamento", 14, yPos);
+    doc.text("Formas de Pagamento", 14, yPos);
     yPos += 10;
 
     const pagamentoData = formasPagamento.map((fp) => [
@@ -242,7 +242,7 @@ export class DashboardPDFGenerator {
     if (vendasPorLoja.length > 0) {
       doc.setFontSize(14);
       doc.setFont("helvetica", "bold");
-      doc.text("🏪 Vendas por Loja", 14, yPos);
+      doc.text("Vendas por Loja", 14, yPos);
       yPos += 10;
 
       const lojasData = vendasPorLoja.map((l) => [
@@ -274,7 +274,7 @@ export class DashboardPDFGenerator {
     if (topClientes.length > 0) {
       doc.setFontSize(14);
       doc.setFont("helvetica", "bold");
-      doc.text("👥 Top 10 Clientes", 14, yPos);
+      doc.text("Top 10 Clientes", 14, yPos);
       yPos += 10;
 
       const clientesData = topClientes
@@ -307,7 +307,7 @@ export class DashboardPDFGenerator {
     if (topVendedores.length > 0) {
       doc.setFontSize(14);
       doc.setFont("helvetica", "bold");
-      doc.text("🏆 Top 10 Vendedores", 14, yPos);
+      doc.text("Top 10 Vendedores", 14, yPos);
       yPos += 10;
 
       const vendedoresData = topVendedores
@@ -335,7 +335,7 @@ export class DashboardPDFGenerator {
     // ===== SEÇÃO 9: STATUS DO ESTOQUE =====
     doc.setFontSize(14);
     doc.setFont("helvetica", "bold");
-    doc.text("📊 Status do Estoque", 14, yPos);
+    doc.text("Status do Estoque", 14, yPos);
     yPos += 10;
 
     const estoqueData = [
@@ -369,7 +369,7 @@ export class DashboardPDFGenerator {
 
     doc.setFontSize(14);
     doc.setFont("helvetica", "bold");
-    doc.text("📋 Resumo Geral", 14, yPos);
+    doc.text("Resumo Geral", 14, yPos);
     yPos += 10;
 
     const resumoData = [

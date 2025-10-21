@@ -27,7 +27,10 @@
     "@react-aria/visually-hidden": "3.8.26",
     "@supabase/supabase-js": "^2.55.0",
     "clsx": "2.1.1",
+    "express": "^5.1.0",
+    "express-ws": "^5.0.2",
     "framer-motion": "11.18.2",
+    "hls.js": "^1.6.13",
     "html2canvas": "^1.4.1",
     "intl-messageformat": "10.7.16",
     "js-cookie": "^3.0.5",
@@ -39,6 +42,8 @@
     "react-dom": "18.3.1",
     "react-hot-toast": "^2.6.0",
     "recharts": "^3.1.2",
+    "rtsp-relay": "^1.9.0",
+    "tesseract.js": "^6.0.1",
     "zustand": "^5.0.7"
   },
   "devDependencies": {
@@ -51,6 +56,7 @@
     "@types/react-dom": "18.3.0",
     "@typescript-eslint/eslint-plugin": "8.34.1",
     "@typescript-eslint/parser": "8.34.1",
+    "concurrently": "^9.2.1",
     "eslint": "9.25.1",
     "eslint-config-next": "15.3.4",
     "eslint-config-prettier": "9.1.0",

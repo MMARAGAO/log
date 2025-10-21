@@ -65,6 +65,9 @@ function getISOStringInBrazil(): string {
 export default function CaixaPage() {
   // Estados principais
   const [caixasAbertos, setCaixasAbertos] = useState<CaixaAberto[]>([]);
+  const [caixasFechadosHoje, setCaixasFechadosHoje] = useState<Set<number>>(
+    new Set()
+  );
   const [vendasPorLoja, setVendasPorLoja] = useState<Record<number, Venda[]>>(
     {}
   );
@@ -113,6 +116,8 @@ export default function CaixaPage() {
   useEffect(() => {
     if (canViewCaixa) {
       loadAllData();
+      // Verifica caixas para fechar automaticamente ao carregar a página
+      fecharCaixasAutomaticamente();
     }
   }, [canViewCaixa]);
 
@@ -127,6 +132,30 @@ export default function CaixaPage() {
 
     return () => clearInterval(interval);
   }, [canViewCaixa]);
+
+  // Monitora mudança de dia para fechar caixas automaticamente
+  useEffect(() => {
+    if (!canViewCaixa) return;
+
+    let ultimaDataVerificada = getDateStringInBrazil();
+
+    // Verifica a cada 1 minuto se o dia mudou
+    const interval = setInterval(() => {
+      const dataAtual = getDateStringInBrazil();
+
+      if (dataAtual !== ultimaDataVerificada) {
+        console.log(
+          `📅 Dia mudou de ${ultimaDataVerificada} para ${dataAtual}`
+        );
+        ultimaDataVerificada = dataAtual;
+
+        // Fecha caixas automaticamente
+        fecharCaixasAutomaticamente();
+      }
+    }, 60000); // Verifica a cada 1 minuto
+
+    return () => clearInterval(interval);
+  }, [canViewCaixa, lojas]);
 
   // Função para carregar todos os dados
   async function loadAllData() {
@@ -156,9 +185,21 @@ export default function CaixaPage() {
   async function loadAllCaixas() {
     try {
       const data = await fetchTable("caixa");
+      const hoje = getDateStringInBrazil();
+
       const abertos =
         data?.filter((c: CaixaAberto) => c.status === "aberto") || [];
       setCaixasAbertos(abertos);
+
+      // Identifica lojas com caixa fechado hoje
+      const fechadosHoje = new Set<number>();
+      data?.forEach((c: CaixaAberto) => {
+        const dataAberturaCaixa = getDateStringInBrazil(c.data_abertura);
+        if (c.status === "fechado" && dataAberturaCaixa === hoje) {
+          fechadosHoje.add(c.loja_id);
+        }
+      });
+      setCaixasFechadosHoje(fechadosHoje);
     } catch (error) {
       console.error("Erro ao carregar caixas:", error);
       toast.error("Erro ao carregar caixas");
@@ -193,6 +234,83 @@ export default function CaixaPage() {
     }
   }
 
+  // Verifica se já existe um caixa (aberto ou fechado) na data de hoje para a loja
+  async function verificarCaixaExistenteHoje(
+    lojaId: number
+  ): Promise<CaixaAberto | null> {
+    try {
+      const data = await fetchTable("caixa");
+      const hoje = getDateStringInBrazil();
+
+      // Busca caixa da loja que foi aberto hoje
+      const caixaHoje = data?.find((c: CaixaAberto) => {
+        const dataAberturaCaixa = getDateStringInBrazil(c.data_abertura);
+        return c.loja_id === lojaId && dataAberturaCaixa === hoje;
+      });
+
+      return caixaHoje || null;
+    } catch (error) {
+      console.error("Erro ao verificar caixa existente:", error);
+      return null;
+    }
+  }
+
+  // Fecha automaticamente caixas abertos de dias anteriores
+  async function fecharCaixasAutomaticamente() {
+    try {
+      const data = await fetchTable("caixa");
+      const hoje = getDateStringInBrazil();
+
+      // Busca caixas abertos de dias anteriores
+      const caixasParaFechar =
+        data?.filter((c: CaixaAberto) => {
+          const dataAberturaCaixa = getDateStringInBrazil(c.data_abertura);
+          return c.status === "aberto" && dataAberturaCaixa < hoje;
+        }) || [];
+
+      if (caixasParaFechar.length === 0) {
+        return; // Nenhum caixa para fechar
+      }
+
+      console.log(
+        `🔒 Fechando automaticamente ${caixasParaFechar.length} caixa(s) de dias anteriores...`
+      );
+
+      // Fecha cada caixa automaticamente
+      const promises = caixasParaFechar.map(async (caixa: CaixaAberto) => {
+        // Calcula o valor final baseado no valor inicial
+        // Em um fechamento automático, consideramos que não houve contagem manual
+        const valorFinal = caixa.valor_inicial || 0;
+
+        const updateData = {
+          status: "fechado",
+          data_fechamento: getISOStringInBrazil(),
+          valor_final: valorFinal,
+          observacoes_fechamento: `⏰ Fechamento automático às 00:00 - Caixa não foi fechado manualmente no dia ${getDateStringInBrazil(caixa.data_abertura)}`,
+        };
+
+        await updateTable("caixa", caixa.id, updateData);
+
+        const loja = lojas.find((l) => l.id === caixa.loja_id);
+        console.log(
+          `✅ Caixa da loja "${loja?.nome || caixa.loja_id}" fechado automaticamente`
+        );
+      });
+
+      await Promise.all(promises);
+
+      toast.success(
+        `${caixasParaFechar.length} caixa(s) ${caixasParaFechar.length === 1 ? "foi fechado" : "foram fechados"} automaticamente`,
+        { duration: 5000 }
+      );
+
+      // Recarrega os dados
+      await loadAllCaixas();
+    } catch (error) {
+      console.error("Erro ao fechar caixas automaticamente:", error);
+    }
+  }
+
   // Carrega histórico de uma loja específica
   async function loadHistoricoCaixa(lojaId: number) {
     try {
@@ -216,38 +334,79 @@ export default function CaixaPage() {
   function getResumoVendas(lojaId: number): ResumoVendas {
     const vendas = vendasPorLoja[lojaId] || [];
     const totalVendas = vendas.length;
-    const valorTotalVendas = vendas.reduce(
-      (acc, v) => acc + (v.valor_total || 0),
-      0
-    );
+    const valorTotalVendas = vendas.reduce((acc, v) => {
+      // Algumas vendas podem ter o campo valor_total ou total_liquido dependendo de onde foram salvas
+      const val = (v as any).valor_total ?? (v as any).total_liquido ?? 0;
+      return acc + Number(val || 0);
+    }, 0);
 
     return {
       totalVendas,
       valorTotalVendas,
       valorDinheiro: vendas
         .filter((v) => v.forma_pagamento === "Dinheiro")
-        .reduce((acc, v) => acc + v.valor_total, 0),
+        .reduce(
+          (acc, v) =>
+            acc +
+            Number((v as any).valor_total ?? (v as any).total_liquido ?? 0),
+          0
+        ),
       valorPix: vendas
         .filter((v) => v.forma_pagamento === "PIX")
-        .reduce((acc, v) => acc + v.valor_total, 0),
+        .reduce(
+          (acc, v) =>
+            acc +
+            Number((v as any).valor_total ?? (v as any).total_liquido ?? 0),
+          0
+        ),
       valorCartaoDebito: vendas
         .filter((v) => v.forma_pagamento === "Cartão de Débito")
-        .reduce((acc, v) => acc + v.valor_total, 0),
+        .reduce(
+          (acc, v) =>
+            acc +
+            Number((v as any).valor_total ?? (v as any).total_liquido ?? 0),
+          0
+        ),
       valorCartaoCredito: vendas
         .filter((v) => v.forma_pagamento === "Cartão de Crédito")
-        .reduce((acc, v) => acc + v.valor_total, 0),
+        .reduce(
+          (acc, v) =>
+            acc +
+            Number((v as any).valor_total ?? (v as any).total_liquido ?? 0),
+          0
+        ),
       valorTransferencia: vendas
         .filter((v) => v.forma_pagamento === "Transferência")
-        .reduce((acc, v) => acc + v.valor_total, 0),
+        .reduce(
+          (acc, v) =>
+            acc +
+            Number((v as any).valor_total ?? (v as any).total_liquido ?? 0),
+          0
+        ),
       valorBoleto: vendas
         .filter((v) => v.forma_pagamento === "Boleto")
-        .reduce((acc, v) => acc + v.valor_total, 0),
+        .reduce(
+          (acc, v) =>
+            acc +
+            Number((v as any).valor_total ?? (v as any).total_liquido ?? 0),
+          0
+        ),
       valorCrediario: vendas
         .filter((v) => v.forma_pagamento === "Crediário")
-        .reduce((acc, v) => acc + v.valor_total, 0),
+        .reduce(
+          (acc, v) =>
+            acc +
+            Number((v as any).valor_total ?? (v as any).total_liquido ?? 0),
+          0
+        ),
       valorFiado: vendas
         .filter((v) => v.forma_pagamento === "Fiado")
-        .reduce((acc, v) => acc + v.valor_total, 0),
+        .reduce(
+          (acc, v) =>
+            acc +
+            Number((v as any).valor_total ?? (v as any).total_liquido ?? 0),
+          0
+        ),
       ticketMedio: totalVendas > 0 ? valorTotalVendas / totalVendas : 0,
     };
   }
@@ -344,10 +503,65 @@ export default function CaixaPage() {
 
     setLoading(true);
     try {
+      const lojaId = Number(formAbrir.loja_id);
+
+      // Verifica se já existe um caixa para esta loja hoje
+      const caixaExistente = await verificarCaixaExistenteHoje(lojaId);
+
+      if (caixaExistente) {
+        if (caixaExistente.status === "aberto") {
+          toast.error("Já existe um caixa aberto para esta loja hoje!");
+          setLoading(false);
+          return;
+        } else if (caixaExistente.status === "fechado") {
+          // Caixa fechado encontrado - oferecer opção de reabrir
+          const confirmarReabertura = window.confirm(
+            `Já existe um caixa fechado para esta loja hoje.\n\n` +
+              `Deseja reabrir este caixa?\n\n` +
+              `⚠️ Ao reabrir, o caixa voltará ao estado aberto e poderá registrar novas vendas.`
+          );
+
+          if (!confirmarReabertura) {
+            setLoading(false);
+            return;
+          }
+
+          // Reabrir o caixa existente
+          const valorInicial = currencyToNumber(formAbrir.valor_inicial);
+          const updateData = {
+            status: "aberto",
+            data_fechamento: null,
+            valor_final: null,
+            observacoes_fechamento: null,
+            // Atualiza o valor inicial com o novo valor informado
+            valor_inicial: valorInicial,
+            // Adiciona observação sobre a reabertura
+            observacoes_abertura: formAbrir.observacoes_abertura
+              ? `${caixaExistente.observacoes_abertura || ""}\n\n[REABERTO] ${formAbrir.observacoes_abertura}`
+              : `${caixaExistente.observacoes_abertura || ""}\n\n[REABERTO em ${new Date().toLocaleString("pt-BR")}]`,
+          };
+
+          await updateTable("caixa", caixaExistente.id, updateData);
+          toast.success("Caixa reaberto com sucesso!");
+
+          setModalAbrir(false);
+          setFormAbrir({
+            loja_id: "",
+            valor_inicial: "",
+            observacoes_abertura: "",
+          });
+
+          await loadAllCaixas();
+          setLoading(false);
+          return;
+        }
+      }
+
+      // Se não existe caixa, cria um novo
       const valorInicial = currencyToNumber(formAbrir.valor_inicial);
 
       const newCaixa = {
-        loja_id: Number(formAbrir.loja_id),
+        loja_id: lojaId,
         usuario_id: user?.id,
         data_abertura: getISOStringInBrazil(),
         valor_inicial: valorInicial,
@@ -537,6 +751,7 @@ export default function CaixaPage() {
                   key={loja.id}
                   loja={loja}
                   canOpenCaixa={canOpenCaixa}
+                  hasCaixaFechadoHoje={caixasFechadosHoje.has(loja.id)}
                   onAbrirCaixa={() => {
                     setFormAbrir({
                       loja_id: loja.id.toString(),

@@ -27,7 +27,7 @@ export class CaixaPDFGenerator {
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(24);
     doc.setFont("helvetica", "bold");
-    doc.text("💰 RELATÓRIO DE CAIXA", 105, 18, { align: "center" });
+    doc.text("RELATORIO DE CAIXA", 105, 18, { align: "center" });
 
     doc.setFontSize(12);
     doc.setFont("helvetica", "normal");
@@ -221,26 +221,26 @@ export class CaixaPDFGenerator {
     yPos += 8;
 
     const formasPagamento = [
-      { nome: "💵 Dinheiro", valor: resumo.valorDinheiro, color: successColor },
-      { nome: "📱 PIX", valor: resumo.valorPix, color: primaryColor },
+      { nome: "$ Dinheiro", valor: resumo.valorDinheiro, color: successColor },
+      { nome: "> PIX", valor: resumo.valorPix, color: primaryColor },
       {
-        nome: "💳 Cartão Débito",
+        nome: "# Cartao Debito",
         valor: resumo.valorCartaoDebito,
         color: primaryColor,
       },
       {
-        nome: "💳 Cartão Crédito",
+        nome: "# Cartao Credito",
         valor: resumo.valorCartaoCredito,
         color: primaryColor,
       },
       {
-        nome: "🏦 Transferência",
+        nome: "@ Transferencia",
         valor: resumo.valorTransferencia,
         color: textColor,
       },
-      { nome: "📄 Boleto", valor: resumo.valorBoleto, color: textColor },
-      { nome: "📅 Crediário", valor: resumo.valorCrediario, color: textColor },
-      { nome: "✋ Fiado", valor: resumo.valorFiado, color: dangerColor },
+      { nome: "= Boleto", valor: resumo.valorBoleto, color: textColor },
+      { nome: "+ Crediario", valor: resumo.valorCrediario, color: textColor },
+      { nome: "* Fiado", valor: resumo.valorFiado, color: dangerColor },
     ];
 
     doc.setFontSize(10);

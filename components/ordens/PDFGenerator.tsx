@@ -55,7 +55,6 @@ export class PDFGenerator {
     const white: [number, number, number] = [255, 255, 255]; // Branco
     const borderColor: [number, number, number] = [222, 226, 230]; // Cinza borda
 
-    // Função auxiliar para adicionar texto com quebra de linha
     function addTextWithWrap(
       text: string,
       x: number,
@@ -69,27 +68,12 @@ export class PDFGenerator {
       return y + lines.length * (fontSize * 0.35) + 2;
     }
 
-    // Função para adicionar logo via URL/caminho
     function addLogo() {
       try {
-        // Caminho para a logo na pasta public do seu projeto
-        const logoPath = "/autorizada-cell-logo.png"; // Coloque sua logo aqui
-
-        // Ou se estiver hospedada online
-        // const logoPath = "https://seusite.com/logo.png";
-
-        doc.addImage(
-          logoPath,
-          "PNG", // ou "JPEG" dependendo do formato
-          8, // x
-          8, // y
-          30, // largura
-          25 // altura
-        );
+        const logoPath = "/autorizada-cell-logo.png";
+        doc.addImage(logoPath, "PNG", 8, 8, 30, 25);
       } catch (error) {
-        // Fallback caso não carregue a logo
         console.log("Erro ao carregar logo:", error);
-        // Usar placeholder
         doc.setFillColor(...primaryColor);
         doc.circle(25, 20, 8, "F");
         doc.setTextColor(...white);
@@ -99,30 +83,26 @@ export class PDFGenerator {
       }
     }
 
-    // Cabeçalho com gradiente simulado
     doc.setFillColor(...primaryColor);
     doc.rect(0, 0, 210, 40, "F");
 
-    // Adicionar logo
     addLogo();
 
-    // Informações da empresa (lado esquerdo) - ajustado para dar espaço à logo
     doc.setTextColor(...white);
     doc.setFontSize(16);
     doc.setFont("helvetica", "bold");
-    doc.text("AUTORIZADA CELL", 45, 15); // Movido para a direita
+    doc.text("AUTORIZADA CELL", 45, 15);
 
     doc.setFontSize(8);
     doc.setFont("helvetica", "normal");
     doc.text("CNPJ: 34.720.091/0001-51", 45, 21);
-    doc.text("Luiz Felipe Oliveira - Socio Administrador", 45, 26);
+    doc.text("Luiz Felipe Oliveira - Sócio Administrador", 45, 26);
     doc.text("SIA Trecho 7, Bloco D, Banca 229 - CEP: 71200-100", 45, 31);
     doc.text("Tel: (61) 98212-0747 | luizfelipeoliveirar@gmail.com", 45, 36);
 
-    // Título da OS (lado direito)
     doc.setFontSize(20);
     doc.setFont("helvetica", "bold");
-    doc.text("ORDEM DE SERVICO", 130, 18);
+    doc.text("ORDEM DE SERVIÇO", 130, 18);
 
     doc.setFontSize(14);
     doc.text(`OS #${ordem.id.toString().padStart(4, "0")}`, 130, 26);
@@ -139,12 +119,10 @@ export class PDFGenerator {
       );
     }
 
-    // Reset cor do texto
     doc.setTextColor(0, 0, 0);
 
     let yPosition = 55;
 
-    // Seção Cliente com bordas
     doc.setDrawColor(...borderColor);
     doc.setLineWidth(0.5);
     doc.rect(10, yPosition, 190, 35);
@@ -174,7 +152,7 @@ export class PDFGenerator {
 
       yPosition += 6;
       doc.setFont("helvetica", "bold");
-      doc.text("Email:", 15, yPosition);
+      doc.text("E-mail:", 15, yPosition);
       doc.setFont("helvetica", "normal");
       doc.text(cliente.email || "N/A", 35, yPosition);
 
@@ -186,17 +164,16 @@ export class PDFGenerator {
       if (cliente.endereco) {
         yPosition += 6;
         doc.setFont("helvetica", "bold");
-        doc.text("Endereco:", 15, yPosition);
+        doc.text("Endereço:", 15, yPosition);
         doc.setFont("helvetica", "normal");
         yPosition = addTextWithWrap(cliente.endereco, 45, yPosition, 150, 10);
       }
     } else {
-      doc.text("Cliente nao informado", 15, yPosition);
+      doc.text("Cliente não informado", 15, yPosition);
     }
 
     yPosition += 10;
 
-    // Seção Equipamento
     doc.rect(10, yPosition, 190, 40);
     doc.setFillColor(...lightGray);
     doc.rect(10, yPosition, 190, 8, "F");
@@ -231,28 +208,26 @@ export class PDFGenerator {
 
     if (ordem.diagnostico) {
       doc.setFont("helvetica", "bold");
-      doc.text("Diagnostico Tecnico:", 15, yPosition);
+      doc.text("Diagnóstico Técnico:", 15, yPosition);
       doc.setFont("helvetica", "normal");
       yPosition = addTextWithWrap(ordem.diagnostico, 15, yPosition + 4, 180, 9);
     }
 
     yPosition += 15;
 
-    // Seção Serviço
     doc.rect(10, yPosition, 190, 45);
     doc.setFillColor(...lightGray);
     doc.rect(10, yPosition, 190, 8, "F");
     doc.setFontSize(12);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(...secondaryColor);
-    doc.text(" INFORMACOES DO SERVICO", 15, yPosition + 5);
+    doc.text(" INFORMAÇÕES DO SERVIÇO", 15, yPosition + 5);
 
     yPosition += 12;
     doc.setTextColor(0, 0, 0);
     doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
 
-    // Status com background colorido
     doc.setFont("helvetica", "bold");
     doc.text("Status:", 15, yPosition);
     doc.setFont("helvetica", "normal");
@@ -279,7 +254,7 @@ export class PDFGenerator {
 
     yPosition += 8;
     doc.setFont("helvetica", "bold");
-    doc.text("Tecnico:", 15, yPosition);
+    doc.text("Técnico:", 15, yPosition);
     doc.setFont("helvetica", "normal");
     doc.text(ordem.tecnico_responsavel || "A definir", 45, yPosition);
 
@@ -296,7 +271,6 @@ export class PDFGenerator {
 
     yPosition += 8;
 
-    // Valor destacado
     if (ordem.valor) {
       doc.setFillColor(255, 248, 225);
       doc.roundedRect(12, yPosition - 2, 90, 8, 2, 2, "F");
@@ -325,16 +299,15 @@ export class PDFGenerator {
 
     yPosition += 20;
 
-    // Garantia (se houver)
     if (ordem.garantia) {
       doc.setFillColor(...success);
       doc.roundedRect(10, yPosition, 190, 12, 3, 3, "F");
       doc.setTextColor(...white);
       doc.setFont("helvetica", "bold");
       doc.setFontSize(11);
-      doc.text("*** GARANTIA INCLUIDA ***", 15, yPosition + 6);
+      doc.text("*** GARANTIA INCLUÍDA ***", 15, yPosition + 6);
       doc.text(
-        `Periodo: ${ordem.periodo_garantia || "Conforme contrato"}`,
+        `Período: ${ordem.periodo_garantia || "Conforme contrato"}`,
         110,
         yPosition + 6
       );
@@ -342,7 +315,6 @@ export class PDFGenerator {
       doc.setTextColor(0, 0, 0);
     }
 
-    // Observações
     if (ordem.observacoes) {
       doc.setDrawColor(...borderColor);
       doc.rect(10, yPosition, 190, 30);
@@ -351,7 +323,7 @@ export class PDFGenerator {
       doc.setFontSize(11);
       doc.setFont("helvetica", "bold");
       doc.setTextColor(...secondaryColor);
-      doc.text(" OBSERVACOES", 15, yPosition + 5);
+      doc.text(" OBSERVAÇÕES", 15, yPosition + 5);
 
       yPosition += 12;
       doc.setTextColor(0, 0, 0);
@@ -361,7 +333,6 @@ export class PDFGenerator {
       yPosition += 15;
     }
 
-    // Termos e condições
     yPosition += 5;
     if (yPosition > 210) {
       doc.addPage();
@@ -376,7 +347,7 @@ export class PDFGenerator {
     doc.setFontSize(10);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(...secondaryColor);
-    doc.text(" TERMOS E CONDICOES", 15, yPosition + 8);
+    doc.text(" TERMOS E CONDIÇÕES", 15, yPosition + 8);
 
     yPosition += 15;
     doc.setTextColor(0, 0, 0);
@@ -384,25 +355,23 @@ export class PDFGenerator {
     doc.setFont("helvetica", "normal");
 
     const termos = [
-      "• Este documento e obrigatorio para retirada do equipamento.",
-      "• Equipamentos nao retirados em 90 dias serao considerados abandonados.",
-      "• A garantia e valida apenas para o defeito descrito nesta ordem.",
-      "• Nao nos responsabilizamos por dados perdidos durante o reparo.",
-      "• O cliente declara que o equipamento nao possui bloqueios ou senhas.",
+      "• Este documento é obrigatório para retirada do equipamento.",
+      "• Equipamentos não retirados em 90 dias serão considerados abandonados.",
+      "• A garantia é válida apenas para o defeito descrito nesta ordem.",
+      "• Não nos responsabilizamos por dados perdidos durante o reparo.",
+      "• O cliente declara que o equipamento não possui bloqueios ou senhas.",
     ];
 
     termos.forEach((termo, index) => {
       doc.text(termo, 15, yPosition + index * 4);
     });
 
-    // Assinaturas
     yPosition += 35;
 
     doc.setFontSize(9);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(0, 0, 0);
 
-    // Linhas para assinatura
     doc.setDrawColor(0, 0, 0);
     doc.line(15, yPosition, 90, yPosition);
     doc.line(120, yPosition, 195, yPosition);
@@ -412,7 +381,6 @@ export class PDFGenerator {
     doc.text("Data: ___/___/______", 35, yPosition + 12);
     doc.text("Luiz Felipe Oliveira", 140, yPosition + 12);
 
-    // Rodapé
     const footerY = 280;
     doc.setDrawColor(...primaryColor);
     doc.setLineWidth(1);
@@ -426,12 +394,11 @@ export class PDFGenerator {
       footerY + 4
     );
     doc.text(
-      "Autorizada Cell - Assistencia Tecnica Especializada",
+      "Autorizada Cell - Assistência Técnica Especializada",
       15,
       footerY + 8
     );
 
-    // Salvar o PDF
     const nomeArquivo = `OS_${ordem.id.toString().padStart(4, "0")}_${ordem.modelo?.replace(/[^a-zA-Z0-9]/g, "_") || "equipamento"}.pdf`;
     doc.save(nomeArquivo);
   }

@@ -5,6 +5,7 @@ import {
   LockOpenIcon,
   LockClosedIcon,
   ClockIcon,
+  ArrowPathIcon,
 } from "@heroicons/react/24/outline";
 import type { Loja } from "./types";
 
@@ -13,6 +14,7 @@ interface LojaFechadaCardProps {
   canOpenCaixa: boolean;
   onAbrirCaixa: () => void;
   onVerHistorico: () => void;
+  hasCaixaFechadoHoje?: boolean;
 }
 
 export default function LojaFechadaCard({
@@ -20,6 +22,7 @@ export default function LojaFechadaCard({
   canOpenCaixa,
   onAbrirCaixa,
   onVerHistorico,
+  hasCaixaFechadoHoje = false,
 }: LojaFechadaCardProps) {
   return (
     <Card className="bg-gradient-to-br from-default-50 to-default-100 border-2 border-default-200">
@@ -38,14 +41,20 @@ export default function LojaFechadaCard({
               </p>
             </div>
           </div>
-          <Chip color="default" variant="flat" size="sm">
-            Fechado
+          <Chip
+            color={hasCaixaFechadoHoje ? "warning" : "default"}
+            variant="flat"
+            size="sm"
+          >
+            {hasCaixaFechadoHoje ? "Fechado Hoje" : "Fechado"}
           </Chip>
         </div>
 
         <div className="bg-white rounded-lg p-3 mb-4">
           <p className="text-sm text-default-500 text-center">
-            Caixa fechado. Abra um novo caixa para iniciar as operações.
+            {hasCaixaFechadoHoje
+              ? "Caixa foi fechado hoje. Você pode reabrir este caixa."
+              : "Caixa fechado. Abra um novo caixa para iniciar as operações."}
           </p>
         </div>
 
@@ -53,12 +62,18 @@ export default function LojaFechadaCard({
           {canOpenCaixa && (
             <Button
               size="sm"
-              color="success"
+              color={hasCaixaFechadoHoje ? "warning" : "success"}
               className="flex-1"
-              startContent={<LockOpenIcon className="w-4 h-4" />}
+              startContent={
+                hasCaixaFechadoHoje ? (
+                  <ArrowPathIcon className="w-4 h-4" />
+                ) : (
+                  <LockOpenIcon className="w-4 h-4" />
+                )
+              }
               onPress={onAbrirCaixa}
             >
-              Abrir Caixa
+              {hasCaixaFechadoHoje ? "Reabrir Caixa" : "Abrir Caixa"}
             </Button>
           )}
 

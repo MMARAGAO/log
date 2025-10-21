@@ -112,20 +112,29 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!dateStart && !dateEnd && selectedPeriod) {
-      const end = new Date();
-      const start = new Date();
-      start.setDate(start.getDate() - parseInt(selectedPeriod));
-      setDateStart(start.toISOString().slice(0, 10));
-      setDateEnd(end.toISOString().slice(0, 10));
+      if (selectedPeriod === "all") {
+        setDateStart("");
+        setDateEnd("");
+      } else if (!isNaN(Number(selectedPeriod))) {
+        const end = new Date();
+        const start = new Date();
+        start.setDate(start.getDate() - Number(selectedPeriod));
+        setDateStart(start.toISOString().slice(0, 10));
+        setDateEnd(end.toISOString().slice(0, 10));
+      }
     }
   }, [selectedPeriod, dateStart, dateEnd]);
 
   const vendasFiltradas = useMemo(() => {
     return vendas.filter((v) => {
       if (!dateStart && !dateEnd) return true;
-      const d = new Date(v.data_venda).toISOString().slice(0, 10);
-      if (dateStart && d < dateStart) return false;
-      if (dateEnd && d > dateEnd) return false;
+      let d = "";
+      if (v.data_venda) {
+        const dt = new Date(v.data_venda);
+        d = isNaN(dt.getTime()) ? "" : dt.toISOString().slice(0, 10);
+      }
+      if (dateStart && d && d < dateStart) return false;
+      if (dateEnd && d && d > dateEnd) return false;
       return true;
     });
   }, [vendas, dateStart, dateEnd]);
@@ -133,9 +142,13 @@ export default function DashboardPage() {
   const ordensFiltradasPeriodo = useMemo(() => {
     return ordens.filter((o) => {
       if (!dateStart && !dateEnd) return true;
-      const d = o.entrada ? new Date(o.entrada).toISOString().slice(0, 10) : "";
-      if (dateStart && d < dateStart) return false;
-      if (dateEnd && d > dateEnd) return false;
+      let d = "";
+      if (o.entrada) {
+        const dt = new Date(o.entrada);
+        d = isNaN(dt.getTime()) ? "" : dt.toISOString().slice(0, 10);
+      }
+      if (dateStart && d && d < dateStart) return false;
+      if (dateEnd && d && d > dateEnd) return false;
       return true;
     });
   }, [ordens, dateStart, dateEnd]);
@@ -180,12 +193,18 @@ export default function DashboardPage() {
       (acc, d) => acc + Number(d.valor_total_devolvido || 0),
       0
     );
-    const taxaDevolucao = totalVendas > 0 ? (totalDevolucoes / totalVendas) * 100 : 0;
+    const taxaDevolucao =
+      totalVendas > 0 ? (totalDevolucoes / totalVendas) * 100 : 0;
 
     const totalOrdens = ordensFiltradasPeriodo.length;
-    const ordensAbertas = ordensFiltradasPeriodo.filter((o) => o.status === "aberta").length;
-    const ordensConcluidas = ordensFiltradasPeriodo.filter((o) => o.status === "concluida").length;
-    const taxaConclusao = totalOrdens > 0 ? (ordensConcluidas / totalOrdens) * 100 : 0;
+    const ordensAbertas = ordensFiltradasPeriodo.filter(
+      (o) => o.status === "aberta"
+    ).length;
+    const ordensConcluidas = ordensFiltradasPeriodo.filter(
+      (o) => o.status === "concluida"
+    ).length;
+    const taxaConclusao =
+      totalOrdens > 0 ? (ordensConcluidas / totalOrdens) * 100 : 0;
     const valorOrdens = ordensFiltradasPeriodo.reduce(
       (acc, o) => acc + Number(o.valor || 0),
       0
@@ -247,7 +266,10 @@ export default function DashboardPage() {
   ]);
 
   const chartData = useMemo<ChartDataItem[]>(() => {
-    const map = new Map<string, { date: string; receita: number; vendas: number }>();
+    const map = new Map<
+      string,
+      { date: string; receita: number; vendas: number }
+    >();
 
     vendasFiltradas.forEach((v) => {
       const d = new Date(v.data_venda).toLocaleDateString("pt-BR", {
@@ -264,7 +286,10 @@ export default function DashboardPage() {
   }, [vendasFiltradas]);
 
   const produtosVendidos = useMemo<ProdutoVendidoItem[]>(() => {
-    const map = new Map<string, { produto: string; quantidade: number; valor: number }>();
+    const map = new Map<
+      string,
+      { produto: string; quantidade: number; valor: number }
+    >();
 
     vendasFiltradas.forEach((v) => {
       v.itens.forEach((item: any) => {
@@ -282,7 +307,10 @@ export default function DashboardPage() {
   }, [vendasFiltradas]);
 
   const formasPagamento = useMemo<FormasPagamentoItem[]>(() => {
-    const map = new Map<string, { forma: string; total: number; quantidade: number }>();
+    const map = new Map<
+      string,
+      { forma: string; total: number; quantidade: number }
+    >();
 
     vendasFiltradas.forEach((v) => {
       const forma = v.forma_pagamento || "Não informado";
@@ -298,7 +326,10 @@ export default function DashboardPage() {
   }, [vendasFiltradas]);
 
   const vendasPorLoja = useMemo<VendasPorLojaItem[]>(() => {
-    const map = new Map<number, { nome: string; total: number; vendas: number; ticket: number }>();
+    const map = new Map<
+      number,
+      { nome: string; total: number; vendas: number; ticket: number }
+    >();
 
     vendasFiltradas.forEach((v) => {
       if (!v.loja_id) return;
@@ -320,15 +351,24 @@ export default function DashboardPage() {
   }, [vendasFiltradas, lojas]);
 
   const topClientes = useMemo<TopClienteItem[]>(() => {
-    const map = new Map<number, { nome: string; total: number; vendas: number; ticket: number }>();
+    const map = new Map<
+      number,
+      { nome: string; total: number; vendas: number; ticket: number }
+    >();
 
     vendasFiltradas.forEach((v) => {
       if (!v.id_cliente) return;
       const cliente = clientes.find((c) => c.id === v.id_cliente);
-      const nomeCliente = cliente?.nome || v.cliente_nome || `Cliente ${v.id_cliente}`;
+      const nomeCliente =
+        cliente?.nome || v.cliente_nome || `Cliente ${v.id_cliente}`;
 
       if (!map.has(v.id_cliente)) {
-        map.set(v.id_cliente, { nome: nomeCliente, total: 0, vendas: 0, ticket: 0 });
+        map.set(v.id_cliente, {
+          nome: nomeCliente,
+          total: 0,
+          vendas: 0,
+          ticket: 0,
+        });
       }
       const obj = map.get(v.id_cliente)!;
       obj.total += Number(v.total_liquido || 0);
@@ -344,7 +384,10 @@ export default function DashboardPage() {
   }, [vendasFiltradas, clientes]);
 
   const topVendedores = useMemo<TopVendedorItem[]>(() => {
-    const map = new Map<string, { nome: string; total: number; vendas: number; ticket: number }>();
+    const map = new Map<
+      string,
+      { nome: string; total: number; vendas: number; ticket: number }
+    >();
 
     vendasFiltradas.forEach((v) => {
       if (!v.id_usuario) return;
@@ -352,7 +395,12 @@ export default function DashboardPage() {
       const nomeUsuario = usuario?.nome || `Usuário ${v.id_usuario}`;
 
       if (!map.has(v.id_usuario)) {
-        map.set(v.id_usuario, { nome: nomeUsuario, total: 0, vendas: 0, ticket: 0 });
+        map.set(v.id_usuario, {
+          nome: nomeUsuario,
+          total: 0,
+          vendas: 0,
+          ticket: 0,
+        });
       }
       const obj = map.get(v.id_usuario)!;
       obj.total += Number(v.total_liquido || 0);

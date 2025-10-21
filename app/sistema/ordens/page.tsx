@@ -60,7 +60,7 @@ import {
   ChevronRightIcon,
 } from "@heroicons/react/24/solid";
 import DataHoje from "@/components/data";
-import { PDFGenerator } from "@/components/PDFGenerator";
+import { PDFGenerator } from "@/components/ordens/PDFGenerator";
 import { EllipsisVerticalIcon } from "@heroicons/react/24/outline";
 
 interface Ordem {

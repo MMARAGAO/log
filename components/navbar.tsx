@@ -86,11 +86,7 @@ export function Navbar() {
       path: "/sistema/rma",
       icon: CpuChipIcon,
     },
-    {
-      name: "RMA Clientes",
-      path: "/sistema/rmaClientes",
-      icon: UserGroupIcon,
-    },
+
     { name: "Caixa", path: "/sistema/caixa", icon: CircleStackIcon },
   ];
 

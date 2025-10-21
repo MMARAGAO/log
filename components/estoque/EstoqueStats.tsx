@@ -113,7 +113,7 @@ export default function EstoqueStats({ produtos }: EstoqueStatsProps) {
   ];
 
   return (
-    <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 mb-6">
+    <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 mb-6">
       {statCards.map((stat) => (
         <Card key={stat.label} className="border-none shadow-sm">
           <CardBody className="p-4">

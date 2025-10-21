@@ -155,13 +155,11 @@ type StatusPagamento =
   | "pendente"
   | "cancelado"
   | "vencido"
-  | "fiado"
   | "devolvido";
 
 const STATUS_OPTIONS = [
   { key: "pendente", label: "Pendente", color: "warning", icon: ClockIcon },
   { key: "pago", label: "Pago", color: "success", icon: CheckCircleIcon },
-  { key: "fiado", label: "Fiado", color: "secondary", icon: HandRaisedIcon },
   {
     key: "vencido",
     label: "Vencido",
@@ -422,6 +420,7 @@ export default function VendasPage() {
   // Atualizar função resetForm
   function resetForm() {
     setEditingVenda(null);
+    setItensOriginaisVenda([]); // NOVO: Limpar itens originais
     setFormData({
       data_venda: new Date().toISOString().slice(0, 10),
       itens: [],
@@ -506,6 +505,24 @@ export default function VendasPage() {
       alert("Você não possui permissão para editar vendas.");
       return;
     }
+
+    // NOVO: Bloquear edição de vendas com status "pago"
+    if (v.status_pagamento === "pago") {
+      toast.error(
+        "🔒 Não é possível editar vendas com status 'Pago'. O pagamento já foi quitado.",
+        {
+          duration: 4000,
+          icon: "⛔",
+          style: {
+            background: "#fee2e2",
+            color: "#dc2626",
+            border: "2px solid #fca5a5",
+          },
+        }
+      );
+      return;
+    }
+
     openEditVenda(v);
   }
 
@@ -522,6 +539,24 @@ export default function VendasPage() {
       alert("Você não possui permissão para deletar vendas.");
       return;
     }
+
+    // NOVO: Bloquear exclusão de vendas com status "pago"
+    if (v.status_pagamento === "pago") {
+      toast.error(
+        "🔒 Não é possível excluir vendas com status 'Pago'. O pagamento já foi quitado.",
+        {
+          duration: 4000,
+          icon: "⛔",
+          style: {
+            background: "#fee2e2",
+            color: "#dc2626",
+            border: "2px solid #fca5a5",
+          },
+        }
+      );
+      return;
+    }
+
     openDelete(v);
   }
 
@@ -555,6 +590,9 @@ export default function VendasPage() {
 
   // Estado de formulário de venda
   const [editingVenda, setEditingVenda] = useState<Venda | null>(null);
+  const [itensOriginaisVenda, setItensOriginaisVenda] = useState<VendaItem[]>(
+    []
+  ); // NOVO: Para guardar os itens originais
   const [formData, setFormData] = useState<Partial<Venda>>({
     data_venda: new Date().toISOString().slice(0, 10),
     itens: [],
@@ -859,6 +897,16 @@ export default function VendasPage() {
   function openEditVenda(v: Venda) {
     resetForm();
     setEditingVenda(v);
+
+    // NOVO: Fazer uma cópia profunda dos itens originais para preservar as quantidades
+    const itensOriginaisCopia = JSON.parse(JSON.stringify(v.itens || []));
+    setItensOriginaisVenda(itensOriginaisCopia);
+
+    console.log(
+      "[VENDAS] 💾 Itens originais salvos na edição:",
+      itensOriginaisCopia
+    );
+
     setFormData({
       ...v,
       data_venda: v.data_venda.slice(0, 10),
@@ -1014,14 +1062,24 @@ export default function VendasPage() {
 
     const disponivel = Number(selectedProduto.quantidade) || 0;
 
-    if (disponivel === 0) {
+    // Se estamos editando uma venda, considerar a quantidade original do produto
+    const quantidadeOriginal = editingVenda
+      ? editingVenda.itens?.find(
+          (i: VendaItem) => i.id_estoque === selectedProduto.id
+        )?.quantidade || 0
+      : 0;
+
+    // Estoque disponível = estoque atual + quantidade que estava na venda original
+    const estoqueDisponivel = disponivel + quantidadeOriginal;
+
+    if (estoqueDisponivel === 0) {
       toast.error("Produto sem estoque nesta loja.", {
         icon: "📦",
       });
       return;
     }
-    if (produtoQtd > disponivel) {
-      toast.error(`Estoque insuficiente. Disponível: ${disponivel}`, {
+    if (produtoQtd > estoqueDisponivel) {
+      toast.error(`Estoque insuficiente. Disponível: ${estoqueDisponivel}`, {
         icon: "⚠️",
       });
       return;
@@ -1033,9 +1091,9 @@ export default function VendasPage() {
 
     if (idx >= 0) {
       const soma = itens[idx].quantidade + produtoQtd;
-      if (soma > disponivel) {
+      if (soma > estoqueDisponivel) {
         toast.error(
-          `Quantidade total excede estoque. Atual no carrinho: ${itens[idx].quantidade}, disponível: ${disponivel}`,
+          `Quantidade total excede estoque. Atual no carrinho: ${itens[idx].quantidade}, disponível: ${estoqueDisponivel}`,
           {
             duration: 4000,
             icon: "📊",
@@ -1082,12 +1140,28 @@ export default function VendasPage() {
     const item = itens[index];
     const prod = estoque.find((p) => p.id === item.id_estoque);
     const disponivel = Number(prod?.quantidade) || 0;
-    if (qty > disponivel) {
-      alert(
-        `Quantidade solicitada (${qty}) excede o estoque da loja (${disponivel}).`
+
+    // Se estamos editando uma venda existente, considerar a quantidade original do item
+    const quantidadeOriginal = editingVenda
+      ? editingVenda.itens?.find(
+          (i: VendaItem) => i.id_estoque === item.id_estoque
+        )?.quantidade || 0
+      : 0;
+
+    // Estoque disponível = estoque atual + quantidade que estava na venda original
+    const estoqueDisponivel = disponivel + quantidadeOriginal;
+
+    if (qty > estoqueDisponivel) {
+      toast.error(
+        `Quantidade solicitada (${qty}) excede o estoque disponível (${estoqueDisponivel}).`,
+        {
+          duration: 4000,
+          icon: "📦",
+        }
       );
-      qty = disponivel;
+      return;
     }
+
     item.quantidade = qty;
     item.subtotal = item.quantidade * item.preco_unitario - item.desconto;
     recalcTotals(itens, undefined, undefined, undefined, creditoAplicado);
@@ -1117,10 +1191,26 @@ export default function VendasPage() {
       0,
       (formData.total_liquido || 0) - (fiado ? num : num)
     );
+
+    // NOVO: Atualizar status automaticamente baseado no pagamento
+    let novoStatus: StatusPagamento = formData.status_pagamento || "pendente";
+    if (restante === 0 && num > 0) {
+      novoStatus = "pago";
+      console.log(
+        "[VENDAS] ✅ Valor total quitado! Status atualizado para 'pago'"
+      );
+    } else if (num > 0 && restante > 0) {
+      novoStatus = "pendente";
+      console.log(
+        `[VENDAS] 💰 Pagamento parcial: R$ ${num} de R$ ${formData.total_liquido}. Status: pendente`
+      );
+    }
+
     setFormData((p) => ({
       ...p,
       valor_pago: num,
       valor_restante: restante,
+      status_pagamento: novoStatus,
     }));
   }
 
@@ -1198,7 +1288,60 @@ export default function VendasPage() {
 
       const status_pagamento = formData.status_pagamento || "pendente";
 
-      // MODIFICADO: payload agora inclui informações de crédito
+      // NOVO: Gerar log de alterações de quantidade (apenas para edições)
+      let logAlteracoes = "";
+      if (editingVenda && itensOriginaisVenda.length > 0) {
+        const alteracoes: string[] = [];
+        const dataHora = new Date().toLocaleString("pt-BR");
+
+        // Verificar alterações de quantidade
+        itensOriginaisVenda.forEach((itemOriginal) => {
+          const itemNovo = itensLimpos.find(
+            (i) => i.id_estoque === itemOriginal.id_estoque
+          );
+
+          if (itemNovo) {
+            const qtdOriginal = itemOriginal.quantidade;
+            const qtdNova = itemNovo.quantidade;
+
+            if (qtdOriginal !== qtdNova) {
+              const diff = qtdNova - qtdOriginal;
+              const sinal = diff > 0 ? "+" : "";
+              alteracoes.push(
+                `${itemOriginal.descricao}: ${qtdOriginal} → ${qtdNova} (${sinal}${diff})`
+              );
+            }
+          } else {
+            // Item removido
+            alteracoes.push(
+              `${itemOriginal.descricao}: ${itemOriginal.quantidade} → 0 (removido)`
+            );
+          }
+        });
+
+        // Verificar itens adicionados
+        itensLimpos.forEach((itemNovo) => {
+          const itemOriginal = itensOriginaisVenda.find(
+            (i) => i.id_estoque === itemNovo.id_estoque
+          );
+          if (!itemOriginal) {
+            alteracoes.push(
+              `${itemNovo.descricao}: 0 → ${itemNovo.quantidade} (adicionado)`
+            );
+          }
+        });
+
+        if (alteracoes.length > 0) {
+          logAlteracoes = `\n\n📝 [${dataHora}] Alterações:\n${alteracoes.join("\n")}`;
+          console.log("[VENDAS] 📝 Histórico de alterações gerado:", {
+            quantidade: alteracoes.length,
+            alteracoes: alteracoes,
+            log: logAlteracoes,
+          });
+        }
+      }
+
+      // MODIFICADO: payload agora inclui informações de crédito e log de alterações
       const payloadRaw = {
         data_venda: new Date(formData.data_venda + "T00:00:00").toISOString(),
         data_vencimento: formData.data_vencimento
@@ -1222,10 +1365,11 @@ export default function VendasPage() {
           [
             formData.observacoes || "",
             credito_usado > 0 ? `Crédito aplicado: ${fmt(credito_usado)}` : "",
+            logAlteracoes, // NOVO: adiciona log de alterações
           ]
             .filter(Boolean)
             .join("\n")
-            .trim() || null, // NOVO: adiciona info do crédito nas observações
+            .trim() || null,
         updated_at: new Date().toISOString(),
       };
 
@@ -1263,53 +1407,327 @@ export default function VendasPage() {
         }
       }
 
-      // Ajuste de estoque (apenas para vendas novas)
-      if (!editingVenda && vendaId && selectedLoja) {
-        await Promise.all(
-          itensLimpos.map(async (it) => {
-            if (!it.id_estoque || !it.quantidade) return;
+      // Ajuste de estoque
+      if (vendaId && selectedLoja) {
+        if (editingVenda) {
+          // EDIÇÃO: Ajustar apenas as diferenças no estoque
+          console.log("[VENDAS] ═══════════════════════════════════════");
+          console.log("[VENDAS] 🔄 INICIANDO AJUSTE DE ESTOQUE NA EDIÇÃO");
+          console.log("[VENDAS] ═══════════════════════════════════════");
+          console.log(
+            `[VENDAS] 🏪 Loja original: ${editingVenda.loja_id}, Loja selecionada: ${selectedLoja.id}`
+          );
 
-            const { data: current, error: curErr } = await supabase
-              .from("estoque_lojas")
-              .select("quantidade")
-              .eq("produto_id", it.id_estoque)
-              .eq("loja_id", selectedLoja.id)
-              .single();
+          const lojaOriginal = editingVenda.loja_id;
+          const itensOriginais = itensOriginaisVenda; // MODIFICADO: usar o estado separado
+          const mesmaLoja = lojaOriginal === selectedLoja.id;
 
-            if (curErr) {
-              console.warn(
-                "[VENDAS] Falha ao buscar estoque da loja para produto",
-                it.id_estoque,
-                "loja",
-                selectedLoja.id,
-                curErr
-              );
-              return;
-            }
+          console.log(
+            `[VENDAS] 📦 Itens originais da venda (PRESERVADOS):`,
+            itensOriginais
+          );
+          console.log(`[VENDAS] 📦 Itens novos (itensLimpos):`, itensLimpos);
+          console.log(
+            `[VENDAS] ${mesmaLoja ? "✅" : "🔄"} Mesma loja: ${mesmaLoja}`
+          );
 
-            const atual = Number(current?.quantidade) || 0;
-            const nova = Math.max(0, atual - it.quantidade);
-
-            const { error: updErr } = await supabase
-              .from("estoque_lojas")
-              .update({
-                quantidade: nova,
-                updatedat: new Date().toISOString(),
-              })
-              .eq("produto_id", it.id_estoque)
-              .eq("loja_id", selectedLoja.id);
-
-            if (updErr) {
-              console.warn(
-                "[VENDAS] Falha ao atualizar estoque da loja",
-                it.id_estoque,
-                "loja",
-                selectedLoja.id,
-                updErr
+          // Criar mapa dos itens originais para comparação
+          const mapaItensOriginais = new Map();
+          itensOriginais.forEach((item) => {
+            if (item.id_estoque) {
+              mapaItensOriginais.set(item.id_estoque, item.quantidade);
+              console.log(
+                `[VENDAS] 📋 Item original mapeado: Produto ${item.id_estoque} = ${item.quantidade} unidades`
               );
             }
-          })
-        );
+          });
+
+          // Criar mapa dos novos itens
+          const mapaItensNovos = new Map();
+          itensLimpos.forEach((item) => {
+            if (item.id_estoque) {
+              mapaItensNovos.set(item.id_estoque, item.quantidade);
+              console.log(
+                `[VENDAS] 📋 Item novo mapeado: Produto ${item.id_estoque} = ${item.quantidade} unidades`
+              );
+            }
+          });
+
+          // Processar cada produto
+          const produtosProcessados = new Set();
+
+          console.log("[VENDAS] ───────────────────────────────────────");
+          console.log("[VENDAS] 🔍 PROCESSANDO AJUSTES DE ESTOQUE...");
+          console.log("[VENDAS] ───────────────────────────────────────");
+
+          // 1. Primeiro, devolver itens da loja original que foram removidos ou tiveram quantidade reduzida
+          for (const itemOriginal of itensOriginais) {
+            if (!itemOriginal.id_estoque) continue;
+
+            const qtdOriginal = itemOriginal.quantidade;
+            const qtdNova = mapaItensNovos.get(itemOriginal.id_estoque) || 0;
+
+            console.log(
+              `[VENDAS] 🔎 Analisando Produto ${itemOriginal.id_estoque} (${itemOriginal.descricao}):`
+            );
+            console.log(`[VENDAS]    • Quantidade original: ${qtdOriginal}`);
+            console.log(`[VENDAS]    • Quantidade nova: ${qtdNova}`);
+            console.log(`[VENDAS]    • Diferença: ${qtdNova - qtdOriginal}`);
+
+            produtosProcessados.add(itemOriginal.id_estoque);
+
+            if (mesmaLoja) {
+              // Mesma loja: calcular diferença direta
+              const diferenca = qtdNova - qtdOriginal;
+
+              if (diferenca === 0) {
+                console.log(
+                  `[VENDAS] ➡️ Sem alteração para produto ${itemOriginal.id_estoque}`
+                );
+                continue;
+              }
+
+              const { data: current, error: curErr } = await supabase
+                .from("estoque_lojas")
+                .select("quantidade")
+                .eq("produto_id", itemOriginal.id_estoque)
+                .eq("loja_id", lojaOriginal)
+                .single();
+
+              if (curErr) {
+                console.error(
+                  `[VENDAS] ❌ ERRO ao buscar estoque do produto ${itemOriginal.id_estoque}:`,
+                  curErr
+                );
+                continue;
+              }
+
+              const estoqueAtual = Number(current?.quantidade) || 0;
+              const novoEstoque = estoqueAtual - diferenca; // Se diferenca negativa, aumenta estoque
+
+              console.log(
+                `[VENDAS] ${diferenca > 0 ? "➖ DEDUZINDO" : "🔄 DEVOLVENDO"} do estoque (Loja ${lojaOriginal})`
+              );
+              console.log(`[VENDAS]    • Estoque atual: ${estoqueAtual}`);
+              console.log(
+                `[VENDAS]    • Operação: ${estoqueAtual} ${diferenca > 0 ? "-" : "+"} ${Math.abs(diferenca)}`
+              );
+              console.log(`[VENDAS]    • Novo estoque: ${novoEstoque}`);
+
+              const { error: updErr } = await supabase
+                .from("estoque_lojas")
+                .update({
+                  quantidade: novoEstoque,
+                  updatedat: new Date().toISOString(),
+                })
+                .eq("produto_id", itemOriginal.id_estoque)
+                .eq("loja_id", lojaOriginal);
+
+              if (updErr) {
+                console.error(`[VENDAS] ❌ ERRO ao atualizar estoque:`, updErr);
+              } else {
+                console.log(
+                  `[VENDAS] ✅ SUCESSO! Estoque atualizado de ${estoqueAtual} para ${novoEstoque}`
+                );
+              }
+            } else {
+              // Lojas diferentes: devolver para loja original
+              const { data: current, error: curErr } = await supabase
+                .from("estoque_lojas")
+                .select("quantidade")
+                .eq("produto_id", itemOriginal.id_estoque)
+                .eq("loja_id", lojaOriginal)
+                .single();
+
+              if (curErr) {
+                console.warn(
+                  `[VENDAS] ❌ Erro ao buscar estoque do produto ${itemOriginal.id_estoque}:`,
+                  curErr
+                );
+                continue;
+              }
+
+              const estoqueAtual = Number(current?.quantidade) || 0;
+              const estoqueDevolvido = estoqueAtual + qtdOriginal;
+
+              console.log(
+                `[VENDAS] 🔄 Devolvendo ao estoque (Loja ${lojaOriginal}) - Produto ${itemOriginal.id_estoque} (${itemOriginal.descricao}): ${estoqueAtual} + ${qtdOriginal} = ${estoqueDevolvido}`
+              );
+
+              const { error: updErr } = await supabase
+                .from("estoque_lojas")
+                .update({
+                  quantidade: estoqueDevolvido,
+                  updatedat: new Date().toISOString(),
+                })
+                .eq("produto_id", itemOriginal.id_estoque)
+                .eq("loja_id", lojaOriginal);
+
+              if (updErr) {
+                console.warn(`[VENDAS] ❌ Erro ao devolver estoque:`, updErr);
+              } else {
+                console.log(`[VENDAS] ✅ Item devolvido com sucesso`);
+              }
+
+              // Se o produto também está nos novos itens, deduzir da loja nova
+              if (qtdNova > 0) {
+                const { data: currentNova, error: curErrNova } = await supabase
+                  .from("estoque_lojas")
+                  .select("quantidade")
+                  .eq("produto_id", itemOriginal.id_estoque)
+                  .eq("loja_id", selectedLoja.id)
+                  .single();
+
+                if (curErrNova) {
+                  console.warn(
+                    `[VENDAS] ❌ Erro ao buscar estoque na nova loja:`,
+                    curErrNova
+                  );
+                  continue;
+                }
+
+                const estoqueAtualNova = Number(currentNova?.quantidade) || 0;
+                const novoEstoqueNova = Math.max(0, estoqueAtualNova - qtdNova);
+
+                console.log(
+                  `[VENDAS] ➖ Deduzindo do estoque (Loja ${selectedLoja.id}) - Produto ${itemOriginal.id_estoque}: ${estoqueAtualNova} - ${qtdNova} = ${novoEstoqueNova}`
+                );
+
+                const { error: updErrNova } = await supabase
+                  .from("estoque_lojas")
+                  .update({
+                    quantidade: novoEstoqueNova,
+                    updatedat: new Date().toISOString(),
+                  })
+                  .eq("produto_id", itemOriginal.id_estoque)
+                  .eq("loja_id", selectedLoja.id);
+
+                if (updErrNova) {
+                  console.warn(
+                    `[VENDAS] ❌ Erro ao deduzir da nova loja:`,
+                    updErrNova
+                  );
+                } else {
+                  console.log(
+                    `[VENDAS] ✅ Item deduzido com sucesso da nova loja`
+                  );
+                }
+              }
+            }
+          }
+
+          // 2. Produtos novos que não estavam na venda original (se mudou de loja ou adicionou novos)
+          if (!mesmaLoja) {
+            for (const novoItem of itensLimpos) {
+              if (
+                !novoItem.id_estoque ||
+                produtosProcessados.has(novoItem.id_estoque)
+              ) {
+                continue; // Já foi processado acima
+              }
+
+              const { data: current, error: curErr } = await supabase
+                .from("estoque_lojas")
+                .select("quantidade")
+                .eq("produto_id", novoItem.id_estoque)
+                .eq("loja_id", selectedLoja.id)
+                .single();
+
+              if (curErr) {
+                console.warn(
+                  `[VENDAS] ❌ Erro ao buscar estoque do novo produto:`,
+                  curErr
+                );
+                continue;
+              }
+
+              const estoqueAtual = Number(current?.quantidade) || 0;
+              const novoEstoque = Math.max(
+                0,
+                estoqueAtual - novoItem.quantidade
+              );
+
+              console.log(
+                `[VENDAS] ➖ Deduzindo produto novo (Loja ${selectedLoja.id}) - Produto ${novoItem.id_estoque} (${novoItem.descricao}): ${estoqueAtual} - ${novoItem.quantidade} = ${novoEstoque}`
+              );
+
+              const { error: updErr } = await supabase
+                .from("estoque_lojas")
+                .update({
+                  quantidade: novoEstoque,
+                  updatedat: new Date().toISOString(),
+                })
+                .eq("produto_id", novoItem.id_estoque)
+                .eq("loja_id", selectedLoja.id);
+
+              if (updErr) {
+                console.warn(
+                  `[VENDAS] ❌ Erro ao deduzir produto novo:`,
+                  updErr
+                );
+              } else {
+                console.log(`[VENDAS] ✅ Produto novo deduzido com sucesso`);
+              }
+            }
+          }
+        } else {
+          // NOVA VENDA: Apenas deduzir do estoque
+          console.log("[VENDAS] Deduzindo estoque para nova venda...");
+
+          await Promise.all(
+            itensLimpos.map(async (it) => {
+              if (!it.id_estoque || !it.quantidade) return;
+
+              const { data: current, error: curErr } = await supabase
+                .from("estoque_lojas")
+                .select("quantidade")
+                .eq("produto_id", it.id_estoque)
+                .eq("loja_id", selectedLoja.id)
+                .single();
+
+              if (curErr) {
+                console.warn(
+                  "[VENDAS] Falha ao buscar estoque da loja para produto",
+                  it.id_estoque,
+                  "loja",
+                  selectedLoja.id,
+                  curErr
+                );
+                return;
+              }
+
+              const atual = Number(current?.quantidade) || 0;
+              const nova = Math.max(0, atual - it.quantidade);
+
+              console.log(
+                `[VENDAS] Nova venda - Produto ${it.id_estoque}: ${atual} - ${it.quantidade} = ${nova}`
+              );
+
+              const { error: updErr } = await supabase
+                .from("estoque_lojas")
+                .update({
+                  quantidade: nova,
+                  updatedat: new Date().toISOString(),
+                })
+                .eq("produto_id", it.id_estoque)
+                .eq("loja_id", selectedLoja.id);
+
+              if (updErr) {
+                console.warn(
+                  "[VENDAS] Falha ao atualizar estoque da loja",
+                  it.id_estoque,
+                  "loja",
+                  selectedLoja.id,
+                  updErr
+                );
+              }
+            })
+          );
+        }
+
+        console.log("[VENDAS] ═══════════════════════════════════════");
+        console.log("[VENDAS] ✅ AJUSTE DE ESTOQUE CONCLUÍDO");
+        console.log("[VENDAS] ═══════════════════════════════════════");
       }
 
       // NOVA FUNCIONALIDADE: Atualizar crédito do cliente
@@ -1364,10 +1782,27 @@ export default function VendasPage() {
       vendaModal.onClose();
 
       // Feedback de sucesso
-      if (credito_usado > 0) {
-        alert(
-          `Venda salva com sucesso! Crédito de ${fmt(credito_usado)} foi aplicado.`
+      if (editingVenda) {
+        toast.success(
+          `Venda #${editingVenda.id} editada com sucesso! ${credito_usado > 0 ? `Crédito de ${fmt(credito_usado)} aplicado.` : ""}`,
+          {
+            duration: 3000,
+            icon: "✅",
+          }
         );
+      } else if (credito_usado > 0) {
+        toast.success(
+          `Venda criada com sucesso! Crédito de ${fmt(credito_usado)} foi aplicado.`,
+          {
+            duration: 3000,
+            icon: "✅",
+          }
+        );
+      } else {
+        toast.success("Venda salva com sucesso!", {
+          duration: 2000,
+          icon: "✅",
+        });
       }
     } catch (e: any) {
       console.error("[VENDAS] Erro ao salvar:", e);
@@ -1411,6 +1846,20 @@ export default function VendasPage() {
     const novoPago = Number(targetVenda.valor_pago || 0) + valor;
     const restante = Math.max(0, Number(targetVenda.total_liquido) - novoPago);
 
+    // NOVO: Determinar status baseado no pagamento
+    let novoStatus: StatusPagamento = targetVenda.status_pagamento;
+    if (restante === 0) {
+      novoStatus = "pago";
+      console.log(
+        "[VENDAS] ✅ Pagamento quitado! Status atualizado para 'pago'"
+      );
+    } else if (novoPago > 0 && restante > 0) {
+      novoStatus = "pendente";
+      console.log(
+        `[VENDAS] 💰 Pagamento parcial registrado. Restante: ${fmt(restante)}`
+      );
+    }
+
     const obsConcat = [
       targetVenda.observacoes || "",
       `${new Date().toLocaleDateString("pt-BR")}: Pagamento ${fmt(valor)}${
@@ -1427,10 +1876,11 @@ export default function VendasPage() {
 
     setLoading(true);
     try {
-      // MODIFICADO: Agora inclui a forma de pagamento na atualização
+      // MODIFICADO: Agora inclui status_pagamento na atualização
       const updateData: any = {
         valor_pago: novoPago,
         valor_restante: restante,
+        status_pagamento: novoStatus,
         observacoes: obsConcat,
       };
 
@@ -1445,6 +1895,22 @@ export default function VendasPage() {
       await updateTable("vendas", targetVenda.id, updateData);
       await loadAll();
       payModal.onClose();
+
+      // NOVO: Toast de feedback
+      if (restante === 0) {
+        toast.success(`✅ Venda #${targetVenda.id} quitada com sucesso!`, {
+          duration: 3000,
+          icon: "💰",
+        });
+      } else {
+        toast.success(
+          `Pagamento de ${fmt(valor)} registrado. Restante: ${fmt(restante)}`,
+          {
+            duration: 2500,
+            icon: "💵",
+          }
+        );
+      }
     } catch (e: any) {
       console.error("Erro ao registrar pagamento:", e);
       alert(
@@ -1470,11 +1936,33 @@ export default function VendasPage() {
       return;
     }
 
+    // NOVO: Verificação adicional de segurança contra vendas pagas
+    if (targetVenda.status_pagamento === "pago") {
+      toast.error(
+        "🔒 BLOQUEADO: Não é possível excluir vendas com status 'Pago'.",
+        {
+          duration: 4000,
+          icon: "⛔",
+          style: {
+            background: "#fee2e2",
+            color: "#dc2626",
+            border: "2px solid #fca5a5",
+          },
+        }
+      );
+      deleteModal.onClose();
+      return;
+    }
+
     setLoading(true);
     try {
       await deleteTable("vendas", targetVenda.id);
       await loadAll();
       deleteModal.onClose();
+      toast.success("Venda excluída com sucesso!", {
+        duration: 2000,
+        icon: "🗑️",
+      });
     } catch (e: any) {
       console.error("Erro ao excluir venda:", e);
       alert(
@@ -1864,12 +2352,29 @@ export default function VendasPage() {
                             </Button>
                           </Tooltip>
                           {canEditVendas && (
-                            <Tooltip content="Editar">
+                            <Tooltip
+                              content={
+                                v.status_pagamento === "pago"
+                                  ? "Não é possível editar vendas pagas"
+                                  : "Editar"
+                              }
+                              color={
+                                v.status_pagamento === "pago"
+                                  ? "danger"
+                                  : "default"
+                              }
+                            >
                               <Button
                                 isIconOnly
                                 size="sm"
                                 variant="light"
                                 onPress={() => safeOpenEditVenda(v)}
+                                isDisabled={v.status_pagamento === "pago"}
+                                className={
+                                  v.status_pagamento === "pago"
+                                    ? "opacity-40 cursor-not-allowed"
+                                    : ""
+                                }
                               >
                                 <PencilIcon className="w-4 h-4" />
                               </Button>
@@ -1892,13 +2397,26 @@ export default function VendasPage() {
                             </Tooltip>
                           )}
                           {canDeleteVendas && (
-                            <Tooltip content="Excluir" color="danger">
+                            <Tooltip
+                              content={
+                                v.status_pagamento === "pago"
+                                  ? "Não é possível excluir vendas pagas"
+                                  : "Excluir"
+                              }
+                              color="danger"
+                            >
                               <Button
                                 isIconOnly
                                 size="sm"
                                 variant="light"
                                 color="danger"
                                 onPress={() => safeOpenDelete(v)}
+                                isDisabled={v.status_pagamento === "pago"}
+                                className={
+                                  v.status_pagamento === "pago"
+                                    ? "opacity-40 cursor-not-allowed"
+                                    : ""
+                                }
                               >
                                 <TrashIcon className="w-4 h-4" />
                               </Button>
@@ -2006,23 +2524,6 @@ export default function VendasPage() {
                       }))
                     }
                     min={new Date().toISOString().slice(0, 10)}
-                  />
-
-                  <Input
-                    label="Valor Pago"
-                    value={valorPagoInput}
-                    onChange={(e) => {
-                      const masked = currencyMask(e.target.value);
-                      setValorPagoInput(masked);
-                      applyValorPago(masked);
-                    }}
-                    onBlur={() => {
-                      setValorPagoInput(
-                        numberToCurrencyInput(formData.valor_pago || 0)
-                      );
-                    }}
-                    placeholder="R$ 0,00"
-                    startContent={<CurrencyDollarIcon className="w-4 h-4" />}
                   />
                 </div>
               )}
@@ -2218,7 +2719,6 @@ export default function VendasPage() {
                     <div className="flex flex-col lg:flex-row gap-3">
                       <Input
                         className="flex-1"
-                        label="Buscar Produto"
                         value={searchProduto}
                         onChange={(e) => setSearchProduto(e.target.value)}
                         startContent={
@@ -2237,49 +2737,7 @@ export default function VendasPage() {
                         }
                         isDisabled={!caixaAberto || !caixaLojaAberto}
                       />
-                      <Input
-                        label="Quantidade"
-                        type="number"
-                        className="w-32"
-                        value={produtoQtd.toString()}
-                        onChange={(e) =>
-                          setProdutoQtd(
-                            Math.max(1, Number(e.target.value) || 1)
-                          )
-                        }
-                        min="1"
-                        isDisabled={!caixaAberto || !caixaLojaAberto}
-                      />
-                      <Input
-                        label="Desconto Item"
-                        className="w-40"
-                        value={numberToCurrencyInput(produtoDesc || 0)}
-                        onChange={(e) =>
-                          handleProdutoDescontoChange(e.target.value)
-                        }
-                        placeholder="R$ 0,00"
-                        isDisabled={
-                          !canAplicarDesconto ||
-                          !caixaAberto ||
-                          !caixaLojaAberto
-                        }
-                        description={
-                          !caixaAberto || !caixaLojaAberto
-                            ? "Caixa não disponível"
-                            : !canAplicarDesconto
-                              ? "Sem permissão para desconto"
-                              : canAplicarDesconto && descontoMaximo > 0
-                                ? `Máx: ${descontoMaximo}%`
-                                : undefined
-                        }
-                        color={
-                          !canAplicarDesconto ||
-                          !caixaAberto ||
-                          !caixaLojaAberto
-                            ? "default"
-                            : undefined
-                        }
-                      />
+
                       <Button
                         color="primary"
                         onPress={addProduto}
@@ -3064,11 +3522,83 @@ export default function VendasPage() {
                 {targetVenda.observacoes && (
                   <>
                     <Divider />
-                    <Textarea
-                      isReadOnly
-                      label="Observações"
-                      value={targetVenda.observacoes}
-                    />
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold flex items-center gap-2">
+                        <DocumentTextIcon className="w-4 h-4" />
+                        Observações e Histórico
+                      </p>
+                      <Card className="bg-default-50">
+                        <CardBody className="p-3 text-xs space-y-2">
+                          {targetVenda.observacoes
+                            .split("\n\n")
+                            .map((section, idx) => {
+                              // Se a seção começa com 📝, é um log de alterações
+                              const isLog = section.startsWith("📝");
+
+                              return (
+                                <div
+                                  key={idx}
+                                  className={
+                                    isLog
+                                      ? "border-l-3 border-primary pl-3 bg-primary-50/50 py-2 rounded"
+                                      : ""
+                                  }
+                                >
+                                  <div className="whitespace-pre-line">
+                                    {section
+                                      .split("\n")
+                                      .map((line, lineIdx) => {
+                                        // Destacar linhas de alteração
+                                        const isAumento = line.includes("(+");
+                                        const isDiminuicao =
+                                          line.includes("(-");
+                                        const isRemocao =
+                                          line.includes("(removido)");
+                                        const isAdicao =
+                                          line.includes("(adicionado)");
+
+                                        let lineClass = "";
+                                        let icon = null;
+
+                                        if (isAumento) {
+                                          lineClass =
+                                            "text-success-700 font-medium";
+                                          icon = "📈";
+                                        } else if (isDiminuicao) {
+                                          lineClass =
+                                            "text-warning-700 font-medium";
+                                          icon = "📉";
+                                        } else if (isRemocao) {
+                                          lineClass =
+                                            "text-danger-700 font-medium";
+                                          icon = "🗑️";
+                                        } else if (isAdicao) {
+                                          lineClass =
+                                            "text-primary-700 font-medium";
+                                          icon = "➕";
+                                        }
+
+                                        return (
+                                          <div
+                                            key={lineIdx}
+                                            className={lineClass}
+                                          >
+                                            {icon && (
+                                              <span className="mr-1">
+                                                {icon}
+                                              </span>
+                                            )}
+                                            {line}
+                                          </div>
+                                        );
+                                      })}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                        </CardBody>
+                      </Card>
+                    </div>
                   </>
                 )}
               </>

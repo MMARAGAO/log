@@ -25,11 +25,14 @@ const COLORS = [
 ];
 
 export function FormasPagamentoChart({ data }: FormasPagamentoChartProps) {
-  const chartData = data.map((item) => ({
-    name: item.forma,
-    value: item.total,
-    quantidade: item.quantidade,
-  }));
+  // Filtra tipos de pagamento sem nome ou valor zero
+  const chartData = data
+    .filter((item) => item.forma && item.forma.trim() !== "" && item.total > 0)
+    .map((item) => ({
+      name: item.forma,
+      value: item.total,
+      quantidade: item.quantidade,
+    }));
 
   return (
     <Card>

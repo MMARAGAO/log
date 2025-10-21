@@ -23,6 +23,7 @@ export function FiltroPeriodo({
   onToggleFilters,
 }: FiltroPeriodoProps) {
   const periods = [
+    { label: "Desde o início", value: "all" },
     { label: "7 dias", value: "7" },
     { label: "15 dias", value: "15" },
     { label: "30 dias", value: "30" },
@@ -54,7 +55,13 @@ export function FiltroPeriodo({
             size="sm"
             variant={selectedPeriod === period.value ? "solid" : "flat"}
             color={selectedPeriod === period.value ? "primary" : "default"}
-            onPress={() => onPeriodChange(period.value)}
+            onPress={() => {
+              onPeriodChange(period.value);
+              if (period.value === "all") {
+                onDateStartChange("");
+                onDateEndChange("");
+              }
+            }}
           >
             {period.label}
           </Button>
