@@ -10,3 +10,16 @@
 .recharts-sector {
   stroke: none !important; /* garante sem borda no Pie */
 }
+
+/* Animação para linha de scan do código de barras */
+@keyframes scan-horizontal {
+  0% {
+    left: 0%;
+  }
+  50% {
+    left: 100%;
+  }
+  100% {
+    left: 0%;
+  }
+}

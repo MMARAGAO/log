@@ -402,56 +402,109 @@ export default function AparelhosPage() {
         barcodeReaderRef.current.hints = hints;
       }
 
-      // Leitura contínua
-      barcodeReaderRef.current.decodeFromVideoDevice(
-        undefined,
-        videoRef.current,
-        (result, error) => {
-          if (result) {
-            const codigoBarras = result.getText();
-            console.log("📊 Código detectado:", codigoBarras);
+      const video = videoRef.current;
+      const canvas = document.createElement("canvas");
+      const context = canvas.getContext("2d");
 
-            // Filtrar apenas códigos com 15 dígitos
-            if (/^\d{15}$/.test(codigoBarras)) {
-              console.log("✅ Código de 15 dígitos encontrado:", codigoBarras);
+      // Função para escanear apenas a área do retângulo
+      const scanBarcodeArea = async () => {
+        if (!video.videoWidth || !video.videoHeight) {
+          requestAnimationFrame(scanBarcodeArea);
+          return;
+        }
 
-              // Capturar imagem para preview
-              if (canvasRef.current && videoRef.current) {
-                const video = videoRef.current;
-                const canvas = canvasRef.current;
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-                const context = canvas.getContext("2d");
-                if (context) {
-                  context.drawImage(video, 0, 0, canvas.width, canvas.height);
-                  setLastCapturedImage(canvas.toDataURL("image/png"));
+        const videoWidth = video.videoWidth;
+        const videoHeight = video.videoHeight;
+
+        // Calcular área do retângulo (80% largura, 120px altura centralizada)
+        const rectWidth = videoWidth * 0.8;
+        const rectHeight = Math.min(120, videoHeight * 0.3); // 120px ou 30% da altura
+        const rectX = (videoWidth - rectWidth) / 2;
+        const rectY = (videoHeight - rectHeight) / 2;
+
+        // Configurar canvas com o tamanho da área de interesse
+        canvas.width = rectWidth;
+        canvas.height = rectHeight;
+
+        if (context) {
+          // Desenhar apenas a área do retângulo no canvas
+          context.drawImage(
+            video,
+            rectX,
+            rectY,
+            rectWidth,
+            rectHeight, // Área de origem no vídeo
+            0,
+            0,
+            rectWidth,
+            rectHeight // Destino no canvas
+          );
+
+          try {
+            // Converter canvas para imagem e tentar decodificar
+            const imageUrl = canvas.toDataURL("image/png");
+            const result =
+              await barcodeReaderRef.current!.decodeFromImageUrl(imageUrl);
+
+            if (result) {
+              const codigoBarras = result.getText();
+              console.log("📊 Código detectado na área:", codigoBarras);
+
+              // Filtrar apenas códigos com 15 dígitos
+              if (/^\d{15}$/.test(codigoBarras)) {
+                console.log(
+                  "✅ Código de 15 dígitos encontrado:",
+                  codigoBarras
+                );
+
+                // Capturar imagem para preview
+                if (canvasRef.current) {
+                  canvasRef.current.width = rectWidth;
+                  canvasRef.current.height = rectHeight;
+                  const previewContext = canvasRef.current.getContext("2d");
+                  if (previewContext) {
+                    previewContext.drawImage(canvas, 0, 0);
+                    setLastCapturedImage(
+                      canvasRef.current.toDataURL("image/png")
+                    );
+                  }
                 }
+
+                setLastDetectedText(`✓ IMEI detectado:\n${codigoBarras}`);
+
+                // Preencher no campo IMEI
+                setFormCadastro((prev) => ({ ...prev, imei: codigoBarras }));
+
+                toast.success(`IMEI ${codigoBarras} detectado!`, {
+                  id: "scanning",
+                });
+
+                // Parar leitura e fechar modal após sucesso
+                barcodeReaderRef.current = null;
+                setTimeout(() => fecharCameraIMEI(), 1000);
+                return; // Parar loop
+              } else {
+                console.log(
+                  `⚠️ Código ignorado (não tem 15 dígitos): ${codigoBarras}`
+                );
               }
-
-              setLastDetectedText(`✓ IMEI detectado:\n${codigoBarras}`);
-
-              // Preencher no campo IMEI
-              setFormCadastro((prev) => ({ ...prev, imei: codigoBarras }));
-
-              toast.success(`IMEI ${codigoBarras} detectado!`, {
-                id: "scanning",
-              });
-
-              // Parar leitura e fechar modal após sucesso
-              barcodeReaderRef.current = null;
-              setTimeout(() => fecharCameraIMEI(), 1000);
-            } else {
-              console.log(
-                `⚠️ Código ignorado (não tem 15 dígitos): ${codigoBarras}`
-              );
+            }
+          } catch (error: any) {
+            // Ignorar erros NotFoundException (código não encontrado)
+            if (error.name !== "NotFoundException") {
+              console.error("❌ Erro ao decodificar:", error);
             }
           }
-
-          if (error && error.name !== "NotFoundException") {
-            console.error("❌ Erro na leitura:", error);
-          }
         }
-      );
+
+        // Continuar escaneando se não encontrou
+        if (barcodeReaderRef.current) {
+          requestAnimationFrame(scanBarcodeArea);
+        }
+      };
+
+      // Iniciar loop de scan
+      scanBarcodeArea();
 
       toast.loading(
         "📊 Escaneando... Se o código for pequeno, aproxime BEM da câmera",
@@ -3940,37 +3993,75 @@ export default function AparelhosPage() {
                 />
                 <canvas ref={canvasRef} className="hidden" />
 
-                {/* Overlay de guia modernizado - só aparece quando a câmera está ativa */}
+                {/* Overlay de guia - formato muda conforme o modo */}
                 {cameraStream && (
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
-                    {/* Cantos do scanner */}
-                    <div className="relative w-3/4 h-1/2">
-                      {/* Canto superior esquerdo */}
-                      <div className="absolute top-0 left-0 w-12 h-12 border-l-4 border-t-4 border-white/70 rounded-tl-xl"></div>
-                      {/* Canto superior direito */}
-                      <div className="absolute top-0 right-0 w-12 h-12 border-r-4 border-t-4 border-white/70 rounded-tr-xl"></div>
-                      {/* Canto inferior esquerdo */}
-                      <div className="absolute bottom-0 left-0 w-12 h-12 border-l-4 border-b-4 border-white/70 rounded-bl-xl"></div>
-                      {/* Canto inferior direito */}
-                      <div className="absolute bottom-0 right-0 w-12 h-12 border-r-4 border-b-4 border-white/70 rounded-br-xl"></div>
+                  <div className="absolute inset-0 pointer-events-none z-20">
+                    {scanMode === "barcode" ? (
+                      /* Área retangular para código de barras */
+                      <>
+                        {/* Escurecimento nas áreas fora do retângulo */}
+                        <div className="absolute inset-0 bg-black/60"></div>
 
-                      {/* Linha de scan animada */}
-                      <div className="absolute inset-0 overflow-hidden">
-                        <div
-                          className="absolute w-full h-1 bg-gradient-to-r from-transparent via-white/60 to-transparent animate-pulse shadow-lg shadow-white/30"
-                          style={{ top: "50%" }}
-                        ></div>
-                      </div>
+                        {/* Área transparente central (retângulo horizontal) */}
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <div
+                            className="relative bg-transparent border-4 border-green-400 rounded-xl shadow-2xl shadow-green-500/50"
+                            style={{ width: "80%", height: "120px" }}
+                          >
+                            {/* Cantos do scanner - estilo barcode */}
+                            <div className="absolute top-0 left-0 w-8 h-8 border-l-4 border-t-4 border-white rounded-tl-lg"></div>
+                            <div className="absolute top-0 right-0 w-8 h-8 border-r-4 border-t-4 border-white rounded-tr-lg"></div>
+                            <div className="absolute bottom-0 left-0 w-8 h-8 border-l-4 border-b-4 border-white rounded-bl-lg"></div>
+                            <div className="absolute bottom-0 right-0 w-8 h-8 border-r-4 border-b-4 border-white rounded-br-lg"></div>
 
-                      {/* Label central */}
+                            {/* Linha de scan vertical animada */}
+                            <div className="absolute inset-0 overflow-hidden">
+                              <div
+                                className="absolute h-full w-1 bg-gradient-to-b from-transparent via-green-400 to-transparent animate-scan-horizontal shadow-lg shadow-green-400/50"
+                                style={{
+                                  animation:
+                                    "scan-horizontal 2s linear infinite",
+                                }}
+                              ></div>
+                            </div>
+
+                            {/* Label do código de barras */}
+                            <div className="absolute -bottom-10 left-1/2 transform -translate-x-1/2 bg-black/70 text-white px-4 py-1 rounded-full text-sm font-semibold whitespace-nowrap backdrop-blur-sm border border-green-400/50">
+                              📊 Alinhe o código de barras aqui
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      /* Área quadrada para OCR/IMEI */
                       <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="bg-black/20 text-white/60 px-6 py-3 rounded-xl font-bold text-lg shadow-xl backdrop-blur-sm border border-white/20">
-                          {scanMode === "ocr"
-                            ? "📱 Posicione o IMEI aqui"
-                            : "📊 Posicione o código de barras aqui"}
+                        <div className="relative w-3/4 h-1/2">
+                          {/* Canto superior esquerdo */}
+                          <div className="absolute top-0 left-0 w-12 h-12 border-l-4 border-t-4 border-white/70 rounded-tl-xl"></div>
+                          {/* Canto superior direito */}
+                          <div className="absolute top-0 right-0 w-12 h-12 border-r-4 border-t-4 border-white/70 rounded-tr-xl"></div>
+                          {/* Canto inferior esquerdo */}
+                          <div className="absolute bottom-0 left-0 w-12 h-12 border-l-4 border-b-4 border-white/70 rounded-bl-xl"></div>
+                          {/* Canto inferior direito */}
+                          <div className="absolute bottom-0 right-0 w-12 h-12 border-r-4 border-b-4 border-white/70 rounded-br-xl"></div>
+
+                          {/* Linha de scan animada */}
+                          <div className="absolute inset-0 overflow-hidden">
+                            <div
+                              className="absolute w-full h-1 bg-gradient-to-r from-transparent via-white/60 to-transparent animate-pulse shadow-lg shadow-white/30"
+                              style={{ top: "50%" }}
+                            ></div>
+                          </div>
+
+                          {/* Label central */}
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <div className="bg-black/20 text-white/60 px-6 py-3 rounded-xl font-bold text-lg shadow-xl backdrop-blur-sm border border-white/20">
+                              📱 Posicione o IMEI aqui
+                            </div>
+                          </div>
                         </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 )}
 
