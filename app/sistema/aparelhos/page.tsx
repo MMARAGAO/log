@@ -2154,7 +2154,7 @@ export default function AparelhosPage() {
                         <SelectItem key={loja.id}>{loja.nome}</SelectItem>
                       ))}
                     </Select>
-                    <div className="col-span-2">
+                    <div className="md:col-span-2">
                       <Textarea
                         label="Observações"
                         placeholder="Informações adicionais sobre o aparelho"
@@ -2167,7 +2167,7 @@ export default function AparelhosPage() {
                         }
                       />
                     </div>
-                    <div className="col-span-2">
+                    <div className="md:col-span-2">
                       <label className="block text-sm font-medium mb-2">
                         Fotos do Aparelho
                       </label>
@@ -2348,7 +2348,7 @@ export default function AparelhosPage() {
 
                 {modalType === "venda" && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="col-span-2 p-4 bg-gray-100 rounded-lg">
+                    <div className="md:col-span-2 p-4 bg-gray-100 rounded-lg">
                       <h3 className="font-semibold mb-2">
                         Aparelho Selecionado
                       </h3>
@@ -2530,7 +2530,7 @@ export default function AparelhosPage() {
                       ))}
                     </Select>
 
-                    <div className="col-span-2">
+                    <div className="md:col-span-2">
                       <label className="block text-sm font-medium mb-2">
                         Termo de Venda (PDF/Imagem)
                       </label>
@@ -2575,7 +2575,7 @@ export default function AparelhosPage() {
                       />
                     </div>
 
-                    <div className="col-span-2">
+                    <div className="md:col-span-2">
                       <label className="block text-sm font-medium mb-2">
                         Fotos do Checklist
                       </label>
@@ -2751,7 +2751,7 @@ export default function AparelhosPage() {
                         )}
                     </div>
 
-                    <div className="col-span-2">
+                    <div className="md:col-span-2">
                       <Textarea
                         label="Observações"
                         placeholder="Informações adicionais sobre a venda"
@@ -3005,7 +3005,7 @@ export default function AparelhosPage() {
                       </CardHeader>
                       <CardBody>
                         <div className="grid grid-cols-2 gap-4">
-                          <div className="col-span-2">
+                          <div className="md:col-span-2">
                             <p className="text-sm text-gray-600">Nome</p>
                             <p className="font-semibold text-lg">
                               {selectedVenda.cliente_nome}
@@ -3019,7 +3019,7 @@ export default function AparelhosPage() {
                             <p className="text-sm text-gray-600">Telefone</p>
                             <p>{selectedVenda.cliente_telefone || "-"}</p>
                           </div>
-                          <div className="col-span-2">
+                          <div className="md:col-span-2">
                             <p className="text-sm text-gray-600">E-mail</p>
                             <p>{selectedVenda.cliente_email || "-"}</p>
                           </div>
@@ -3034,7 +3034,7 @@ export default function AparelhosPage() {
                       </CardHeader>
                       <CardBody>
                         <div className="grid grid-cols-2 gap-4">
-                          <div className="col-span-2">
+                          <div className="md:col-span-2">
                             <p className="text-sm text-gray-600">Modelo</p>
                             <p className="font-bold text-lg">
                               {selectedVenda.aparelho_marca}{" "}
@@ -3079,7 +3079,7 @@ export default function AparelhosPage() {
                           </div>
                           {selectedVenda.aparelho_acessorios &&
                             selectedVenda.aparelho_acessorios.length > 0 && (
-                              <div className="col-span-2">
+                              <div className="md:col-span-2">
                                 <p className="text-sm text-gray-600 mb-2">
                                   Acessórios
                                 </p>
@@ -3095,7 +3095,7 @@ export default function AparelhosPage() {
                               </div>
                             )}
                           {selectedVenda.aparelho_observacoes && (
-                            <div className="col-span-2">
+                            <div className="md:col-span-2">
                               <p className="text-sm text-gray-600">
                                 Observações
                               </p>
@@ -3451,7 +3451,7 @@ export default function AparelhosPage() {
                       }
                     />
 
-                    <div className="col-span-2">
+                    <div className="md:col-span-2">
                       <Textarea
                         label="Observações"
                         value={formVenda.aparelho_observacoes || ""}
