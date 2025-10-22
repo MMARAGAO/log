@@ -29,6 +29,7 @@ import {
   CubeTransparentIcon,
   CircleStackIcon,
   CpuChipIcon,
+  DevicePhoneMobileIcon,
 } from "@heroicons/react/24/outline";
 
 import { useAuthStore } from "@/store/authZustand";
@@ -61,6 +62,11 @@ export function Navbar() {
       name: "Vendas",
       path: "/sistema/vendas",
       icon: CircleStackIcon,
+    },
+    {
+      name: "Aparelhos",
+      path: "/sistema/aparelhos",
+      icon: DevicePhoneMobileIcon,
     },
     {
       name: "Fornecedores",
