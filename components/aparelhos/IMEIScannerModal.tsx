@@ -166,11 +166,12 @@ export default function IMEIScannerModal({
     try {
       if (!barcodeReaderRef.current) {
         barcodeReaderRef.current = new BrowserMultiFormatReader();
+        // Configurar hints para melhorar detecção de códigos pequenos
         console.log(
           "🔧 Configurando scanner com modo TRY_HARDER para códigos pequenos"
         );
         const hints = new Map();
-        hints.set(2, true);
+        hints.set(2, true); // TRY_HARDER - mais preciso mas mais lento
         barcodeReaderRef.current.hints = hints;
       }
 
@@ -178,6 +179,7 @@ export default function IMEIScannerModal({
       const canvas = document.createElement("canvas");
       const context = canvas.getContext("2d");
 
+      // Função para escanear apenas a área do retângulo
       const scanBarcodeArea = async () => {
         if (!video.videoWidth || !video.videoHeight) {
           requestAnimationFrame(scanBarcodeArea);
@@ -187,28 +189,32 @@ export default function IMEIScannerModal({
         const videoWidth = video.videoWidth;
         const videoHeight = video.videoHeight;
 
+        // Calcular área do retângulo (80% largura, 120px altura centralizada)
         const rectWidth = videoWidth * 0.8;
-        const rectHeight = Math.min(120, videoHeight * 0.3);
+        const rectHeight = Math.min(120, videoHeight * 0.3); // 120px ou 30% da altura
         const rectX = (videoWidth - rectWidth) / 2;
         const rectY = (videoHeight - rectHeight) / 2;
 
+        // Configurar canvas com o tamanho da área de interesse
         canvas.width = rectWidth;
         canvas.height = rectHeight;
 
         if (context) {
+          // Desenhar apenas a área do retângulo no canvas
           context.drawImage(
             video,
             rectX,
             rectY,
             rectWidth,
-            rectHeight,
+            rectHeight, // Área de origem no vídeo
             0,
             0,
             rectWidth,
-            rectHeight
+            rectHeight // Destino no canvas
           );
 
           try {
+            // Converter canvas para imagem e tentar decodificar
             const imageUrl = canvas.toDataURL("image/png");
             const result =
               await barcodeReaderRef.current!.decodeFromImageUrl(imageUrl);
@@ -217,12 +223,14 @@ export default function IMEIScannerModal({
               const codigoBarras = result.getText();
               console.log("📊 Código detectado na área:", codigoBarras);
 
+              // Filtrar apenas códigos com 15 dígitos
               if (/^\d{15}$/.test(codigoBarras)) {
                 console.log(
                   "✅ Código de 15 dígitos encontrado:",
                   codigoBarras
                 );
 
+                // Capturar imagem para preview
                 if (canvasRef.current) {
                   canvasRef.current.width = rectWidth;
                   canvasRef.current.height = rectHeight;
@@ -242,9 +250,10 @@ export default function IMEIScannerModal({
                   id: "scanning",
                 });
 
+                // Parar leitura e fechar modal após sucesso
                 barcodeReaderRef.current = null;
                 setTimeout(() => handleClose(), 1000);
-                return;
+                return; // Parar loop
               } else {
                 console.log(
                   `⚠️ Código ignorado (não tem 15 dígitos): ${codigoBarras}`
@@ -252,24 +261,27 @@ export default function IMEIScannerModal({
               }
             }
           } catch (error: any) {
+            // Ignorar erros NotFoundException (código não encontrado)
             if (error.name !== "NotFoundException") {
               console.error("❌ Erro ao decodificar:", error);
             }
           }
         }
 
+        // Continuar escaneando se não encontrou
         if (barcodeReaderRef.current) {
           requestAnimationFrame(scanBarcodeArea);
         }
       };
 
+      // Iniciar loop de scan
       scanBarcodeArea();
 
       toast.loading(
         "📊 Escaneando... Se o código for pequeno, aproxime BEM da câmera",
         {
           id: "scanning",
-          duration: 15000,
+          duration: 15000, // Toast fica por 15 segundos
         }
       );
     } catch (error: any) {
@@ -552,25 +564,24 @@ export default function IMEIScannerModal({
                 📊 Código de Barras
               </Button>
             </div>
-
-            {/* Dica especial para códigos pequenos */}
+            {/* Dica para código de barras */}
             {scanMode === "barcode" && (
-              <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3">
+              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
                 <div className="flex items-start gap-2">
                   <span className="text-xl">💡</span>
                   <div className="flex-1">
-                    <p className="text-sm font-semibold text-yellow-800 dark:text-yellow-300">
-                      Dica para Códigos Pequenos
+                    <p className="text-sm font-semibold text-blue-800 dark:text-blue-300">
+                      Dica para Melhor Leitura
                     </p>
-                    <p className="text-xs text-yellow-700 dark:text-yellow-400 mt-1">
-                      Aproxime BEM o código da câmera (5-10cm) e mantenha firme.
-                      Use boa iluminação!
+                    <p className="text-xs text-blue-700 dark:text-blue-400 mt-1">
+                      Posicione o código de barras dentro do quadro. Se for
+                      pequeno, aproxime BEM da câmera (5-10cm). A leitura é
+                      automática!
                     </p>
                   </div>
                 </div>
               </div>
-            )}
-
+            )}{" "}
             {/* Instruções rápidas */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
@@ -602,7 +613,7 @@ export default function IMEIScannerModal({
                     <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
                       {scanMode === "ocr"
                         ? "Aguarde imagem nítida"
-                        : "Se pequeno, APROXIME BEM da câmera"}
+                        : "Mantenha o código visível e bem iluminado"}
                     </p>
                   </div>
                 </div>
@@ -623,7 +634,6 @@ export default function IMEIScannerModal({
                 </div>
               </div>
             </div>
-
             {/* Preview da câmera */}
             <div className="relative bg-gradient-to-br from-gray-900 to-black rounded-2xl overflow-hidden shadow-2xl border-4 border-gray-700 min-h-[500px]">
               {/* Botão para ativar câmera se não estiver ativa */}
@@ -682,27 +692,34 @@ export default function IMEIScannerModal({
               {cameraStream && (
                 <div className="absolute inset-0 pointer-events-none z-20">
                   {scanMode === "barcode" ? (
+                    // Modo Barcode: retângulo verde com escurecimento nas áreas externas
                     <>
+                      {/* Escurecimento nas áreas fora do retângulo */}
                       <div className="absolute inset-0 bg-black/60"></div>
+
+                      {/* Área transparente central (retângulo horizontal) */}
                       <div className="absolute inset-0 flex items-center justify-center">
                         <div
                           className="relative bg-transparent border-4 border-green-400 rounded-xl shadow-2xl shadow-green-500/50"
                           style={{ width: "80%", height: "120px" }}
                         >
+                          {/* Cantos do scanner */}
                           <div className="absolute top-0 left-0 w-8 h-8 border-l-4 border-t-4 border-white rounded-tl-lg"></div>
                           <div className="absolute top-0 right-0 w-8 h-8 border-r-4 border-t-4 border-white rounded-tr-lg"></div>
                           <div className="absolute bottom-0 left-0 w-8 h-8 border-l-4 border-b-4 border-white rounded-bl-lg"></div>
                           <div className="absolute bottom-0 right-0 w-8 h-8 border-r-4 border-b-4 border-white rounded-br-lg"></div>
 
+                          {/* Linha de scan horizontal animada */}
                           <div className="absolute inset-0 overflow-hidden">
                             <div
-                              className="absolute h-full w-1 bg-gradient-to-b from-transparent via-green-400 to-transparent animate-scan-horizontal shadow-lg shadow-green-400/50"
+                              className="absolute h-full w-1 bg-gradient-to-b from-transparent via-green-400 to-transparent shadow-lg shadow-green-400/50"
                               style={{
                                 animation: "scan-horizontal 2s linear infinite",
                               }}
                             ></div>
                           </div>
 
+                          {/* Label do código de barras */}
                           <div className="absolute -bottom-10 left-1/2 transform -translate-x-1/2 bg-black/70 text-white px-4 py-1 rounded-full text-sm font-semibold whitespace-nowrap backdrop-blur-sm border border-green-400/50">
                             📊 Alinhe o código de barras aqui
                           </div>
@@ -710,6 +727,7 @@ export default function IMEIScannerModal({
                       </div>
                     </>
                   ) : (
+                    // Modo OCR: guia original
                     <div className="absolute inset-0 flex items-center justify-center">
                       <div className="relative w-3/4 h-1/2">
                         <div className="absolute top-0 left-0 w-12 h-12 border-l-4 border-t-4 border-white/70 rounded-tl-xl"></div>
@@ -802,7 +820,6 @@ export default function IMEIScannerModal({
                 </div>
               )}
             </div>
-
             {/* Resultado do OCR */}
             {lastDetectedText && (
               <div className="space-y-3">
