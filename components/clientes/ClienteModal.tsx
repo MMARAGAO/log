@@ -136,7 +136,6 @@ export default function ClienteModal({
                 startContent={
                   <EnvelopeIcon className="w-4 h-4 text-default-400" />
                 }
-                isRequired
               />
               <Input
                 label="Telefone"
@@ -151,7 +150,6 @@ export default function ClienteModal({
                 startContent={
                   <PhoneIcon className="w-4 h-4 text-default-400" />
                 }
-                isRequired
               />
               <Input
                 label="CPF/CNPJ"
@@ -163,7 +161,6 @@ export default function ClienteModal({
                 startContent={
                   <IdentificationIcon className="w-4 h-4 text-default-400" />
                 }
-                isRequired
               />
               <Input
                 label="Instagram"
