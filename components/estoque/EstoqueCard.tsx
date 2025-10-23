@@ -105,7 +105,9 @@ export default function EstoqueCard({
           <div className="flex items-start justify-between gap-2">
             <div className="flex-1 min-w-0">
               <h3 className="text-base font-semibold truncate">
-                {produto.descricao}
+                {produto.modelo
+                  ? `${produto.descricao} - ${produto.modelo}`
+                  : produto.descricao}
               </h3>
               <div className="flex flex-wrap gap-1 mt-1">
                 {produto.marca && (

@@ -57,6 +57,8 @@ import {
   ChevronDownIcon,
   ArrowUpIcon,
   ArrowDownIcon,
+  Squares2X2Icon,
+  ListBulletIcon,
 } from "@heroicons/react/24/solid";
 
 interface EstoqueItem {
@@ -397,6 +399,7 @@ export default function EstoquePage() {
   const [isEditing, setIsEditing] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [showFilters, setShowFilters] = useState(false);
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
 
   // Estado dos filtros
   const [filters, setFilters] = useState<FilterState>({
@@ -525,6 +528,16 @@ export default function EstoquePage() {
   const uniqueBrands = Array.from(
     new Set(estoque.map((item) => item.marca).filter(Boolean))
   ).sort();
+
+  // Normalização de texto para busca (case/acentos/pontuação)
+  function normalizeText(text?: string): string {
+    return (text || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "") // remove acentos
+      .replace(/[^a-z0-9]+/g, " ") // mantém letras/números e espaços
+      .trim();
+  }
 
   // Função para calcular lucro
   function calculateProfit(item: EstoqueItem): number {
@@ -1050,12 +1063,13 @@ export default function EstoquePage() {
   const filteredAndSortedEstoque = estoque
     .filter((item) => {
       // Filtro de busca por texto
+      // Busca multi-termos: cada termo precisa existir (parcial) em algum campo
+      const tokens = normalizeText(searchTerm).split(" ").filter(Boolean);
+      const composite = normalizeText(
+        [item.descricao, item.modelo, item.marca, item.compativel].join(" ")
+      );
       const searchMatch =
-        !searchTerm ||
-        item.descricao?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.modelo?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.marca?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.compativel?.toLowerCase().includes(searchTerm.toLowerCase());
+        tokens.length === 0 || tokens.every((t) => composite.includes(t));
 
       // Quantidade baseada na loja selecionada
       const quantidade = selectedLoja
@@ -1304,6 +1318,30 @@ export default function EstoquePage() {
               Limpar
             </Button>
           )}
+
+          {/* Alternar visualização: Grade ou Lista */}
+          <div className="ml-auto flex items-center gap-1">
+            <Button
+              isIconOnly
+              size="sm"
+              variant={viewMode === "grid" ? "solid" : "flat"}
+              color={viewMode === "grid" ? "primary" : "default"}
+              onPress={() => setViewMode("grid")}
+              aria-label="Exibir em grade"
+            >
+              <Squares2X2Icon className="w-4 h-4" />
+            </Button>
+            <Button
+              isIconOnly
+              size="sm"
+              variant={viewMode === "list" ? "solid" : "flat"}
+              color={viewMode === "list" ? "primary" : "default"}
+              onPress={() => setViewMode("list")}
+              aria-label="Exibir em lista"
+            >
+              <ListBulletIcon className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
 
         {/* Painel de filtros */}
@@ -1538,43 +1576,171 @@ export default function EstoquePage() {
         </div>
       ) : (
         <>
-          <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-            {currentItems.map((item) => (
-              <EstoqueCard
-                key={item.id}
-                produto={item}
-                lojas={lojas}
-                onEdit={safeHandleEdit}
-                onDelete={safeHandleDelete}
-                canEdit={canEditEstoque}
-                canDelete={canDeleteEstoque}
-              />
-            ))}
+          {viewMode === "grid" ? (
+            <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+              {currentItems.map((item) => (
+                <EstoqueCard
+                  key={item.id}
+                  produto={item}
+                  lojas={lojas}
+                  onEdit={safeHandleEdit}
+                  onDelete={safeHandleDelete}
+                  canEdit={canEditEstoque}
+                  canDelete={canDeleteEstoque}
+                />
+              ))}
 
-            {filteredAndSortedEstoque.length === 0 && !loading && (
-              <div className="text-center py-8 text-default-500 col-span-full">
-                {(searchTerm ||
-                  Object.values(filters).some(
-                    (v) =>
-                      v !== "" &&
-                      v !== "descricao" &&
-                      v !== "asc" &&
-                      v !== false
-                  )) &&
-                  "Nenhum item encontrado com os filtros aplicados"}
-                {!(
-                  searchTerm ||
-                  Object.values(filters).some(
-                    (v) =>
-                      v !== "" &&
-                      v !== "descricao" &&
-                      v !== "asc" &&
-                      v !== false
-                  )
-                ) && "Nenhum item no estoque"}
-              </div>
-            )}
-          </div>
+              {filteredAndSortedEstoque.length === 0 && !loading && (
+                <div className="text-center py-8 text-default-500 col-span-full">
+                  {(searchTerm ||
+                    Object.values(filters).some(
+                      (v) =>
+                        v !== "" &&
+                        v !== "descricao" &&
+                        v !== "asc" &&
+                        v !== false
+                    )) &&
+                    "Nenhum item encontrado com os filtros aplicados"}
+                  {!(
+                    searchTerm ||
+                    Object.values(filters).some(
+                      (v) =>
+                        v !== "" &&
+                        v !== "descricao" &&
+                        v !== "asc" &&
+                        v !== false
+                    )
+                  ) && "Nenhum item no estoque"}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="text-left border-b border-default-200">
+                    <th className="py-2 pr-3">Foto</th>
+                    <th className="py-2 pr-3">Descrição</th>
+                    <th className="py-2 pr-3">Marca</th>
+                    <th className="py-2 pr-3">Modelo</th>
+                    <th className="py-2 pr-3">Quantidade</th>
+                    <th className="py-2 pr-3">Compra</th>
+                    <th className="py-2 pr-3">Venda</th>
+                    <th className="py-2 pr-3">Lucro</th>
+                    <th className="py-2 pr-3">Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {currentItems.map((item) => {
+                    const foto =
+                      item.fotourl && item.fotourl.length > 0
+                        ? item.fotourl[0]
+                        : null;
+                    const quantidade = selectedLoja
+                      ? getQuantidadeLoja(item, selectedLoja)
+                      : item.quantidade_total || 0;
+                    const compra = item.preco_compra || 0;
+                    const venda = item.preco_venda || 0;
+                    const lucro = venda - compra;
+                    return (
+                      <tr
+                        key={item.id}
+                        className="border-b border-default-100 hover:bg-default-50/40"
+                      >
+                        <td className="py-2 pr-3">
+                          {foto ? (
+                            <img
+                              src={foto}
+                              alt={item.descricao}
+                              className="w-12 h-12 rounded object-cover"
+                            />
+                          ) : (
+                            <div className="w-12 h-12 rounded bg-default-200 flex items-center justify-center">
+                              <CubeIcon className="w-6 h-6 text-default-500" />
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-2 pr-3 font-medium">
+                          {item.descricao}
+                        </td>
+                        <td className="py-2 pr-3">{item.marca || "-"}</td>
+                        <td className="py-2 pr-3">{item.modelo || "-"}</td>
+                        <td className="py-2 pr-3">{quantidade}</td>
+                        <td className="py-2 pr-3">
+                          {compra.toLocaleString("pt-BR", {
+                            style: "currency",
+                            currency: "BRL",
+                          })}
+                        </td>
+                        <td className="py-2 pr-3">
+                          {venda.toLocaleString("pt-BR", {
+                            style: "currency",
+                            currency: "BRL",
+                          })}
+                        </td>
+                        <td className="py-2 pr-3">
+                          {lucro.toLocaleString("pt-BR", {
+                            style: "currency",
+                            currency: "BRL",
+                          })}
+                        </td>
+                        <td className="py-2 pr-3">
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              variant="flat"
+                              isDisabled={!canEditEstoque}
+                              onPress={() => safeHandleEdit(item)}
+                            >
+                              Editar
+                            </Button>
+                            <Button
+                              size="sm"
+                              color="danger"
+                              variant="flat"
+                              isDisabled={!canDeleteEstoque}
+                              onPress={() => safeHandleDelete(item.id)}
+                            >
+                              Excluir
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+
+                  {filteredAndSortedEstoque.length === 0 && !loading && (
+                    <tr>
+                      <td
+                        colSpan={9}
+                        className="text-center py-8 text-default-500"
+                      >
+                        {(searchTerm ||
+                          Object.values(filters).some(
+                            (v) =>
+                              v !== "" &&
+                              v !== "descricao" &&
+                              v !== "asc" &&
+                              v !== false
+                          )) &&
+                          "Nenhum item encontrado com os filtros aplicados"}
+                        {!(
+                          searchTerm ||
+                          Object.values(filters).some(
+                            (v) =>
+                              v !== "" &&
+                              v !== "descricao" &&
+                              v !== "asc" &&
+                              v !== false
+                          )
+                        ) && "Nenhum item no estoque"}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
 
           {/* Paginação Inferior */}
           {totalPages > 1 && (

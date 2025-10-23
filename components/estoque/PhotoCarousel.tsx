@@ -4,7 +4,7 @@
  */
 
 import { useState } from "react";
-import { Button, Image } from "@heroui/react";
+import { Button } from "@heroui/react";
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -45,13 +45,15 @@ export default function PhotoCarousel({
   };
 
   return (
-    <div className="relative">
-      <Image
+    <div
+      className={`relative rounded-lg bg-default-100 flex items-center justify-center ${
+        size === "sm" ? "h-20" : size === "lg" ? "h-96" : "h-40"
+      }`}
+    >
+      <img
         src={photos[currentPhotoIndex]}
         alt={`${alt} - foto ${currentPhotoIndex + 1}`}
-        className={`w-full object-cover rounded-lg ${
-          size === "sm" ? "h-20" : size === "lg" ? "h-96" : "h-40"
-        }`}
+        className="max-h-full max-w-full object-contain rounded-md"
       />
 
       {photos.length > 1 && (
