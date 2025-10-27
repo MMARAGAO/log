@@ -73,6 +73,9 @@ import {
   CogIcon,
   TagIcon,
   LockClosedIcon,
+  PaperClipIcon,
+  CloudArrowUpIcon,
+  PhotoIcon,
 } from "@heroicons/react/24/outline";
 import { supabase } from "@/lib/supabaseClient";
 import toast, { Toaster } from "react-hot-toast";
@@ -146,6 +149,7 @@ interface Venda {
   valor_pago: number;
   valor_restante: number;
   observacoes?: string | null;
+  comprovantes?: string[] | null; // URLs dos comprovantes de pagamento
   created_at?: string;
   updated_at?: string;
 }
@@ -587,6 +591,8 @@ export default function VendasPage() {
   const payModal = useDisclosure();
   // Modal exclusão
   const deleteModal = useDisclosure();
+  // Modal gerenciar comprovantes
+  const comprovantesModal = useDisclosure();
 
   // Estado de formulário de venda
   const [editingVenda, setEditingVenda] = useState<Venda | null>(null);
@@ -629,6 +635,16 @@ export default function VendasPage() {
   // Pagamento incremental
   const [pagamentoValor, setPagamentoValor] = useState("");
   const [pagamentoObs, setPagamentoObs] = useState("");
+  const [comprovanteFiles, setComprovanteFiles] = useState<File[]>([]);
+  const [uploadingComprovante, setUploadingComprovante] = useState(false);
+
+  // Gerenciamento de comprovantes
+  const [novosComprovantesFiles, setNovosComprovantesFiles] = useState<File[]>(
+    []
+  );
+  const [comprovantesParaDeletar, setComprovantesParaDeletar] = useState<
+    string[]
+  >([]);
 
   // Venda em foco (view / pagar / delete)
   const [targetVenda, setTargetVenda] = useState<Venda | null>(null);
@@ -1825,7 +1841,43 @@ export default function VendasPage() {
     setPagamentoValor("");
     setPagamentoObs("");
     setPagamentoFormaPagamento(v.forma_pagamento || ""); // Inicializa com a forma atual
+    setComprovanteFiles([]); // Limpar arquivos anteriores
     payModal.onOpen();
+  }
+
+  // Função para fazer upload dos comprovantes
+  async function uploadComprovantes(
+    vendaId: number,
+    files: File[]
+  ): Promise<string[]> {
+    const urls: string[] = [];
+
+    for (const file of files) {
+      const fileExt = file.name.split(".").pop();
+      const fileName = `venda_${vendaId}_${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+      const filePath = `${fileName}`;
+
+      const { data, error } = await supabase.storage
+        .from("comprovantes-pagamento")
+        .upload(filePath, file, {
+          cacheControl: "3600",
+          upsert: false,
+        });
+
+      if (error) {
+        console.error("Erro ao fazer upload do comprovante:", error);
+        throw error;
+      }
+
+      // Obter URL pública
+      const { data: urlData } = supabase.storage
+        .from("comprovantes-pagamento")
+        .getPublicUrl(filePath);
+
+      urls.push(urlData.publicUrl);
+    }
+
+    return urls;
   }
 
   async function confirmarPagamento() {
@@ -1875,14 +1927,39 @@ export default function VendasPage() {
       .trim();
 
     setLoading(true);
+    setUploadingComprovante(true);
     try {
-      // MODIFICADO: Agora inclui status_pagamento na atualização
+      // Upload de comprovantes (se houver)
+      let novosComprovantes: string[] = [];
+      if (comprovanteFiles.length > 0) {
+        toast.loading("Enviando comprovantes...", {
+          id: "upload-comprovantes",
+        });
+        novosComprovantes = await uploadComprovantes(
+          targetVenda.id,
+          comprovanteFiles
+        );
+        toast.dismiss("upload-comprovantes");
+      }
+
+      // Combinar comprovantes existentes com novos
+      const comprovantesAtualizados = [
+        ...(targetVenda.comprovantes || []),
+        ...novosComprovantes,
+      ];
+
+      // MODIFICADO: Agora inclui status_pagamento e comprovantes na atualização
       const updateData: any = {
         valor_pago: novoPago,
         valor_restante: restante,
         status_pagamento: novoStatus,
         observacoes: obsConcat,
       };
+
+      // Adicionar comprovantes apenas se houver (para compatibilidade com DBs sem a coluna)
+      if (comprovantesAtualizados.length > 0) {
+        updateData.comprovantes = comprovantesAtualizados;
+      }
 
       // Se a forma de pagamento foi alterada, atualiza também
       if (
@@ -1892,19 +1969,51 @@ export default function VendasPage() {
         updateData.forma_pagamento = pagamentoFormaPagamento;
       }
 
-      await updateTable("vendas", targetVenda.id, updateData);
+      try {
+        await updateTable("vendas", targetVenda.id, updateData);
+      } catch (updateError: any) {
+        // Se o erro for sobre a coluna comprovantes não existir, tenta sem ela
+        if (
+          updateError?.message?.includes("comprovantes") ||
+          updateError?.code === "PGRST204"
+        ) {
+          console.warn(
+            "[VENDAS] Coluna 'comprovantes' não encontrada. Salvando sem comprovantes..."
+          );
+          toast.error(
+            "⚠️ Aviso: Execute o script SQL 'add_comprovantes_column.sql' para habilitar comprovantes!",
+            {
+              duration: 5000,
+            }
+          );
+
+          // Tentar novamente sem o campo comprovantes
+          const { comprovantes, ...updateDataSemComprovantes } = updateData;
+          await updateTable(
+            "vendas",
+            targetVenda.id,
+            updateDataSemComprovantes
+          );
+        } else {
+          throw updateError; // Re-lançar outros erros
+        }
+      }
+
       await loadAll();
       payModal.onClose();
 
       // NOVO: Toast de feedback
       if (restante === 0) {
-        toast.success(`✅ Venda #${targetVenda.id} quitada com sucesso!`, {
-          duration: 3000,
-          icon: "💰",
-        });
+        toast.success(
+          `✅ Venda #${targetVenda.id} quitada com sucesso!${novosComprovantes.length > 0 ? ` ${novosComprovantes.length} comprovante(s) anexado(s).` : ""}`,
+          {
+            duration: 3000,
+            icon: "💰",
+          }
+        );
       } else {
         toast.success(
-          `Pagamento de ${fmt(valor)} registrado. Restante: ${fmt(restante)}`,
+          `Pagamento de ${fmt(valor)} registrado. Restante: ${fmt(restante)}${novosComprovantes.length > 0 ? ` | ${novosComprovantes.length} comprovante(s) anexado(s).` : ""}`,
           {
             duration: 2500,
             icon: "💵",
@@ -1913,12 +2022,119 @@ export default function VendasPage() {
       }
     } catch (e: any) {
       console.error("Erro ao registrar pagamento:", e);
-      alert(
+      toast.error(
         "Erro ao registrar pagamento: " +
           (e?.message || e?.details || JSON.stringify(e) || "desconhecido")
       );
     } finally {
       setLoading(false);
+      setUploadingComprovante(false);
+    }
+  }
+
+  // Gerenciamento de Comprovantes
+  function openGerenciarComprovantes(v: Venda) {
+    setTargetVenda(v);
+    setNovosComprovantesFiles([]);
+    setComprovantesParaDeletar([]);
+    comprovantesModal.onOpen();
+  }
+
+  async function deletarComprovanteStorage(url: string) {
+    try {
+      // Extrair o caminho do arquivo da URL
+      const urlObj = new URL(url);
+      const pathParts = urlObj.pathname.split("/");
+      const fileName = pathParts[pathParts.length - 1];
+
+      const { error } = await supabase.storage
+        .from("comprovantes-pagamento")
+        .remove([fileName]);
+
+      if (error) {
+        console.error("Erro ao deletar do storage:", error);
+        // Não vamos falhar se não conseguir deletar do storage
+      }
+    } catch (error) {
+      console.error("Erro ao processar URL do comprovante:", error);
+    }
+  }
+
+  async function salvarAlteracoesComprovantes() {
+    if (!targetVenda) return;
+
+    setUploadingComprovante(true);
+    try {
+      let comprovantesAtualizados = [...(targetVenda.comprovantes || [])];
+
+      // 1. Remover comprovantes marcados para deletar
+      if (comprovantesParaDeletar.length > 0) {
+        toast.loading("Removendo comprovantes...", {
+          id: "delete-comprovantes",
+        });
+
+        // Deletar do storage
+        await Promise.all(
+          comprovantesParaDeletar.map((url) => deletarComprovanteStorage(url))
+        );
+
+        // Remover da lista
+        comprovantesAtualizados = comprovantesAtualizados.filter(
+          (url) => !comprovantesParaDeletar.includes(url)
+        );
+
+        toast.dismiss("delete-comprovantes");
+      }
+
+      // 2. Adicionar novos comprovantes
+      if (novosComprovantesFiles.length > 0) {
+        toast.loading("Enviando novos comprovantes...", { id: "upload-novos" });
+        const novosUrls = await uploadComprovantes(
+          targetVenda.id,
+          novosComprovantesFiles
+        );
+        comprovantesAtualizados = [...comprovantesAtualizados, ...novosUrls];
+        toast.dismiss("upload-novos");
+      }
+
+      // 3. Atualizar no banco de dados
+      const updateData: any = {
+        comprovantes:
+          comprovantesAtualizados.length > 0 ? comprovantesAtualizados : null,
+      };
+
+      try {
+        await updateTable("vendas", targetVenda.id, updateData);
+      } catch (updateError: any) {
+        if (
+          updateError?.message?.includes("comprovantes") ||
+          updateError?.code === "PGRST204"
+        ) {
+          toast.error(
+            "⚠️ Aviso: Execute o script SQL 'add_comprovantes_column.sql' para habilitar comprovantes!",
+            { duration: 5000 }
+          );
+          throw new Error("Coluna comprovantes não existe no banco");
+        } else {
+          throw updateError;
+        }
+      }
+
+      await loadAll();
+      comprovantesModal.onClose();
+
+      toast.success(
+        `✅ Comprovantes atualizados! ${comprovantesParaDeletar.length > 0 ? `${comprovantesParaDeletar.length} removido(s).` : ""} ${novosComprovantesFiles.length > 0 ? `${novosComprovantesFiles.length} adicionado(s).` : ""}`,
+        { duration: 3000, icon: "📎" }
+      );
+    } catch (e: any) {
+      console.error("Erro ao gerenciar comprovantes:", e);
+      toast.error(
+        "Erro ao gerenciar comprovantes: " +
+          (e?.message || e?.details || JSON.stringify(e) || "desconhecido")
+      );
+    } finally {
+      setUploadingComprovante(false);
     }
   }
 
@@ -2326,13 +2542,27 @@ export default function VendasPage() {
                         )}
                       </TableCell>
                       <TableCell>
-                        <Chip
-                          size="sm"
-                          variant="flat"
-                          startContent={<Icon className="w-3.5 h-3.5" />}
-                        >
-                          {v.status_pagamento}
-                        </Chip>
+                        <div className="flex items-center gap-2">
+                          <Chip
+                            size="sm"
+                            variant="flat"
+                            startContent={<Icon className="w-3.5 h-3.5" />}
+                          >
+                            {v.status_pagamento}
+                          </Chip>
+                          {v.comprovantes && v.comprovantes.length > 0 && (
+                            <Tooltip
+                              content={`${v.comprovantes.length} comprovante(s) anexado(s)`}
+                            >
+                              <div className="flex items-center gap-1 text-success-600">
+                                <PaperClipIcon className="w-4 h-4" />
+                                <span className="text-xs font-medium">
+                                  {v.comprovantes.length}
+                                </span>
+                              </div>
+                            </Tooltip>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         {v.fiado && v.data_vencimento
@@ -3601,6 +3831,103 @@ export default function VendasPage() {
                     </div>
                   </>
                 )}
+
+                {/* Seção de Comprovantes */}
+                {targetVenda.comprovantes &&
+                  targetVenda.comprovantes.length > 0 && (
+                    <>
+                      <Divider />
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-semibold flex items-center gap-2">
+                            <PaperClipIcon className="w-4 h-4" />
+                            Comprovantes de Pagamento (
+                            {targetVenda.comprovantes.length})
+                          </p>
+                          {canProcessarPagamentos && (
+                            <Button
+                              size="sm"
+                              variant="flat"
+                              color="primary"
+                              startContent={<CogIcon className="w-3 h-3" />}
+                              onPress={() =>
+                                openGerenciarComprovantes(targetVenda)
+                              }
+                            >
+                              Gerenciar
+                            </Button>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          {targetVenda.comprovantes.map((url, idx) => {
+                            const isPDF = url.toLowerCase().endsWith(".pdf");
+                            const fileName =
+                              url.split("/").pop() || `comprovante_${idx + 1}`;
+
+                            return (
+                              <Card
+                                key={idx}
+                                className="border-primary-200"
+                                isPressable
+                              >
+                                <CardBody className="p-3">
+                                  <a
+                                    href={url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center gap-2 text-primary hover:text-primary-600"
+                                  >
+                                    {isPDF ? (
+                                      <DocumentTextIcon className="w-5 h-5" />
+                                    ) : (
+                                      <PhotoIcon className="w-5 h-5" />
+                                    )}
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-xs font-medium truncate">
+                                        Comprovante {idx + 1}
+                                      </p>
+                                      <p className="text-xs text-default-500">
+                                        {isPDF ? "PDF" : "Imagem"}
+                                      </p>
+                                    </div>
+                                    <EyeIcon className="w-4 h-4" />
+                                  </a>
+                                </CardBody>
+                              </Card>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                {/* Botão para adicionar comprovantes quando não há nenhum */}
+                {canProcessarPagamentos &&
+                  (!targetVenda.comprovantes ||
+                    targetVenda.comprovantes.length === 0) && (
+                    <>
+                      <Divider />
+                      <Card className="border-default-200">
+                        <CardBody className="p-4 text-center">
+                          <PaperClipIcon className="w-8 h-8 text-default-400 mx-auto mb-2" />
+                          <p className="text-sm text-default-500 mb-3">
+                            Nenhum comprovante anexado ainda
+                          </p>
+                          <Button
+                            size="sm"
+                            color="primary"
+                            variant="flat"
+                            startContent={<PlusIcon className="w-4 h-4" />}
+                            onPress={() =>
+                              openGerenciarComprovantes(targetVenda)
+                            }
+                          >
+                            Adicionar Comprovantes
+                          </Button>
+                        </CardBody>
+                      </Card>
+                    </>
+                  )}
               </>
             )}
           </ModalBody>
@@ -3883,6 +4210,125 @@ export default function VendasPage() {
                         isDisabled={Number(targetVenda.valor_restante) === 0}
                       />
 
+                      {/* Upload de Comprovantes */}
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <PaperClipIcon className="w-5 h-5 text-primary" />
+                          <label className="text-sm font-medium">
+                            Comprovantes de Pagamento
+                          </label>
+                        </div>
+
+                        <div className="border-2 border-dashed border-default-300 rounded-lg p-4 hover:border-primary-400 transition-colors">
+                          <input
+                            type="file"
+                            id="comprovante-upload"
+                            multiple
+                            accept="image/*,application/pdf"
+                            className="hidden"
+                            onChange={(e) => {
+                              const files = Array.from(e.target.files || []);
+                              setComprovanteFiles((prev) => [
+                                ...prev,
+                                ...files,
+                              ]);
+                            }}
+                            disabled={Number(targetVenda.valor_restante) === 0}
+                          />
+                          <label
+                            htmlFor="comprovante-upload"
+                            className={`flex flex-col items-center gap-2 ${Number(targetVenda.valor_restante) === 0 ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+                          >
+                            <CloudArrowUpIcon className="w-8 h-8 text-primary" />
+                            <p className="text-sm text-center">
+                              <span className="text-primary font-medium">
+                                Clique para selecionar
+                              </span>
+                              <br />
+                              ou arraste arquivos aqui
+                            </p>
+                            <p className="text-xs text-default-500">
+                              PDF, PNG, JPG ou JPEG (máx. 10MB cada)
+                            </p>
+                          </label>
+                        </div>
+
+                        {/* Lista de arquivos selecionados */}
+                        {comprovanteFiles.length > 0 && (
+                          <div className="space-y-2">
+                            <p className="text-sm font-medium">
+                              Arquivos selecionados: {comprovanteFiles.length}
+                            </p>
+                            {comprovanteFiles.map((file, idx) => (
+                              <div
+                                key={idx}
+                                className="flex items-center gap-2 p-2 bg-default-100 rounded-lg"
+                              >
+                                {file.type.startsWith("image/") ? (
+                                  <PhotoIcon className="w-5 h-5 text-primary" />
+                                ) : (
+                                  <DocumentTextIcon className="w-5 h-5 text-danger" />
+                                )}
+                                <span className="text-sm flex-1 truncate">
+                                  {file.name}
+                                </span>
+                                <span className="text-xs text-default-500">
+                                  {(file.size / 1024).toFixed(1)} KB
+                                </span>
+                                <Button
+                                  isIconOnly
+                                  size="sm"
+                                  variant="light"
+                                  color="danger"
+                                  onPress={() => {
+                                    setComprovanteFiles((prev) =>
+                                      prev.filter((_, i) => i !== idx)
+                                    );
+                                  }}
+                                >
+                                  <XMarkIcon className="w-4 h-4" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Comprovantes já anexados */}
+                        {targetVenda?.comprovantes &&
+                          targetVenda.comprovantes.length > 0 && (
+                            <div className="space-y-2">
+                              <Divider />
+                              <p className="text-sm font-medium text-success-600">
+                                Comprovantes anexados anteriormente:{" "}
+                                {targetVenda.comprovantes.length}
+                              </p>
+                              <div className="grid grid-cols-2 gap-2">
+                                {targetVenda.comprovantes.map((url, idx) => (
+                                  <Button
+                                    key={idx}
+                                    size="sm"
+                                    variant="flat"
+                                    color="success"
+                                    as="a"
+                                    href={url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    startContent={
+                                      url.toLowerCase().endsWith(".pdf") ? (
+                                        <DocumentTextIcon className="w-4 h-4" />
+                                      ) : (
+                                        <PhotoIcon className="w-4 h-4" />
+                                      )
+                                    }
+                                  >
+                                    Comprovante {idx + 1}
+                                  </Button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                      </div>
+
                       {/* Preview do Resultado */}
                       {currencyToNumber(pagamentoValor) > 0 &&
                         Number(targetVenda.valor_restante) > 0 && (
@@ -3954,8 +4400,14 @@ export default function VendasPage() {
               <Button
                 color="primary"
                 onPress={confirmarPagamento}
-                isLoading={loading}
-                startContent={<CheckCircleIcon className="w-4 h-4" />}
+                isLoading={loading || uploadingComprovante}
+                startContent={
+                  uploadingComprovante ? (
+                    <CloudArrowUpIcon className="w-4 h-4" />
+                  ) : (
+                    <CheckCircleIcon className="w-4 h-4" />
+                  )
+                }
                 isDisabled={
                   currencyToNumber(pagamentoValor) <= 0 ||
                   Number(targetVenda?.valor_restante || 0) === 0 ||
@@ -3963,12 +4415,14 @@ export default function VendasPage() {
                     Number(targetVenda?.valor_restante || 0)
                 }
               >
-                {Number(targetVenda?.valor_restante || 0) === 0
-                  ? "Venda Já Paga"
-                  : currencyToNumber(pagamentoValor) ===
-                      Number(targetVenda?.valor_restante || 0)
-                    ? "Finalizar Venda"
-                    : "Registrar Pagamento"}
+                {uploadingComprovante
+                  ? "Enviando comprovantes..."
+                  : Number(targetVenda?.valor_restante || 0) === 0
+                    ? "Venda Já Paga"
+                    : currencyToNumber(pagamentoValor) ===
+                        Number(targetVenda?.valor_restante || 0)
+                      ? "Finalizar Venda"
+                      : "Registrar Pagamento"}
               </Button>
             </ModalFooter>
           </ModalContent>
@@ -3997,6 +4451,301 @@ export default function VendasPage() {
                 isLoading={loading}
               >
                 Excluir
+              </Button>
+            </ModalFooter>
+          </ModalContent>
+        </Modal>
+      )}
+
+      {/* Modal Gerenciar Comprovantes */}
+      {canProcessarPagamentos && (
+        <Modal
+          isOpen={comprovantesModal.isOpen}
+          onOpenChange={comprovantesModal.onOpenChange}
+          size="2xl"
+          scrollBehavior="inside"
+        >
+          <ModalContent>
+            <ModalHeader className="flex items-center gap-2">
+              <PaperClipIcon className="w-5 h-5" />
+              Gerenciar Comprovantes - Venda #{targetVenda?.id}
+            </ModalHeader>
+            <ModalBody className="space-y-4">
+              {targetVenda && (
+                <>
+                  {/* Informações da Venda */}
+                  <Card className="border-primary-200 bg-primary-50">
+                    <CardBody className="p-3">
+                      <div className="flex items-center justify-between text-sm">
+                        <div>
+                          <p className="text-primary-600 font-medium">
+                            Cliente:
+                          </p>
+                          <p className="font-semibold">
+                            {targetVenda.cliente_nome}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-primary-600 font-medium">Total:</p>
+                          <p className="font-semibold">
+                            {fmt(targetVenda.total_liquido)}
+                          </p>
+                        </div>
+                      </div>
+                    </CardBody>
+                  </Card>
+
+                  {/* Comprovantes Existentes */}
+                  {targetVenda.comprovantes &&
+                    targetVenda.comprovantes.length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-sm font-semibold">
+                          Comprovantes Atuais ({targetVenda.comprovantes.length}
+                          )
+                        </p>
+                        <div className="grid grid-cols-1 gap-2">
+                          {targetVenda.comprovantes.map((url, idx) => {
+                            const isPDF = url.toLowerCase().endsWith(".pdf");
+                            const fileName =
+                              url.split("/").pop() || `comprovante_${idx + 1}`;
+                            const marcadoParaDeletar =
+                              comprovantesParaDeletar.includes(url);
+
+                            return (
+                              <Card
+                                key={idx}
+                                className={`border-2 transition-all ${
+                                  marcadoParaDeletar
+                                    ? "border-danger-300 bg-danger-50 opacity-50"
+                                    : "border-default-200"
+                                }`}
+                              >
+                                <CardBody className="p-3">
+                                  <div className="flex items-center gap-3">
+                                    {isPDF ? (
+                                      <DocumentTextIcon className="w-6 h-6 text-danger flex-shrink-0" />
+                                    ) : (
+                                      <PhotoIcon className="w-6 h-6 text-primary flex-shrink-0" />
+                                    )}
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-sm font-medium truncate">
+                                        Comprovante {idx + 1}
+                                      </p>
+                                      <p className="text-xs text-default-500">
+                                        {isPDF ? "PDF" : "Imagem"}
+                                      </p>
+                                    </div>
+                                    <div className="flex gap-2">
+                                      <Button
+                                        size="sm"
+                                        variant="flat"
+                                        color="primary"
+                                        isIconOnly
+                                        as="a"
+                                        href={url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                      >
+                                        <EyeIcon className="w-4 h-4" />
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="flat"
+                                        color={
+                                          marcadoParaDeletar
+                                            ? "default"
+                                            : "danger"
+                                        }
+                                        isIconOnly
+                                        onPress={() => {
+                                          if (marcadoParaDeletar) {
+                                            setComprovantesParaDeletar((prev) =>
+                                              prev.filter((u) => u !== url)
+                                            );
+                                          } else {
+                                            setComprovantesParaDeletar(
+                                              (prev) => [...prev, url]
+                                            );
+                                          }
+                                        }}
+                                      >
+                                        {marcadoParaDeletar ? (
+                                          <ArrowPathIcon className="w-4 h-4" />
+                                        ) : (
+                                          <TrashIcon className="w-4 h-4" />
+                                        )}
+                                      </Button>
+                                    </div>
+                                  </div>
+                                  {marcadoParaDeletar && (
+                                    <p className="text-xs text-danger-600 mt-2">
+                                      ⚠️ Será removido ao salvar
+                                    </p>
+                                  )}
+                                </CardBody>
+                              </Card>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                  <Divider />
+
+                  {/* Adicionar Novos Comprovantes */}
+                  <div className="space-y-3">
+                    <p className="text-sm font-semibold">
+                      Adicionar Novos Comprovantes
+                    </p>
+
+                    <div className="border-2 border-dashed border-default-300 rounded-lg p-4 hover:border-primary-400 transition-colors">
+                      <input
+                        type="file"
+                        id="novos-comprovantes-upload"
+                        multiple
+                        accept="image/*,application/pdf"
+                        className="hidden"
+                        onChange={(e) => {
+                          const files = Array.from(e.target.files || []);
+                          setNovosComprovantesFiles((prev) => [
+                            ...prev,
+                            ...files,
+                          ]);
+                        }}
+                      />
+                      <label
+                        htmlFor="novos-comprovantes-upload"
+                        className="flex flex-col items-center gap-2 cursor-pointer"
+                      >
+                        <CloudArrowUpIcon className="w-8 h-8 text-primary" />
+                        <p className="text-sm text-center">
+                          <span className="text-primary font-medium">
+                            Clique para selecionar
+                          </span>
+                          <br />
+                          ou arraste arquivos aqui
+                        </p>
+                        <p className="text-xs text-default-500">
+                          PDF, PNG, JPG ou JPEG (máx. 10MB cada)
+                        </p>
+                      </label>
+                    </div>
+
+                    {/* Lista de novos arquivos selecionados */}
+                    {novosComprovantesFiles.length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-sm font-medium text-success-600">
+                          Novos arquivos: {novosComprovantesFiles.length}
+                        </p>
+                        {novosComprovantesFiles.map((file, idx) => (
+                          <div
+                            key={idx}
+                            className="flex items-center gap-2 p-2 bg-success-50 border border-success-200 rounded-lg"
+                          >
+                            {file.type.startsWith("image/") ? (
+                              <PhotoIcon className="w-5 h-5 text-success flex-shrink-0" />
+                            ) : (
+                              <DocumentTextIcon className="w-5 h-5 text-danger flex-shrink-0" />
+                            )}
+                            <span className="text-sm flex-1 truncate">
+                              {file.name}
+                            </span>
+                            <span className="text-xs text-default-500">
+                              {(file.size / 1024).toFixed(1)} KB
+                            </span>
+                            <Button
+                              isIconOnly
+                              size="sm"
+                              variant="light"
+                              color="danger"
+                              onPress={() => {
+                                setNovosComprovantesFiles((prev) =>
+                                  prev.filter((_, i) => i !== idx)
+                                );
+                              }}
+                            >
+                              <XMarkIcon className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Resumo das Alterações */}
+                  {(comprovantesParaDeletar.length > 0 ||
+                    novosComprovantesFiles.length > 0) && (
+                    <>
+                      <Divider />
+                      <Card className="border-warning-200 bg-warning-50">
+                        <CardBody className="p-3">
+                          <p className="text-warning-700 font-medium text-sm mb-2">
+                            📋 Resumo das Alterações
+                          </p>
+                          <div className="space-y-1 text-sm">
+                            {comprovantesParaDeletar.length > 0 && (
+                              <div className="flex justify-between">
+                                <span>Serão removidos:</span>
+                                <span className="font-medium text-danger-600">
+                                  {comprovantesParaDeletar.length} arquivo(s)
+                                </span>
+                              </div>
+                            )}
+                            {novosComprovantesFiles.length > 0 && (
+                              <div className="flex justify-between">
+                                <span>Serão adicionados:</span>
+                                <span className="font-medium text-success-600">
+                                  {novosComprovantesFiles.length} arquivo(s)
+                                </span>
+                              </div>
+                            )}
+                            <Divider className="my-2" />
+                            <div className="flex justify-between font-semibold">
+                              <span>Total final:</span>
+                              <span className="text-primary">
+                                {(targetVenda.comprovantes?.length || 0) -
+                                  comprovantesParaDeletar.length +
+                                  novosComprovantesFiles.length}{" "}
+                                comprovante(s)
+                              </span>
+                            </div>
+                          </div>
+                        </CardBody>
+                      </Card>
+                    </>
+                  )}
+                </>
+              )}
+            </ModalBody>
+            <ModalFooter>
+              <Button
+                variant="flat"
+                onPress={() => {
+                  comprovantesModal.onClose();
+                  setNovosComprovantesFiles([]);
+                  setComprovantesParaDeletar([]);
+                }}
+                startContent={<XMarkIcon className="w-4 h-4" />}
+              >
+                Cancelar
+              </Button>
+              <Button
+                color="primary"
+                onPress={salvarAlteracoesComprovantes}
+                isLoading={uploadingComprovante}
+                isDisabled={
+                  comprovantesParaDeletar.length === 0 &&
+                  novosComprovantesFiles.length === 0
+                }
+                startContent={
+                  uploadingComprovante ? (
+                    <CloudArrowUpIcon className="w-4 h-4" />
+                  ) : (
+                    <CheckCircleIcon className="w-4 h-4" />
+                  )
+                }
+              >
+                {uploadingComprovante ? "Salvando..." : "Salvar Alterações"}
               </Button>
             </ModalFooter>
           </ModalContent>

@@ -142,6 +142,7 @@ interface Devolucao {
   motivo_devolucao?: string;
   valor_credito_gerado: number;
   credito_aplicado: boolean;
+  status?: "pendente" | "concluida" | "concluida_com_credito";
   observacoes?: string;
   created_at?: string;
   updated_at?: string;
@@ -198,6 +199,27 @@ const STATUS_CREDITO = [
     icon: CheckCircleIcon,
   },
   { key: false, label: "Pendente", color: "warning" as const, icon: ClockIcon },
+];
+
+const STATUS_DEVOLUCAO = [
+  {
+    key: "pendente",
+    label: "Pendente",
+    color: "warning" as const,
+    icon: ClockIcon,
+  },
+  {
+    key: "concluida",
+    label: "Concluída",
+    color: "success" as const,
+    icon: CheckCircleIcon,
+  },
+  {
+    key: "concluida_com_credito",
+    label: "Concluída c/ Crédito",
+    color: "primary" as const,
+    icon: CheckCircleIcon,
+  },
 ];
 
 const TIPO_DEVOLUCAO = [
@@ -355,8 +377,8 @@ export default function DevolucoesPagina() {
       toast.error("Você não possui permissão para editar devoluções.");
       return;
     }
-    if (d.credito_aplicado) {
-      toast.error("Crédito já aplicado. Não é possível editar esta devolução.");
+    if (d.status === "concluida" || d.status === "concluida_com_credito") {
+      toast.error("Não é possível editar uma devolução já concluída.");
       return;
     }
     openEditDevolucao(d);
@@ -368,11 +390,9 @@ export default function DevolucoesPagina() {
       return;
     }
 
-    // NOVA VALIDAÇÃO: Impedir exclusão se crédito já foi aplicado
-    if (d.credito_aplicado) {
-      toast.error(
-        "Não é possível excluir uma devolução que já teve o crédito aplicado ao cliente."
-      );
+    // NOVA VALIDAÇÃO: Impedir exclusão se devolução já foi concluída
+    if (d.status === "concluida" || d.status === "concluida_com_credito") {
+      toast.error("Não é possível excluir uma devolução que já foi concluída.");
       return;
     }
 
@@ -450,6 +470,14 @@ export default function DevolucoesPagina() {
 
   function statusCreditoInfo(aplicado: boolean) {
     return STATUS_CREDITO.find((s) => s.key === aplicado) || STATUS_CREDITO[1];
+  }
+
+  function statusDevolucaoInfo(status?: string) {
+    const statusNormalizado = status || "pendente";
+    return (
+      STATUS_DEVOLUCAO.find((s) => s.key === statusNormalizado) ||
+      STATUS_DEVOLUCAO[0]
+    );
   }
 
   function tipoInfo(tipo: string) {
@@ -768,6 +796,7 @@ export default function DevolucoesPagina() {
       motivo_devolucao: motivoDevolucao,
       valor_credito_gerado: valorCreditoGerado,
       credito_aplicado: false,
+      status: "pendente" as const,
       observacoes: observacoesDevolucao,
       updated_at: new Date().toISOString(),
     };
@@ -984,6 +1013,7 @@ export default function DevolucoesPagina() {
 
       await updateTable("devolucoes", targetDevolucao.id, {
         credito_aplicado: true,
+        status: "concluida_com_credito",
         updated_at: new Date().toISOString(),
       });
 
@@ -1041,6 +1071,38 @@ export default function DevolucoesPagina() {
   function openView(d: Devolucao) {
     setTargetDevolucao(d);
     viewModal.onOpen();
+  }
+
+  // Concluir sem crédito
+  const concluirModal = useDisclosure();
+
+  function openConcluir(d: Devolucao) {
+    setTargetDevolucao(d);
+    concluirModal.onOpen();
+  }
+
+  async function concluirSemCredito() {
+    if (!targetDevolucao) return;
+
+    try {
+      setLoading(true);
+
+      await updateTable("devolucoes", targetDevolucao.id, {
+        status: "concluida",
+        updated_at: new Date().toISOString(),
+      });
+
+      await loadAll();
+      concluirModal.onClose();
+      toast.success("Devolução concluída sem gerar crédito!");
+    } catch (e: any) {
+      console.error("Erro ao concluir devolução:", e);
+      toast.error(
+        "Erro ao concluir devolução: " + (e?.message || "erro desconhecido")
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   // Delete
@@ -1316,8 +1378,8 @@ export default function DevolucoesPagina() {
               <TableBody emptyContent="Sem registros">
                 {pageItems.map((d) => {
                   const tipoInfo_ = tipoInfo(d.tipo_devolucao);
-                  const creditoInfo = statusCreditoInfo(d.credito_aplicado);
-                  const CreditoIcon = creditoInfo.icon;
+                  const statusInfo = statusDevolucaoInfo(d.status);
+                  const StatusIcon = statusInfo.icon;
 
                   return (
                     <TableRow key={d.id}>
@@ -1346,11 +1408,11 @@ export default function DevolucoesPagina() {
                       <TableCell>
                         <Chip
                           size="sm"
-                          color={creditoInfo.color}
+                          color={statusInfo.color}
                           variant="flat"
-                          startContent={<CreditoIcon className="w-3.5 h-3.5" />}
+                          startContent={<StatusIcon className="w-3.5 h-3.5" />}
                         >
-                          {creditoInfo.label}
+                          {statusInfo.label}
                         </Chip>
                       </TableCell>
                       <TableCell className="max-w-[120px] truncate">
@@ -1372,8 +1434,8 @@ export default function DevolucoesPagina() {
                           {canEditDevolucoes && (
                             <Tooltip
                               content={
-                                d.credito_aplicado
-                                  ? "Crédito aplicado — edição não permitida"
+                                d.status !== "pendente"
+                                  ? "Devolução concluída — edição não permitida"
                                   : "Editar"
                               }
                             >
@@ -1383,7 +1445,7 @@ export default function DevolucoesPagina() {
                                   size="sm"
                                   variant="light"
                                   onPress={() => safeOpenEditDevolucao(d)}
-                                  isDisabled={d.credito_aplicado}
+                                  isDisabled={d.status !== "pendente"}
                                 >
                                   <PencilIcon className="w-4 h-4" />
                                 </Button>
@@ -1391,13 +1453,29 @@ export default function DevolucoesPagina() {
                             </Tooltip>
                           )}
 
-                          {canProcessarCreditos && !d.credito_aplicado && (
-                            <Tooltip content="Aplicar Crédito">
+                          {/* Botão para concluir SEM crédito */}
+                          {canProcessarCreditos && d.status === "pendente" && (
+                            <Tooltip content="Concluir sem Crédito">
                               <Button
                                 isIconOnly
                                 size="sm"
                                 variant="light"
                                 color="success"
+                                onPress={() => openConcluir(d)}
+                              >
+                                <CheckCircleIcon className="w-4 h-4" />
+                              </Button>
+                            </Tooltip>
+                          )}
+
+                          {/* Botão para gerar crédito */}
+                          {canProcessarCreditos && d.status === "pendente" && (
+                            <Tooltip content="Gerar Crédito">
+                              <Button
+                                isIconOnly
+                                size="sm"
+                                variant="light"
+                                color="primary"
                                 onPress={() => safeOpenCredito(d)}
                               >
                                 <CreditCardIcon className="w-4 h-4" />
@@ -1408,11 +1486,13 @@ export default function DevolucoesPagina() {
                           {canDeleteDevolucoes && (
                             <Tooltip
                               content={
-                                d.credito_aplicado
-                                  ? "Crédito aplicado — exclusão não permitida"
+                                d.status !== "pendente"
+                                  ? "Devolução concluída — exclusão não permitida"
                                   : "Excluir"
                               }
-                              color={d.credito_aplicado ? "warning" : "danger"}
+                              color={
+                                d.status !== "pendente" ? "warning" : "danger"
+                              }
                             >
                               <span>
                                 <Button
@@ -1421,7 +1501,7 @@ export default function DevolucoesPagina() {
                                   variant="light"
                                   color="danger"
                                   onPress={() => safeOpenDelete(d)}
-                                  isDisabled={d.credito_aplicado}
+                                  isDisabled={d.status !== "pendente"}
                                 >
                                   <TrashIcon className="w-4 h-4" />
                                 </Button>
@@ -1962,13 +2042,14 @@ export default function DevolucoesPagina() {
                     </p>
                   </div>
                   <div>
-                    <p className="text-default-500">Status Crédito</p>
-                    <p>
-                      {
-                        statusCreditoInfo(targetDevolucao.credito_aplicado)
-                          .label
-                      }
-                    </p>
+                    <p className="text-default-500">Status</p>
+                    <Chip
+                      size="sm"
+                      color={statusDevolucaoInfo(targetDevolucao.status).color}
+                      variant="flat"
+                    >
+                      {statusDevolucaoInfo(targetDevolucao.status).label}
+                    </Chip>
                   </div>
                   <div>
                     <p className="text-default-500">Motivo</p>
@@ -2141,6 +2222,61 @@ export default function DevolucoesPagina() {
         </Modal>
       )}
 
+      {/* Modal Concluir sem Crédito */}
+      {canProcessarCreditos && (
+        <Modal
+          isOpen={concluirModal.isOpen}
+          onOpenChange={concluirModal.onOpenChange}
+        >
+          <ModalContent>
+            <ModalHeader>Concluir sem Gerar Crédito</ModalHeader>
+            <ModalBody className="space-y-4">
+              {targetDevolucao && (
+                <>
+                  <div className="text-sm space-y-2">
+                    <p>
+                      <span className="text-default-500">Cliente:</span>{" "}
+                      <strong>{targetDevolucao.cliente_nome}</strong>
+                    </p>
+                    <p>
+                      <span className="text-default-500">Devolução:</span> #
+                      {targetDevolucao.id} (Venda #{targetDevolucao.id_venda})
+                    </p>
+                    <p>
+                      <span className="text-default-500">Valor devolvido:</span>{" "}
+                      <strong>
+                        {fmt(targetDevolucao.valor_total_devolvido)}
+                      </strong>
+                    </p>
+                  </div>
+
+                  <div className="bg-info-50 border border-info-200 rounded-md p-3">
+                    <p className="text-info-700 text-sm">
+                      ℹ️ Esta devolução será marcada como concluída{" "}
+                      <strong>SEM gerar crédito</strong> para o cliente. Use
+                      esta opção quando o reembolso foi feito de outra forma
+                      (dinheiro, PIX, etc).
+                    </p>
+                  </div>
+                </>
+              )}
+            </ModalBody>
+            <ModalFooter>
+              <Button variant="flat" onPress={concluirModal.onClose}>
+                Cancelar
+              </Button>
+              <Button
+                color="success"
+                onPress={concluirSemCredito}
+                isLoading={loading}
+              >
+                Concluir sem Crédito
+              </Button>
+            </ModalFooter>
+          </ModalContent>
+        </Modal>
+      )}
+
       {/* Modal Exclusão */}
       {canDeleteDevolucoes && (
         <Modal
@@ -2154,11 +2290,11 @@ export default function DevolucoesPagina() {
                 Tem certeza que deseja excluir definitivamente a devolução #
                 {targetDevolucao?.id}?
               </p>
-              {targetDevolucao?.credito_aplicado && (
+              {targetDevolucao?.status !== "pendente" && (
                 <div className="bg-danger-50 border border-danger-200 rounded-md p-3">
                   <p className="text-danger-700 text-sm">
-                    ⚠️ Esta devolução já teve o crédito aplicado ao cliente. A
-                    exclusão não reverterá o crédito automaticamente.
+                    ⚠️ Esta devolução já foi concluída. A exclusão pode gerar
+                    inconsistências nos dados.
                   </p>
                 </div>
               )}

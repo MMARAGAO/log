@@ -342,41 +342,73 @@ export const useAuthStore = create<AuthState>()(
       },
       login: async (email, password) => {
         set({ loading: true, error: null });
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-        if (error) {
-          set({ loading: false, error: error.message });
-          return;
-        }
-        const supaUser = data.user;
-        if (!supaUser) {
-          set({ loading: false, error: "Usuário inválido" });
-          return;
-        }
-        const meta = supaUser.user_metadata || {};
-        // Busca/gera permissões
-        let perms: { acessos: PermissoesAcessos } | null = null;
-        try {
-          perms = await fetchOrInitPermissoes(supaUser.id);
-        } catch (e) {
-          console.warn("Erro carregando permissões no login:", e);
-        }
-        const user: AppUser = {
-          id: supaUser.id,
-          email: supaUser.email,
-          nome: meta.nome || meta.full_name || supaUser.email?.split("@")[0],
-          cargo: meta.cargo || "Usuário",
-          fotourl: meta.fotourl || meta.avatar_url || null,
-          permissoes: perms,
-        };
-        document.cookie = `auth=1; path=/; max-age=${60 * 60 * 24 * 7}`;
-        writePermsCookie(perms);
-        set({ user, loading: false });
 
-        // Inicia listener de tempo real após login
-        get().startRealtimeListener();
+        try {
+          // Limpar qualquer sessão anterior com problemas
+          try {
+            await supabase.auth.signOut();
+          } catch (e) {
+            console.warn("Erro ao limpar sessão anterior:", e);
+          }
+
+          const { data, error } = await supabase.auth.signInWithPassword({
+            email,
+            password,
+          });
+
+          if (error) {
+            // Limpar tokens corrompidos em caso de erro
+            if (
+              error.message.includes("refresh") ||
+              error.message.includes("token")
+            ) {
+              console.warn("Token inválido detectado, limpando...");
+              await get().clearAuth();
+            }
+            set({ loading: false, error: error.message });
+            return;
+          }
+
+          const supaUser = data.user;
+          if (!supaUser) {
+            set({ loading: false, error: "Usuário inválido" });
+            return;
+          }
+
+          const meta = supaUser.user_metadata || {};
+          // Busca/gera permissões
+          let perms: { acessos: PermissoesAcessos } | null = null;
+          try {
+            perms = await fetchOrInitPermissoes(supaUser.id);
+          } catch (e) {
+            console.warn("Erro carregando permissões no login:", e);
+          }
+
+          const user: AppUser = {
+            id: supaUser.id,
+            email: supaUser.email,
+            nome: meta.nome || meta.full_name || supaUser.email?.split("@")[0],
+            cargo: meta.cargo || "Usuário",
+            fotourl: meta.fotourl || meta.avatar_url || null,
+            permissoes: perms,
+          };
+
+          document.cookie = `auth=1; path=/; max-age=${60 * 60 * 24 * 7}`;
+          writePermsCookie(perms);
+          set({ user, loading: false });
+
+          // Inicia listener de tempo real após login
+          get().startRealtimeListener();
+        } catch (e: any) {
+          console.error("Erro no login:", e);
+          set({
+            loading: false,
+            error: e.message || "Erro ao fazer login. Tente novamente.",
+          });
+
+          // Limpar em caso de erro crítico
+          await get().clearAuth();
+        }
       },
       clearAuth: async () => {
         // Para listener antes de limpar
@@ -384,9 +416,25 @@ export const useAuthStore = create<AuthState>()(
 
         try {
           await supabase.auth.signOut();
-        } catch {}
+        } catch (e) {
+          console.warn("Erro ao fazer signOut:", e);
+        }
+
+        // Limpar cookies
         document.cookie = "auth=; path=/; max-age=0";
         document.cookie = "perms=; path=/; max-age=0";
+
+        // Limpar localStorage do Supabase
+        try {
+          Object.keys(localStorage).forEach((key) => {
+            if (key.startsWith("sb-") || key.includes("supabase")) {
+              localStorage.removeItem(key);
+            }
+          });
+        } catch (e) {
+          console.warn("Erro ao limpar localStorage:", e);
+        }
+
         set({ user: null, error: null, loading: false });
       },
     }),
