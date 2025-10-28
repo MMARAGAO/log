@@ -103,6 +103,7 @@ interface EstoqueItem {
   descricao: string | null;
   modelo?: string | null;
   marca?: string | null;
+  compativel?: string | null;
   preco_venda?: number | null;
   fotourl?: string[] | null;
   // Campos do estoque_lojas
@@ -718,37 +719,63 @@ export default function VendasPage() {
     console.log("[VENDAS] Carregando estoque da loja:", lojaId);
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("estoque")
-        .select(
-          `
-          id,
-          descricao,
-          modelo,
-          marca,
-          preco_venda,
-          fotourl,
-          estoque_lojas!inner(
-            quantidade,
-            loja_id
-          )
-        `
-        )
-        .eq("estoque_lojas.loja_id", lojaId)
-        .gt("estoque_lojas.quantidade", 0);
+      // Buscar todos os produtos sem limite (paginação automática)
+      let allData: any[] = [];
+      let from = 0;
+      const pageSize = 1000;
+      let hasMore = true;
 
-      if (error) {
-        console.error("[VENDAS] Erro na query de estoque:", error);
-        throw error;
+      while (hasMore) {
+        const { data, error } = await supabase
+          .from("estoque")
+          .select(
+            `
+            id,
+            descricao,
+            modelo,
+            marca,
+            compativel,
+            preco_venda,
+            fotourl,
+            estoque_lojas!inner(
+              quantidade,
+              loja_id
+            )
+          `
+          )
+          .eq("estoque_lojas.loja_id", lojaId)
+          .gt("estoque_lojas.quantidade", 0)
+          .range(from, from + pageSize - 1);
+
+        if (error) {
+          console.error("[VENDAS] Erro na query de estoque:", error);
+          throw error;
+        }
+
+        if (data && data.length > 0) {
+          allData = [...allData, ...data];
+          from += pageSize;
+          hasMore = data.length === pageSize;
+          console.log(
+            `[VENDAS] Carregados ${allData.length} produtos até agora...`
+          );
+        } else {
+          hasMore = false;
+        }
       }
 
-      const estoqueComQuantidade = (data || []).map((item: any) => {
+      console.log(
+        `[VENDAS] ✅ Total de produtos carregados: ${allData.length}`
+      );
+
+      const estoqueComQuantidade = allData.map((item: any) => {
         const quantidade = item.estoque_lojas?.[0]?.quantidade || 0;
         return {
           id: item.id,
           descricao: item.descricao,
           modelo: item.modelo,
           marca: item.marca,
+          compativel: item.compativel,
           preco_venda: item.preco_venda,
           fotourl: item.fotourl,
           quantidade: quantidade,
@@ -2262,16 +2289,29 @@ export default function VendasPage() {
     viewModal.onOpen();
   }
 
+  // Função de normalização de texto para busca (igual ao estoque)
+  function normalizeText(text?: string): string {
+    return (text || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "") // remove acentos
+      .replace(/[^a-z0-9]+/g, " ") // mantém letras/números e espaços
+      .trim();
+  }
+
   // Produtos filtrados
   const produtosFiltrados = useMemo(() => {
     if (!searchProduto) return estoque;
-    return estoque.filter((p) =>
-      [p.descricao, p.marca, p.modelo]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase()
-        .includes(searchProduto.toLowerCase())
-    );
+
+    // Busca multi-termos: cada termo precisa existir (parcial) em algum campo
+    const tokens = normalizeText(searchProduto).split(" ").filter(Boolean);
+
+    return estoque.filter((p) => {
+      const composite = normalizeText(
+        [p.descricao, p.marca, p.modelo, p.compativel].join(" ")
+      );
+      return tokens.length === 0 || tokens.every((t) => composite.includes(t));
+    });
   }, [estoque, searchProduto]);
 
   const paginatedProdutos = useMemo(() => {
@@ -3207,7 +3247,7 @@ export default function VendasPage() {
 
                     {/* Grid de Produtos */}
                     {estoque.length > 0 ? (
-                      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 max-h-60 overflow-y-auto pr-1">
+                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 max-h-60 overflow-y-auto pr-1">
                         {paginatedProdutos.map((p) => {
                           const selected = selectedProduto?.id === p.id;
                           const disponivel = Number(p.quantidade) || 0;
