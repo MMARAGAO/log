@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { useAuthStore } from "@/store/authZustand";
@@ -638,6 +638,10 @@ export default function VendasPage() {
   );
   const [produtoQtd, setProdutoQtd] = useState(1);
   const [produtoDesc, setProdutoDesc] = useState(0);
+  const [produtoPreco, setProdutoPreco] = useState(0); // NOVO: Preço editável
+  const [produtoPrecoInput, setProdutoPrecoInput] = useState(
+    numberToCurrencyInput(0)
+  ); // NOVO: Input formatado
   const [descontoInput, setDescontoInput] = useState(numberToCurrencyInput(0));
   const [valorPagoInput, setValorPagoInput] = useState(
     numberToCurrencyInput(0)
@@ -785,6 +789,18 @@ export default function VendasPage() {
       setUsarCredito(false);
     }
   }, [selectedCliente?.id]);
+
+  // NOVO USEEFFECT: Atualizar preço quando produto for selecionado
+  useEffect(() => {
+    if (selectedProduto) {
+      const precoBase = Number(selectedProduto.preco_venda) || 0;
+      setProdutoPreco(precoBase);
+      setProdutoPrecoInput(numberToCurrencyInput(precoBase));
+    } else {
+      setProdutoPreco(0);
+      setProdutoPrecoInput(numberToCurrencyInput(0));
+    }
+  }, [selectedProduto]);
 
   // Helpers
   function fmt(v: number | undefined | null) {
@@ -1079,7 +1095,7 @@ export default function VendasPage() {
 
     // MODIFICADO: Validação com toast
     if (produtoDesc > 0) {
-      const preco = Number(selectedProduto.preco_venda) || 0;
+      const preco = produtoPreco || Number(selectedProduto.preco_venda) || 0; // USA O PREÇO EDITÁVEL
       const subtotalSemDesconto = produtoQtd * preco;
       const validacao = validarDesconto(produtoDesc, subtotalSemDesconto);
 
@@ -1116,7 +1132,7 @@ export default function VendasPage() {
 
     const itens = [...(formData.itens || [])];
     const idx = itens.findIndex((i) => i.id_estoque === selectedProduto.id);
-    const preco = Number(selectedProduto.preco_venda) || 0;
+    const preco = produtoPreco || Number(selectedProduto.preco_venda) || 0; // USA O PREÇO EDITÁVEL
 
     if (idx >= 0) {
       const soma = itens[idx].quantidade + produtoQtd;
@@ -1131,6 +1147,7 @@ export default function VendasPage() {
         return;
       }
       itens[idx].quantidade = soma;
+      itens[idx].preco_unitario = preco; // ATUALIZA O PREÇO TAMBÉM
       itens[idx].subtotal =
         itens[idx].quantidade * itens[idx].preco_unitario -
         (itens[idx].desconto || 0);
@@ -1152,6 +1169,8 @@ export default function VendasPage() {
     setSelectedProduto(null);
     setProdutoQtd(1);
     setProdutoDesc(0);
+    setProdutoPreco(0); // RESETA O PREÇO EDITÁVEL
+    setProdutoPrecoInput(numberToCurrencyInput(0)); // RESETA O INPUT
 
     // Toast de sucesso
     toast.success(`${selectedProduto.descricao} adicionado ao carrinho!`, {
@@ -1198,6 +1217,36 @@ export default function VendasPage() {
 
   function removeItem(index: number) {
     const itens = (formData.itens || []).filter((_, i) => i !== index);
+    recalcTotals(itens, undefined, undefined, undefined, creditoAplicado);
+  }
+
+  // NOVA FUNÇÃO: Atualizar preço unitário de um item do carrinho
+  function updateItemPrice(index: number, newPrice: number) {
+    const itens = [...(formData.itens || [])];
+    const item = itens[index];
+    item.preco_unitario = newPrice;
+    item.subtotal =
+      item.quantidade * item.preco_unitario - (item.desconto || 0);
+    recalcTotals(itens, undefined, undefined, undefined, creditoAplicado);
+  }
+
+  // NOVA FUNÇÃO: Atualizar desconto de um item do carrinho
+  function updateItemDesconto(index: number, newDesconto: number) {
+    const itens = [...(formData.itens || [])];
+    const item = itens[index];
+
+    // Validar desconto se necessário
+    if (newDesconto > 0 && canAplicarDesconto) {
+      const subtotalSemDesconto = item.quantidade * item.preco_unitario;
+      const validacao = validarDesconto(newDesconto, subtotalSemDesconto);
+
+      if (!validacao.valido) {
+        return; // Toast já exibido em validarDesconto
+      }
+    }
+
+    item.desconto = newDesconto;
+    item.subtotal = item.quantidade * item.preco_unitario - item.desconto;
     recalcTotals(itens, undefined, undefined, undefined, creditoAplicado);
   }
 
@@ -3004,6 +3053,131 @@ export default function VendasPage() {
                         Adicionar
                       </Button>
                     </div>
+
+                    {/* Card de Detalhes do Produto Selecionado - NOVO */}
+                    {selectedProduto && (
+                      <Card className="border-primary-200 bg-primary-50">
+                        <CardBody className="p-4">
+                          <div className="flex items-start gap-3 mb-4">
+                            {selectedProduto.fotourl?.[0] ? (
+                              <Avatar
+                                src={selectedProduto.fotourl[0]}
+                                size="lg"
+                                radius="md"
+                                className="shrink-0"
+                              />
+                            ) : (
+                              <div className="w-16 h-16 rounded-md bg-primary-200 flex items-center justify-center shrink-0">
+                                <CubeIcon className="w-8 h-8 text-primary-600" />
+                              </div>
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <p className="font-semibold text-primary-800 truncate">
+                                {selectedProduto.descricao}
+                              </p>
+                              <p className="text-sm text-primary-600">
+                                {[selectedProduto.marca, selectedProduto.modelo]
+                                  .filter(Boolean)
+                                  .join(" • ")}
+                              </p>
+                              <div className="flex items-center gap-2 mt-1">
+                                <Chip size="sm" color="success" variant="flat">
+                                  Disponível: {selectedProduto.quantidade || 0}{" "}
+                                  un
+                                </Chip>
+                                <Chip size="sm" color="primary" variant="flat">
+                                  Preço base:{" "}
+                                  {fmt(
+                                    Number(selectedProduto.preco_venda) || 0
+                                  )}
+                                </Chip>
+                              </div>
+                            </div>
+                            <Button
+                              isIconOnly
+                              size="sm"
+                              variant="light"
+                              onPress={() => {
+                                setSelectedProduto(null);
+                                setProdutoQtd(1);
+                                setProdutoDesc(0);
+                                setProdutoPreco(0);
+                                setProdutoPrecoInput(numberToCurrencyInput(0));
+                              }}
+                            >
+                              <XMarkIcon className="w-4 h-4" />
+                            </Button>
+                          </div>
+
+                          <div className="grid grid-cols-3 gap-3">
+                            <Input
+                              label="Quantidade"
+                              type="number"
+                              min="1"
+                              max={selectedProduto.quantidade || 0}
+                              value={produtoQtd.toString()}
+                              onChange={(e) =>
+                                setProdutoQtd(Number(e.target.value) || 1)
+                              }
+                              startContent={
+                                <ShoppingCartIcon className="w-4 h-4" />
+                              }
+                              size="sm"
+                            />
+                            <Input
+                              label="Preço Unitário"
+                              value={produtoPrecoInput}
+                              onChange={(e) => {
+                                const masked = currencyMask(e.target.value);
+                                setProdutoPrecoInput(masked);
+                              }}
+                              onBlur={() => {
+                                const num = currencyToNumber(produtoPrecoInput);
+                                setProdutoPreco(num);
+                                setProdutoPrecoInput(
+                                  numberToCurrencyInput(num)
+                                );
+                              }}
+                              startContent={
+                                <CurrencyDollarIcon className="w-4 h-4" />
+                              }
+                              description="Pode aumentar ou diminuir"
+                              size="sm"
+                              classNames={{
+                                description: "text-primary-600",
+                              }}
+                            />
+                            <Input
+                              label="Desconto"
+                              value={numberToCurrencyInput(produtoDesc)}
+                              onChange={(e) => {
+                                const num = currencyToNumber(
+                                  currencyMask(e.target.value)
+                                );
+                                setProdutoDesc(num);
+                              }}
+                              startContent={<TagIcon className="w-4 h-4" />}
+                              isDisabled={!canAplicarDesconto}
+                              size="sm"
+                            />
+                          </div>
+
+                          <div className="mt-3 pt-3 border-t border-primary-200">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm text-primary-700">
+                                Subtotal:
+                              </span>
+                              <span className="text-lg font-bold text-primary-900">
+                                {fmt(
+                                  (produtoPreco || 0) * produtoQtd - produtoDesc
+                                )}
+                              </span>
+                            </div>
+                          </div>
+                        </CardBody>
+                      </Card>
+                    )}
+
                     {canAplicarDesconto && descontoMaximo > 0 && (
                       <Card className="border-warning-200 bg-warning-50">
                         <CardBody className="p-3">
@@ -3154,58 +3328,27 @@ export default function VendasPage() {
                       (formData.itens || []).map((it, idx) => (
                         <div
                           key={idx}
-                          className="flex flex-col sm:flex-row sm:items-center gap-3 rounded-md border border-default-200 p-3"
+                          className="rounded-md border border-default-200 p-4"
                         >
-                          <div className="flex items-center gap-3 flex-1">
+                          {/* Cabeçalho do Item */}
+                          <div className="flex items-start gap-3 mb-3">
                             {it.foto ? (
                               <Avatar src={it.foto} size="sm" />
                             ) : (
-                              <div className="w-8 h-8 bg-default-200 rounded-full flex items-center justify-center">
-                                <CubeIcon className="w-4 h-4 text-default-500" />
+                              <div className="w-10 h-10 bg-default-200 rounded-full flex items-center justify-center">
+                                <CubeIcon className="w-5 h-5 text-default-500" />
                               </div>
                             )}
-                            <div className="min-w-0">
+                            <div className="flex-1 min-w-0">
                               <p className="text-sm font-medium truncate">
                                 {it.descricao}
                               </p>
                               <p className="text-[11px] text-default-500 truncate">
-                                {[it.marca, it.modelo, fmt(it.preco_unitario)]
+                                {[it.marca, it.modelo]
                                   .filter(Boolean)
                                   .join(" • ")}
                               </p>
                             </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Button
-                              isIconOnly
-                              variant="flat"
-                              size="sm"
-                              onPress={() =>
-                                updateItemQty(idx, it.quantidade - 1)
-                              }
-                            >
-                              <MinusIcon className="w-4 h-4" />
-                            </Button>
-                            <Input
-                              size="sm"
-                              className="w-16"
-                              type="number"
-                              value={it.quantidade.toString()}
-                              onChange={(e) =>
-                                updateItemQty(idx, Number(e.target.value) || 1)
-                              }
-                              min="1"
-                            />
-                            <Button
-                              isIconOnly
-                              variant="flat"
-                              size="sm"
-                              onPress={() =>
-                                updateItemQty(idx, it.quantidade + 1)
-                              }
-                            >
-                              <PlusIcon className="w-4 h-4" />
-                            </Button>
                             <Button
                               isIconOnly
                               size="sm"
@@ -3216,11 +3359,110 @@ export default function VendasPage() {
                               <TrashIcon className="w-4 h-4" />
                             </Button>
                           </div>
-                          <div className="text-right w-32">
-                            <p className="text-xs text-default-500">Subtotal</p>
-                            <p className="text-sm font-semibold">
-                              {fmt(it.subtotal)}
-                            </p>
+
+                          {/* Controles do Item */}
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                            {/* Quantidade */}
+                            <div>
+                              <label className="text-[10px] text-default-500 mb-1 block">
+                                Quantidade
+                              </label>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  isIconOnly
+                                  variant="flat"
+                                  size="sm"
+                                  onPress={() =>
+                                    updateItemQty(idx, it.quantidade - 1)
+                                  }
+                                  className="h-8 w-8 min-w-0"
+                                >
+                                  <MinusIcon className="w-3 h-3" />
+                                </Button>
+                                <Input
+                                  size="sm"
+                                  className="w-14"
+                                  type="number"
+                                  value={it.quantidade.toString()}
+                                  onChange={(e) =>
+                                    updateItemQty(
+                                      idx,
+                                      Number(e.target.value) || 1
+                                    )
+                                  }
+                                  min="1"
+                                  classNames={{
+                                    input: "text-center text-xs",
+                                  }}
+                                />
+                                <Button
+                                  isIconOnly
+                                  variant="flat"
+                                  size="sm"
+                                  onPress={() =>
+                                    updateItemQty(idx, it.quantidade + 1)
+                                  }
+                                  className="h-8 w-8 min-w-0"
+                                >
+                                  <PlusIcon className="w-3 h-3" />
+                                </Button>
+                              </div>
+                            </div>
+
+                            {/* Preço Unitário */}
+                            <div>
+                              <label className="text-[10px] text-default-500 mb-1 block">
+                                Preço Unit.
+                              </label>
+                              <Input
+                                size="sm"
+                                value={numberToCurrencyInput(it.preco_unitario)}
+                                onChange={(e) => {
+                                  const masked = currencyMask(e.target.value);
+                                  const num = currencyToNumber(masked);
+                                  updateItemPrice(idx, num);
+                                }}
+                                startContent={
+                                  <CurrencyDollarIcon className="w-3 h-3" />
+                                }
+                                classNames={{
+                                  input: "text-xs",
+                                }}
+                              />
+                            </div>
+
+                            {/* Desconto */}
+                            <div>
+                              <label className="text-[10px] text-default-500 mb-1 block">
+                                Desconto
+                              </label>
+                              <Input
+                                size="sm"
+                                value={numberToCurrencyInput(it.desconto || 0)}
+                                onChange={(e) => {
+                                  const masked = currencyMask(e.target.value);
+                                  const num = currencyToNumber(masked);
+                                  updateItemDesconto(idx, num);
+                                }}
+                                startContent={<TagIcon className="w-3 h-3" />}
+                                isDisabled={!canAplicarDesconto}
+                                classNames={{
+                                  input: "text-xs",
+                                }}
+                              />
+                            </div>
+
+                            {/* Subtotal */}
+                            <div>
+                              <label className="text-[10px] text-default-500 mb-1 block">
+                                Subtotal
+                              </label>
+                              <div className="h-8 flex items-center">
+                                <p className="text-sm font-semibold text-primary">
+                                  {fmt(it.subtotal)}
+                                </p>
+                              </div>
+                            </div>
                           </div>
                         </div>
                       ))

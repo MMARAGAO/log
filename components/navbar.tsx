@@ -45,56 +45,95 @@ export function Navbar() {
     setMounted(true);
   }, []);
 
-  const routes = [
-    { name: "Dashboard", path: "/sistema/dashboard", icon: RectangleGroupIcon },
-    { name: "Clientes", path: "/sistema/clientes", icon: UsersIcon },
+  const allRoutes = [
+    {
+      name: "Dashboard",
+      path: "/sistema/dashboard",
+      icon: RectangleGroupIcon,
+      permission: user?.permissoes?.acessos?.dashboard?.ver_dashboard,
+    },
+    {
+      name: "Clientes",
+      path: "/sistema/clientes",
+      icon: UsersIcon,
+      permission: user?.permissoes?.acessos?.clientes?.ver_clientes,
+    },
     {
       name: "Ordens de Serviço",
       path: "/sistema/ordens",
       icon: WrenchScrewdriverIcon,
+      permission: user?.permissoes?.acessos?.ordens?.ver_ordens,
     },
     {
       name: "Estoque",
       path: "/sistema/estoque",
       icon: CubeTransparentIcon,
+      permission: user?.permissoes?.acessos?.estoque?.ver_estoque,
     },
     {
       name: "Vendas",
       path: "/sistema/vendas",
       icon: CircleStackIcon,
+      permission: user?.permissoes?.acessos?.vendas?.ver_vendas,
     },
-    {
-      name: "Aparelhos",
-      path: "/sistema/aparelhos",
-      icon: DevicePhoneMobileIcon,
-    },
+    // {
+    //   name: "Aparelhos",
+    //   path: "/sistema/aparelhos",
+    //   icon: DevicePhoneMobileIcon,
+    //   permission: true, // Aparelhos sempre visível ou ajuste conforme necessário
+    // },
     {
       name: "Fornecedores",
       path: "/sistema/fornecedores",
       icon: TruckIcon,
+      permission: user?.permissoes?.acessos?.fornecedores?.ver_fornecedores,
     },
-
-    { name: "Usuários", path: "/sistema/usuarios", icon: UserGroupIcon },
-    { name: "Logs", path: "/sistema/logs", icon: Cog6ToothIcon },
-    { name: "Lojas", path: "/sistema/lojas", icon: BuildingStorefrontIcon },
+    {
+      name: "Usuários",
+      path: "/sistema/usuarios",
+      icon: UserGroupIcon,
+      permission: user?.permissoes?.acessos?.usuarios?.ver_usuarios,
+    },
+    {
+      name: "Logs",
+      path: "/sistema/logs",
+      icon: Cog6ToothIcon,
+      permission: user?.permissoes?.acessos?.logs?.ver_logs,
+    },
+    {
+      name: "Lojas",
+      path: "/sistema/lojas",
+      icon: BuildingStorefrontIcon,
+      permission: user?.permissoes?.acessos?.lojas?.ver_lojas,
+    },
     {
       name: "Transferência",
       path: "/sistema/transferencia",
       icon: ArrowsUpDownIcon,
+      permission: user?.permissoes?.acessos?.transferencias?.ver_transferencias,
     },
     {
       name: "Devoluções",
       path: "/sistema/devolucoes",
       icon: ArrowUturnLeftIcon,
+      permission: user?.permissoes?.acessos?.devolucoes?.ver_devolucoes,
     },
     {
       name: "RMA",
       path: "/sistema/rma",
       icon: CpuChipIcon,
+      permission: user?.permissoes?.acessos?.rma?.ver_rma,
     },
-
-    { name: "Caixa", path: "/sistema/caixa", icon: CircleStackIcon },
+    {
+      name: "Caixa",
+      path: "/sistema/caixa",
+      icon: CircleStackIcon,
+      permission: user?.permissoes?.acessos?.caixa?.ver_caixa,
+    },
   ];
+
+  // Filtra as rotas com base nas permissões
+  const routes = allRoutes.filter((route) => route.permission === true);
 
   const getButtonVariant = (href: string) => {
     return href === pathname ? "faded" : "light";

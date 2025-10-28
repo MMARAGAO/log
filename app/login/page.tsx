@@ -54,8 +54,83 @@ function LoginPageContent() {
 
   useEffect(() => {
     if (user && !isCheckingAuth) {
-      const from = params.get("from") || "/sistema/dashboard";
-      router.replace(from);
+      const from = params.get("from");
+
+      if (from) {
+        // Se veio de uma página específica, vai para lá
+        router.replace(from);
+        return;
+      }
+
+      // Lista de rotas em ordem de prioridade
+      const routeChecks = [
+        {
+          path: "/sistema/dashboard",
+          permission: user?.permissoes?.acessos?.dashboard?.ver_dashboard,
+        },
+        {
+          path: "/sistema/clientes",
+          permission: user?.permissoes?.acessos?.clientes?.ver_clientes,
+        },
+        {
+          path: "/sistema/ordens",
+          permission: user?.permissoes?.acessos?.ordens?.ver_ordens,
+        },
+        {
+          path: "/sistema/estoque",
+          permission: user?.permissoes?.acessos?.estoque?.ver_estoque,
+        },
+        {
+          path: "/sistema/vendas",
+          permission: user?.permissoes?.acessos?.vendas?.ver_vendas,
+        },
+        { path: "/sistema/aparelhos", permission: true }, // Aparelhos sempre acessível
+        {
+          path: "/sistema/fornecedores",
+          permission: user?.permissoes?.acessos?.fornecedores?.ver_fornecedores,
+        },
+        {
+          path: "/sistema/usuarios",
+          permission: user?.permissoes?.acessos?.usuarios?.ver_usuarios,
+        },
+        {
+          path: "/sistema/logs",
+          permission: user?.permissoes?.acessos?.logs?.ver_logs,
+        },
+        {
+          path: "/sistema/lojas",
+          permission: user?.permissoes?.acessos?.lojas?.ver_lojas,
+        },
+        {
+          path: "/sistema/transferencia",
+          permission:
+            user?.permissoes?.acessos?.transferencias?.ver_transferencias,
+        },
+        {
+          path: "/sistema/devolucoes",
+          permission: user?.permissoes?.acessos?.devolucoes?.ver_devolucoes,
+        },
+        {
+          path: "/sistema/rma",
+          permission: user?.permissoes?.acessos?.rma?.ver_rma,
+        },
+        {
+          path: "/sistema/caixa",
+          permission: user?.permissoes?.acessos?.caixa?.ver_caixa,
+        },
+      ];
+
+      // Encontra a primeira rota que o usuário tem permissão
+      const firstAllowedRoute = routeChecks.find(
+        (route) => route.permission === true
+      );
+
+      if (firstAllowedRoute) {
+        router.replace(firstAllowedRoute.path);
+      } else {
+        // Se não tem permissão para nada, redireciona para página base do sistema
+        router.replace("/sistema");
+      }
     }
   }, [user, router, params, isCheckingAuth]);
 
