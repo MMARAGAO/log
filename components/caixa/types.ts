@@ -16,10 +16,13 @@ export interface CaixaAberto {
 export interface Venda {
   id: number;
   loja_id: number;
-  valor_total: number;
+  valor_total?: number; // Pode vir como valor_total
+  total_liquido?: number; // Ou como total_liquido (dependendo da origem)
   data_venda: string;
   status: string;
   forma_pagamento?: string;
+  cliente_nome?: string;
+  observacoes?: string;
 }
 
 export interface Loja {

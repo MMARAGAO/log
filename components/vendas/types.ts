@@ -131,6 +131,7 @@ export const PAGAMENTO_OPTIONS: {
 ];
 
 export const ORDER_FIELDS = [
+  { key: "id", label: "ID" },
   { key: "data_venda", label: "Data" },
   { key: "cliente_nome", label: "Cliente" },
   { key: "total_liquido", label: "Valor" },

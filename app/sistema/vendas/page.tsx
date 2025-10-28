@@ -196,6 +196,7 @@ const PAGAMENTO_OPTIONS: {
 ];
 
 const ORDER_FIELDS = [
+  { key: "id", label: "ID" },
   { key: "data_venda", label: "Data" },
   { key: "cliente_nome", label: "Cliente" },
   { key: "total_liquido", label: "Valor" },
@@ -837,7 +838,7 @@ export default function VendasPage() {
 
   // Filtros / ordenação
   const filtered = useMemo(() => {
-    return vendas
+    const resultado = vendas
       .map((v) => ({ ...v, status_calc: computeStatus(v) }))
       .filter((v) => {
         if (
@@ -879,22 +880,37 @@ export default function VendasPage() {
       })
       .sort((a, b) => {
         const dir = filters.direction === "asc" ? 1 : -1;
-        let av: any = a[filters.orderBy as keyof Venda];
-        let bv: any = b[filters.orderBy as keyof Venda];
+        const campo = filters.orderBy;
+        let av: any = a[campo as keyof Venda];
+        let bv: any = b[campo as keyof Venda];
+
+        // Tratamento especial para ID e números
         if (
-          filters.orderBy === "data_venda" ||
-          filters.orderBy === "data_vencimento"
+          campo === "id" ||
+          campo === "total_liquido" ||
+          campo === "valor_restante"
         ) {
+          av = Number(av) || 0;
+          bv = Number(bv) || 0;
+        }
+        // Tratamento especial para datas
+        else if (campo === "data_venda" || campo === "data_vencimento") {
           av = av ? new Date(av).getTime() : 0;
           bv = bv ? new Date(bv).getTime() : 0;
         }
-        if (typeof av === "string") av = av.toLowerCase();
-        if (typeof bv === "string") bv = bv.toLowerCase();
+        // Tratamento para strings
+        else {
+          av = (av || "").toString().toLowerCase();
+          bv = (bv || "").toString().toLowerCase();
+        }
+
         if (av < bv) return -1 * dir;
         if (av > bv) return 1 * dir;
         return 0;
       });
-  }, [vendas, filters, lojas]);
+
+    return resultado;
+  }, [vendas, filters]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageItems = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -940,6 +956,13 @@ export default function VendasPage() {
     }
 
     resetForm();
+
+    // CORREÇÃO: Se houver uma loja selecionada após o reset, carregar o estoque
+    // Isso garante que o estoque seja carregado mesmo que a mesma loja seja selecionada novamente
+    if (selectedLoja?.id) {
+      loadEstoquePorLoja(selectedLoja.id);
+    }
+
     vendaModal.onOpen();
   }
 
@@ -975,6 +998,11 @@ export default function VendasPage() {
       setCaixaLojaAberto(caixaDestaLoja);
     } else {
       setCaixaLojaAberto(false);
+    }
+
+    // CORREÇÃO: Carregar estoque explicitamente ao abrir modal de edição
+    if (lojaVenda?.id) {
+      loadEstoquePorLoja(lojaVenda.id);
     }
 
     vendaModal.onOpen();
@@ -2874,6 +2902,13 @@ export default function VendasPage() {
                     const loja =
                       lojas.find((l) => l.id.toString() === k) || null;
                     setSelectedLoja(loja);
+
+                    // CORREÇÃO: Carregar estoque explicitamente ao selecionar loja
+                    if (loja?.id) {
+                      loadEstoquePorLoja(loja.id);
+                    } else {
+                      setEstoque([]);
+                    }
 
                     // Verificar se o caixa dessa loja está aberto
                     if (loja && caixaAberto) {

@@ -1,14 +1,15 @@
 import jsPDF from "jspdf";
-import type { CaixaAberto, Loja, ResumoVendas } from "./types";
+import type { CaixaAberto, Loja, ResumoVendas, Venda } from "./types";
 
 interface CaixaPDFProps {
   caixa: CaixaAberto;
   loja: Loja;
   resumo: ResumoVendas;
+  vendas?: Venda[];
 }
 
 export class CaixaPDFGenerator {
-  static gerar({ caixa, loja, resumo }: CaixaPDFProps) {
+  static gerar({ caixa, loja, resumo, vendas = [] }: CaixaPDFProps) {
     const doc = new jsPDF();
 
     // Cores
@@ -17,6 +18,7 @@ export class CaixaPDFGenerator {
     const dangerColor: [number, number, number] = [239, 68, 68]; // Red
     const textColor: [number, number, number] = [31, 41, 55]; // Gray-800
     const lightGray: [number, number, number] = [243, 244, 246]; // Gray-100
+    const warningColor: [number, number, number] = [251, 191, 36]; // Yellow
 
     let yPos = 20;
 
@@ -272,6 +274,225 @@ export class CaixaPDFGenerator {
     });
 
     yPos += 8;
+
+    // ========== VENDAS DETALHADAS POR FORMA DE PAGAMENTO ==========
+    if (vendas && vendas.length > 0) {
+      // Verificar se precisa adicionar nova página antes de começar a seção
+      if (yPos > 200) {
+        doc.addPage();
+        yPos = 20;
+      }
+
+      // Título da seção completa
+      doc.setFontSize(16);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(...primaryColor);
+      doc.text("VENDAS DETALHADAS", 105, yPos, { align: "center" });
+      yPos += 3;
+
+      // Linha decorativa
+      doc.setDrawColor(...primaryColor);
+      doc.setLineWidth(0.5);
+      doc.line(20, yPos, 190, yPos);
+      yPos += 10;
+
+      // Agrupar vendas por forma de pagamento
+      const vendasPorFormaPagamento: { [key: string]: Venda[] } = {};
+
+      vendas.forEach((venda) => {
+        const forma = venda.forma_pagamento || "Não especificado";
+        if (!vendasPorFormaPagamento[forma]) {
+          vendasPorFormaPagamento[forma] = [];
+        }
+        vendasPorFormaPagamento[forma].push(venda);
+      });
+
+      // Ordenar formas de pagamento (ordem fixa)
+      const ordemFormasPagamento = [
+        "Dinheiro",
+        "PIX",
+        "Cartão de Débito",
+        "Cartão de Crédito",
+        "Transferência",
+        "Boleto",
+        "Crediário",
+        "Fiado",
+      ];
+
+      const formasOrdenadas = Object.keys(vendasPorFormaPagamento).sort(
+        (a, b) => {
+          const indexA = ordemFormasPagamento.indexOf(a);
+          const indexB = ordemFormasPagamento.indexOf(b);
+          if (indexA === -1 && indexB === -1) return a.localeCompare(b);
+          if (indexA === -1) return 1;
+          if (indexB === -1) return -1;
+          return indexA - indexB;
+        }
+      );
+
+      // Mapa de ícones para cada forma de pagamento
+      const iconesFormas: { [key: string]: string } = {
+        Dinheiro: "$",
+        PIX: ">",
+        "Cartão de Débito": "#",
+        "Cartão de Crédito": "#",
+        Transferência: "@",
+        Boleto: "=",
+        Crediário: "+",
+        Fiado: "*",
+      };
+
+      formasOrdenadas.forEach((formaPagamento, formaIndex) => {
+        const vendasDaForma = vendasPorFormaPagamento[formaPagamento];
+
+        // Verificar se precisa adicionar nova página
+        if (yPos > 235) {
+          doc.addPage();
+          yPos = 20;
+        }
+
+        // Box colorido para a forma de pagamento
+        doc.setFillColor(...lightGray);
+        doc.roundedRect(20, yPos - 3, 170, 12, 2, 2, "F");
+
+        // Ícone e título da forma de pagamento
+        const icone = iconesFormas[formaPagamento] || "$";
+        doc.setFontSize(12);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(...primaryColor);
+        doc.text(`[${icone}] ${formaPagamento}`, 25, yPos + 3);
+
+        // Quantidade e total no mesmo nível
+        const totalForma = vendasDaForma.reduce((acc, v) => {
+          const valor = Number(
+            (v as any).valor_total ?? (v as any).total_liquido ?? 0
+          );
+          return acc + valor;
+        }, 0);
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(...textColor);
+
+        const infoTexto = `${vendasDaForma.length} venda(s)`;
+        doc.text(infoTexto, 25, yPos + 8);
+
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(...successColor);
+        doc.text(
+          totalForma.toLocaleString("pt-BR", {
+            style: "currency",
+            currency: "BRL",
+          }),
+          185,
+          yPos + 5.5,
+          { align: "right" }
+        );
+
+        yPos += 14;
+
+        // Cabeçalho da tabela
+        doc.setFillColor(220, 220, 220);
+        doc.rect(20, yPos, 170, 7, "F");
+
+        doc.setFontSize(8);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(60, 60, 60);
+        doc.text("ID", 23, yPos + 4.5);
+        doc.text("Data/Hora", 40, yPos + 4.5);
+        doc.text("Cliente", 80, yPos + 4.5);
+        doc.text("Valor", 185, yPos + 4.5, { align: "right" });
+
+        yPos += 9;
+
+        // Listar vendas
+        vendasDaForma.forEach((venda, index) => {
+          // Verificar se precisa adicionar nova página
+          if (yPos > 270) {
+            doc.addPage();
+            yPos = 20;
+
+            // Repetir info da forma de pagamento
+            doc.setFillColor(...lightGray);
+            doc.roundedRect(20, yPos - 3, 170, 8, 2, 2, "F");
+            doc.setFontSize(10);
+            doc.setFont("helvetica", "bold");
+            doc.setTextColor(...primaryColor);
+            doc.text(
+              `[${icone}] ${formaPagamento} (continuacao)`,
+              25,
+              yPos + 3
+            );
+            yPos += 10;
+
+            // Repetir cabeçalho
+            doc.setFillColor(220, 220, 220);
+            doc.rect(20, yPos, 170, 7, "F");
+            doc.setFontSize(8);
+            doc.setFont("helvetica", "bold");
+            doc.setTextColor(60, 60, 60);
+            doc.text("ID", 23, yPos + 4.5);
+            doc.text("Data/Hora", 40, yPos + 4.5);
+            doc.text("Cliente", 80, yPos + 4.5);
+            doc.text("Valor", 185, yPos + 4.5, { align: "right" });
+            yPos += 9;
+          }
+
+          // Linha alternada
+          if (index % 2 === 0) {
+            doc.setFillColor(248, 248, 248);
+            doc.rect(20, yPos - 2, 170, 6.5, "F");
+          }
+
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(8);
+          doc.setTextColor(...textColor);
+
+          // ID da venda
+          doc.setFont("helvetica", "bold");
+          doc.setTextColor(100, 100, 100);
+          doc.text(`#${venda.id}`, 23, yPos + 2.5);
+
+          // Data e hora
+          doc.setFont("helvetica", "normal");
+          doc.setTextColor(...textColor);
+          const dataVenda = new Date(venda.data_venda);
+          const dataFormatada = dataVenda.toLocaleString("pt-BR", {
+            day: "2-digit",
+            month: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+          doc.text(dataFormatada, 40, yPos + 2.5);
+
+          // Cliente (truncar se muito longo)
+          const cliente = venda.cliente_nome || "Cliente avulso";
+          const clienteTruncado =
+            cliente.length > 40 ? cliente.substring(0, 37) + "..." : cliente;
+          doc.text(clienteTruncado, 80, yPos + 2.5);
+
+          // Valor
+          doc.setFont("helvetica", "bold");
+          doc.setTextColor(...successColor);
+          const valorVenda = Number(
+            (venda as any).valor_total ?? (venda as any).total_liquido ?? 0
+          );
+          doc.text(
+            valorVenda.toLocaleString("pt-BR", {
+              style: "currency",
+              currency: "BRL",
+            }),
+            185,
+            yPos + 2.5,
+            { align: "right" }
+          );
+
+          yPos += 6.5;
+        });
+
+        // Espaço entre formas de pagamento
+        yPos += 5;
+      });
+    }
 
     // ========== OBSERVAÇÕES ==========
     if (caixa.observacoes_abertura || caixa.observacoes_fechamento) {

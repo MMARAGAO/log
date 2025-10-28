@@ -17,7 +17,7 @@ import {
   BanknotesIcon,
   ArrowDownTrayIcon,
 } from "@heroicons/react/24/outline";
-import type { CaixaAberto, Loja, ResumoVendas } from "./types";
+import type { CaixaAberto, Loja, ResumoVendas, Venda } from "./types";
 import { CaixaPDFGenerator } from "./CaixaPDFGenerator";
 
 interface DetalhesCaixaModalProps {
@@ -26,6 +26,7 @@ interface DetalhesCaixaModalProps {
   caixa: CaixaAberto | null;
   loja: Loja | undefined;
   resumo: ResumoVendas | null;
+  vendas?: Venda[];
 }
 
 export default function DetalhesCaixaModal({
@@ -34,6 +35,7 @@ export default function DetalhesCaixaModal({
   caixa,
   loja,
   resumo,
+  vendas = [],
 }: DetalhesCaixaModalProps) {
   if (!caixa || !resumo) return null;
 
@@ -290,7 +292,7 @@ export default function DetalhesCaixaModal({
             startContent={<ArrowDownTrayIcon className="w-5 h-5" />}
             onPress={() => {
               if (loja) {
-                CaixaPDFGenerator.gerar({ caixa, loja, resumo });
+                CaixaPDFGenerator.gerar({ caixa, loja, resumo, vendas });
               }
             }}
           >

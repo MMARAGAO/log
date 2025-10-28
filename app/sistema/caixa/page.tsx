@@ -424,6 +424,11 @@ export default function CaixaPage() {
     };
   }
 
+  // Função auxiliar para obter vendas de uma loja
+  function getVendasDaLoja(lojaId: number): Venda[] {
+    return vendasPorLoja[lojaId] || [];
+  }
+
   // Filtra caixas por data
   function filtrarCaixasPorData(caixas: CaixaAberto[]): CaixaAberto[] {
     if (!dataInicio && !dataFim) return caixas;
@@ -474,32 +479,64 @@ export default function CaixaPage() {
         valorTotalVendas,
         valorDinheiro: vendasDoCaixa
           .filter((v: Venda) => v.forma_pagamento === "Dinheiro")
-          .reduce((acc: number, v: Venda) => acc + v.valor_total, 0),
+          .reduce(
+            (acc: number, v: Venda) =>
+              acc + (v.valor_total ?? v.total_liquido ?? 0),
+            0
+          ),
         valorPix: vendasDoCaixa
           .filter((v: Venda) => v.forma_pagamento === "PIX")
-          .reduce((acc: number, v: Venda) => acc + v.valor_total, 0),
+          .reduce(
+            (acc: number, v: Venda) =>
+              acc + (v.valor_total ?? v.total_liquido ?? 0),
+            0
+          ),
         valorCartaoDebito: vendasDoCaixa
           .filter((v: Venda) => v.forma_pagamento === "Cartão de Débito")
-          .reduce((acc: number, v: Venda) => acc + v.valor_total, 0),
+          .reduce(
+            (acc: number, v: Venda) =>
+              acc + (v.valor_total ?? v.total_liquido ?? 0),
+            0
+          ),
         valorCartaoCredito: vendasDoCaixa
           .filter((v: Venda) => v.forma_pagamento === "Cartão de Crédito")
-          .reduce((acc: number, v: Venda) => acc + v.valor_total, 0),
+          .reduce(
+            (acc: number, v: Venda) =>
+              acc + (v.valor_total ?? v.total_liquido ?? 0),
+            0
+          ),
         valorTransferencia: vendasDoCaixa
           .filter((v: Venda) => v.forma_pagamento === "Transferência")
-          .reduce((acc: number, v: Venda) => acc + v.valor_total, 0),
+          .reduce(
+            (acc: number, v: Venda) =>
+              acc + (v.valor_total ?? v.total_liquido ?? 0),
+            0
+          ),
         valorBoleto: vendasDoCaixa
           .filter((v: Venda) => v.forma_pagamento === "Boleto")
-          .reduce((acc: number, v: Venda) => acc + v.valor_total, 0),
+          .reduce(
+            (acc: number, v: Venda) =>
+              acc + (v.valor_total ?? v.total_liquido ?? 0),
+            0
+          ),
         valorCrediario: vendasDoCaixa
           .filter((v: Venda) => v.forma_pagamento === "Crediário")
-          .reduce((acc: number, v: Venda) => acc + v.valor_total, 0),
+          .reduce(
+            (acc: number, v: Venda) =>
+              acc + (v.valor_total ?? v.total_liquido ?? 0),
+            0
+          ),
         valorFiado: vendasDoCaixa
           .filter((v: Venda) => v.forma_pagamento === "Fiado")
-          .reduce((acc: number, v: Venda) => acc + v.valor_total, 0),
+          .reduce(
+            (acc: number, v: Venda) =>
+              acc + (v.valor_total ?? v.total_liquido ?? 0),
+            0
+          ),
         ticketMedio: totalVendas > 0 ? valorTotalVendas / totalVendas : 0,
       };
 
-      CaixaPDFGenerator.gerar({ caixa, loja, resumo });
+      CaixaPDFGenerator.gerar({ caixa, loja, resumo, vendas: vendasDoCaixa });
       toast.success("PDF gerado com sucesso!");
     } catch (error) {
       console.error("Erro ao gerar PDF:", error);
@@ -855,6 +892,7 @@ export default function CaixaPage() {
           caixa={caixaSelecionado}
           loja={lojas.find((l) => l.id === caixaSelecionado.loja_id)}
           resumo={getResumoVendas(caixaSelecionado.loja_id)}
+          vendas={getVendasDaLoja(caixaSelecionado.loja_id)}
         />
       )}
 
