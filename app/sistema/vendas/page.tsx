@@ -528,7 +528,9 @@ export default function VendasPage() {
     // NOVO: Verificar se a venda está paga e se o usuário tem permissão para editar vendas pagas
     const status = computeStatus(v);
     if (status === "pago" && !canEditVendasPagas) {
-      alert("Você não possui permissão para editar vendas já pagas. Solicite essa permissão ao administrador.");
+      alert(
+        "Você não possui permissão para editar vendas já pagas. Solicite essa permissão ao administrador."
+      );
       return;
     }
 
@@ -2643,9 +2645,10 @@ export default function VendasPage() {
                             </Button>
                           </Tooltip>
                           {canEditVendas && (
-                            <Tooltip 
+                            <Tooltip
                               content={
-                                computeStatus(v) === "pago" && !canEditVendasPagas
+                                computeStatus(v) === "pago" &&
+                                !canEditVendasPagas
                                   ? "Venda paga - Sem permissão para editar"
                                   : "Editar"
                               }
@@ -2656,10 +2659,12 @@ export default function VendasPage() {
                                 variant="light"
                                 onPress={() => safeOpenEditVenda(v)}
                                 isDisabled={
-                                  computeStatus(v) === "pago" && !canEditVendasPagas
+                                  computeStatus(v) === "pago" &&
+                                  !canEditVendasPagas
                                 }
                               >
-                                {computeStatus(v) === "pago" && !canEditVendasPagas ? (
+                                {computeStatus(v) === "pago" &&
+                                !canEditVendasPagas ? (
                                   <LockClosedIcon className="w-4 h-4" />
                                 ) : (
                                   <PencilIcon className="w-4 h-4" />
