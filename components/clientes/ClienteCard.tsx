@@ -26,6 +26,7 @@ import {
   EllipsisVerticalIcon,
 } from "@heroicons/react/24/solid";
 import { PencilSquareIcon } from "@heroicons/react/24/outline";
+import { cpfCnpjMask, phoneMask } from "@/utils/maskInput";
 import type { Cliente, TipoDocumento } from "./types";
 
 interface ClienteCardProps {
@@ -193,13 +194,13 @@ export default function ClienteCard({
           {cliente.telefone && (
             <div className="flex items-center gap-2">
               <PhoneIcon className="w-4 h-4 text-default-400 flex-shrink-0" />
-              <span>{cliente.telefone}</span>
+              <span>{phoneMask(cliente.telefone)}</span>
             </div>
           )}
           {cliente.doc && (
             <div className="flex items-center gap-2">
               <IdentificationIcon className="w-4 h-4 text-default-400 flex-shrink-0" />
-              <span>{cliente.doc}</span>
+              <span>{cpfCnpjMask(cliente.doc)}</span>
             </div>
           )}
           {cliente.endereco && (

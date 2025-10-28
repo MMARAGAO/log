@@ -524,23 +524,6 @@ export default function VendasPage() {
       return;
     }
 
-    // NOVO: Bloquear edição de vendas com status "pago"
-    if (v.status_pagamento === "pago") {
-      toast.error(
-        "🔒 Não é possível editar vendas com status 'Pago'. O pagamento já foi quitado.",
-        {
-          duration: 4000,
-          icon: "⛔",
-          style: {
-            background: "#fee2e2",
-            color: "#dc2626",
-            border: "2px solid #fca5a5",
-          },
-        }
-      );
-      return;
-    }
-
     openEditVenda(v);
   }
 
@@ -559,22 +542,6 @@ export default function VendasPage() {
     }
 
     // NOVO: Bloquear exclusão de vendas com status "pago"
-    if (v.status_pagamento === "pago") {
-      toast.error(
-        "🔒 Não é possível excluir vendas com status 'Pago'. O pagamento já foi quitado.",
-        {
-          duration: 4000,
-          icon: "⛔",
-          style: {
-            background: "#fee2e2",
-            color: "#dc2626",
-            border: "2px solid #fca5a5",
-          },
-        }
-      );
-      return;
-    }
-
     openDelete(v);
   }
 
@@ -2241,24 +2208,6 @@ export default function VendasPage() {
       return;
     }
 
-    // NOVO: Verificação adicional de segurança contra vendas pagas
-    if (targetVenda.status_pagamento === "pago") {
-      toast.error(
-        "🔒 BLOQUEADO: Não é possível excluir vendas com status 'Pago'.",
-        {
-          duration: 4000,
-          icon: "⛔",
-          style: {
-            background: "#fee2e2",
-            color: "#dc2626",
-            border: "2px solid #fca5a5",
-          },
-        }
-      );
-      deleteModal.onClose();
-      return;
-    }
-
     setLoading(true);
     try {
       await deleteTable("vendas", targetVenda.id);
@@ -2308,7 +2257,9 @@ export default function VendasPage() {
 
     return estoque.filter((p) => {
       const composite = normalizeText(
-        [p.descricao, p.marca, p.modelo, p.compativel].join(" ")
+        [p.id.toString(), p.descricao, p.marca, p.modelo, p.compativel].join(
+          " "
+        )
       );
       return tokens.length === 0 || tokens.every((t) => composite.includes(t));
     });
@@ -2684,29 +2635,12 @@ export default function VendasPage() {
                             </Button>
                           </Tooltip>
                           {canEditVendas && (
-                            <Tooltip
-                              content={
-                                v.status_pagamento === "pago"
-                                  ? "Não é possível editar vendas pagas"
-                                  : "Editar"
-                              }
-                              color={
-                                v.status_pagamento === "pago"
-                                  ? "danger"
-                                  : "default"
-                              }
-                            >
+                            <Tooltip content="Editar">
                               <Button
                                 isIconOnly
                                 size="sm"
                                 variant="light"
                                 onPress={() => safeOpenEditVenda(v)}
-                                isDisabled={v.status_pagamento === "pago"}
-                                className={
-                                  v.status_pagamento === "pago"
-                                    ? "opacity-40 cursor-not-allowed"
-                                    : ""
-                                }
                               >
                                 <PencilIcon className="w-4 h-4" />
                               </Button>
@@ -2729,26 +2663,13 @@ export default function VendasPage() {
                             </Tooltip>
                           )}
                           {canDeleteVendas && (
-                            <Tooltip
-                              content={
-                                v.status_pagamento === "pago"
-                                  ? "Não é possível excluir vendas pagas"
-                                  : "Excluir"
-                              }
-                              color="danger"
-                            >
+                            <Tooltip content="Excluir" color="danger">
                               <Button
                                 isIconOnly
                                 size="sm"
                                 variant="light"
                                 color="danger"
                                 onPress={() => safeOpenDelete(v)}
-                                isDisabled={v.status_pagamento === "pago"}
-                                className={
-                                  v.status_pagamento === "pago"
-                                    ? "opacity-40 cursor-not-allowed"
-                                    : ""
-                                }
                               >
                                 <TrashIcon className="w-4 h-4" />
                               </Button>

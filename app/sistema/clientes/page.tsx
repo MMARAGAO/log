@@ -5,8 +5,30 @@ import { insertTable } from "@/lib/insertTable";
 import { updateTable } from "@/lib/updateTable";
 import { deleteTable } from "@/lib/deleteTable";
 import { useAuthStore } from "@/store/authZustand";
-import { Card, CardBody, Spinner, useDisclosure } from "@heroui/react";
-import { ExclamationTriangleIcon } from "@heroicons/react/24/solid";
+import { cpfCnpjMask, phoneMask } from "@/utils/maskInput";
+import {
+  Card,
+  CardBody,
+  Spinner,
+  useDisclosure,
+  Pagination,
+  Button,
+  Table,
+  TableHeader,
+  TableColumn,
+  TableBody,
+  TableRow,
+  TableCell,
+  Chip,
+  Tooltip,
+} from "@heroui/react";
+import {
+  ExclamationTriangleIcon,
+  Squares2X2Icon,
+  ListBulletIcon,
+  PencilIcon,
+  TrashIcon,
+} from "@heroicons/react/24/solid";
 import DataHoje from "@/components/data";
 import {
   ClienteStats,
@@ -17,6 +39,8 @@ import {
   type ClienteFormData,
 } from "@/components/clientes";
 
+const ITEMS_PER_PAGE = 12;
+
 export default function ClientesPage() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [loading, setLoading] = useState(true);
@@ -24,6 +48,8 @@ export default function ClientesPage() {
   const [busca, setBusca] = useState("");
   const [editingCliente, setEditingCliente] = useState<Cliente | null>(null);
   const [editFotos, setEditFotos] = useState<string[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
 
   const { isOpen, onOpen, onClose } = useDisclosure();
   const { user } = useAuthStore();
@@ -51,16 +77,50 @@ export default function ClientesPage() {
     }
   }
 
-  // Filtro de busca
+  // Função para calcular o score de completude do cadastro
+  function calcularScoreCompletude(cliente: Cliente): number {
+    let score = 0;
+    if (cliente.nome) score += 10;
+    if (cliente.email) score += 15;
+    if (cliente.telefone) score += 15;
+    if (cliente.doc) score += 20;
+    if (cliente.endereco) score += 10;
+    if (cliente.instagram) score += 10;
+    if (cliente.fotourl && cliente.fotourl.length > 0) score += 20;
+    return score;
+  }
+
+  // Filtro de busca e ordenação por completude
   const clientesFiltrados = useMemo(() => {
     const q = busca.trim().toLowerCase();
-    if (!q) return clientes;
-    return clientes.filter((c) =>
-      [c.nome, c.email, c.telefone, c.doc, c.instagram]
-        .filter((v): v is string => Boolean(v))
-        .some((v) => v.toLowerCase().includes(q))
-    );
+    let filtered = clientes;
+
+    if (q) {
+      filtered = clientes.filter((c) =>
+        [c.nome, c.email, c.telefone, c.doc, c.instagram]
+          .filter((v): v is string => Boolean(v))
+          .some((v) => v.toLowerCase().includes(q))
+      );
+    }
+
+    // Ordenar por completude (maior para menor)
+    return filtered.sort((a, b) => {
+      const scoreA = calcularScoreCompletude(a);
+      const scoreB = calcularScoreCompletude(b);
+      return scoreB - scoreA;
+    });
   }, [busca, clientes]);
+
+  // Paginação
+  const totalPages = Math.ceil(clientesFiltrados.length / ITEMS_PER_PAGE);
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const endIndex = startIndex + ITEMS_PER_PAGE;
+  const currentItems = clientesFiltrados.slice(startIndex, endIndex);
+
+  // Reset página ao mudar busca
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [busca]);
 
   // Handler para adicionar novo cliente
   function handleAdd() {
@@ -231,27 +291,194 @@ export default function ClientesPage() {
         canCreate={canCreateClientes}
       />
 
-      {/* Grid de clientes */}
-      <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-        {clientesFiltrados.map((cliente) => (
-          <ClienteCard
-            key={cliente.id}
-            cliente={cliente}
-            onEdit={handleEdit}
-            onDelete={handleDelete}
-            canEdit={canEditClientes}
-            canDelete={canDeleteClientes}
-          />
-        ))}
+      {/* Controles de visualização e paginação */}
+      <div className="flex justify-between items-center mb-4">
+        <p className="text-sm text-default-500">
+          Mostrando {startIndex + 1} a{" "}
+          {Math.min(endIndex, clientesFiltrados.length)} de{" "}
+          {clientesFiltrados.length} clientes
+        </p>
 
-        {clientesFiltrados.length === 0 && (
-          <div className="col-span-full text-center text-sm text-default-500 py-10">
-            {busca
-              ? "Nenhum cliente encontrado com os filtros aplicados."
-              : "Nenhum cliente cadastrado. Clique em 'Adicionar Cliente' para começar."}
-          </div>
-        )}
+        <div className="flex gap-2 items-center">
+          {/* Botões de visualização */}
+          <Button
+            isIconOnly
+            size="sm"
+            variant={viewMode === "grid" ? "solid" : "flat"}
+            color={viewMode === "grid" ? "primary" : "default"}
+            onPress={() => setViewMode("grid")}
+          >
+            <Squares2X2Icon className="w-4 h-4" />
+          </Button>
+          <Button
+            isIconOnly
+            size="sm"
+            variant={viewMode === "list" ? "solid" : "flat"}
+            color={viewMode === "list" ? "primary" : "default"}
+            onPress={() => setViewMode("list")}
+          >
+            <ListBulletIcon className="w-4 h-4" />
+          </Button>
+
+          {/* Paginação */}
+          {totalPages > 1 && (
+            <Pagination
+              total={totalPages}
+              page={currentPage}
+              onChange={setCurrentPage}
+              showControls
+              size="sm"
+              classNames={{
+                wrapper: "gap-0 overflow-visible h-8",
+                item: "w-8 h-8 text-small rounded-none",
+                cursor: "bg-primary-500 text-white font-bold",
+              }}
+            />
+          )}
+        </div>
       </div>
+
+      {/* Grid ou Lista de clientes */}
+      {viewMode === "grid" ? (
+        <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+          {currentItems.map((cliente) => (
+            <ClienteCard
+              key={cliente.id}
+              cliente={cliente}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
+              canEdit={canEditClientes}
+              canDelete={canDeleteClientes}
+            />
+          ))}
+
+          {clientesFiltrados.length === 0 && (
+            <div className="col-span-full text-center text-sm text-default-500 py-10">
+              {busca
+                ? "Nenhum cliente encontrado com os filtros aplicados."
+                : "Nenhum cliente cadastrado. Clique em 'Adicionar Cliente' para começar."}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <Table aria-label="Tabela de clientes">
+            <TableHeader>
+              <TableColumn>NOME</TableColumn>
+              <TableColumn>CONTATO</TableColumn>
+              <TableColumn>DOCUMENTO</TableColumn>
+              <TableColumn>ENDEREÇO</TableColumn>
+              <TableColumn>COMPLETUDE</TableColumn>
+              <TableColumn>AÇÕES</TableColumn>
+            </TableHeader>
+            <TableBody emptyContent="Nenhum cliente encontrado">
+              {currentItems.map((cliente) => {
+                const score = calcularScoreCompletude(cliente);
+                const porcentagem = Math.round(score);
+
+                return (
+                  <TableRow key={cliente.id}>
+                    <TableCell>
+                      <div className="flex flex-col">
+                        <span className="font-medium">{cliente.nome}</span>
+                        {cliente.instagram && (
+                          <span className="text-xs text-default-500">
+                            @{cliente.instagram}
+                          </span>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-col text-sm">
+                        {cliente.telefone && (
+                          <span>{phoneMask(cliente.telefone)}</span>
+                        )}
+                        {cliente.email && (
+                          <span className="text-xs text-default-500">
+                            {cliente.email}
+                          </span>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-sm">
+                        {cliente.doc ? cpfCnpjMask(cliente.doc) : "-"}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-sm max-w-xs truncate block">
+                        {cliente.endereco || "-"}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        size="sm"
+                        color={
+                          porcentagem >= 80
+                            ? "success"
+                            : porcentagem >= 50
+                              ? "warning"
+                              : "danger"
+                        }
+                        variant="flat"
+                      >
+                        {porcentagem}%
+                      </Chip>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex gap-1">
+                        {canEditClientes && (
+                          <Tooltip content="Editar">
+                            <Button
+                              isIconOnly
+                              size="sm"
+                              variant="light"
+                              onPress={() => handleEdit(cliente)}
+                            >
+                              <PencilIcon className="w-4 h-4" />
+                            </Button>
+                          </Tooltip>
+                        )}
+                        {canDeleteClientes && (
+                          <Tooltip content="Excluir" color="danger">
+                            <Button
+                              isIconOnly
+                              size="sm"
+                              variant="light"
+                              color="danger"
+                              onPress={() => handleDelete(cliente.id)}
+                            >
+                              <TrashIcon className="w-4 h-4" />
+                            </Button>
+                          </Tooltip>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+
+      {/* Paginação inferior */}
+      {totalPages > 1 && (
+        <div className="flex justify-center mt-6">
+          <Pagination
+            total={totalPages}
+            page={currentPage}
+            onChange={setCurrentPage}
+            showControls
+            size="sm"
+            classNames={{
+              wrapper: "gap-0 overflow-visible h-8",
+              item: "w-8 h-8 text-small rounded-none",
+              cursor: "bg-primary-500 text-white font-bold",
+            }}
+          />
+        </div>
+      )}
 
       {/* Modal de adicionar/editar */}
       {(canCreateClientes || canEditClientes) && (

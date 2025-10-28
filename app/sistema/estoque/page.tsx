@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { fetchTable } from "@/lib/fetchTable";
@@ -1066,7 +1066,13 @@ export default function EstoquePage() {
       // Busca multi-termos: cada termo precisa existir (parcial) em algum campo
       const tokens = normalizeText(searchTerm).split(" ").filter(Boolean);
       const composite = normalizeText(
-        [item.descricao, item.modelo, item.marca, item.compativel].join(" ")
+        [
+          item.id.toString(),
+          item.descricao,
+          item.modelo,
+          item.marca,
+          item.compativel,
+        ].join(" ")
       );
       const searchMatch =
         tokens.length === 0 || tokens.every((t) => composite.includes(t));
