@@ -103,7 +103,7 @@ export interface AppUser {
   nome?: string | null;
   cargo?: string | null;
   fotourl?: string | null;
-  permissoes?: { acessos: PermissoesAcessos } | null; // <- adiciona
+  permissoes?: { acessos: PermissoesAcessos; loja_id?: number | null } | null; // <- adiciona loja_id
 }
 
 function defaultPermissoes(): { acessos: PermissoesAcessos } {
@@ -211,7 +211,9 @@ interface AuthState {
   clearAuth: () => Promise<void>;
   setUser: (u: AppUser | null) => void;
   refreshPermissoes: () => Promise<void>;
-  setPermissoes: (p: { acessos: PermissoesAcessos } | null) => void;
+  setPermissoes: (
+    p: { acessos: PermissoesAcessos; loja_id?: number | null } | null
+  ) => void;
   startRealtimeListener: () => void;
   stopRealtimeListener: () => void;
 }
@@ -220,7 +222,7 @@ async function fetchOrInitPermissoes(userId: string) {
   // Tenta buscar
   const { data, error } = await supabase
     .from("permissoes")
-    .select("acessos")
+    .select("acessos, loja_id")
     .eq("id", userId)
     .maybeSingle();
 
@@ -249,26 +251,33 @@ async function fetchOrInitPermissoes(userId: string) {
       }
     );
 
-    return { acessos: permissoesMerged };
+    return { acessos: permissoesMerged, loja_id: data.loja_id ?? null };
   }
 
   // Cria default se não existir
   const { error: upErr } = await supabase
     .from("permissoes")
-    .upsert({ id: userId, acessos: def.acessos }, { onConflict: "id" });
+    .upsert(
+      { id: userId, acessos: def.acessos, loja_id: null },
+      { onConflict: "id" }
+    );
   if (upErr) {
     console.warn("Falha ao criar permissões default:", upErr.message);
-    return def;
+    return { ...def, loja_id: null };
   }
-  return def;
+  return { ...def, loja_id: null };
 }
 
-function writePermsCookie(perms: { acessos: PermissoesAcessos } | null) {
+function writePermsCookie(
+  perms: { acessos: PermissoesAcessos; loja_id?: number | null } | null
+) {
   if (!perms) {
     document.cookie = "perms=; path=/; max-age=0";
     return;
   }
-  const raw = encodeURIComponent(JSON.stringify(perms.acessos));
+  const raw = encodeURIComponent(
+    JSON.stringify({ acessos: perms.acessos, loja_id: perms.loja_id })
+  );
   // 7 dias
   document.cookie = `perms=${raw}; path=/; max-age=${60 * 60 * 24 * 7}`;
 }
@@ -322,10 +331,13 @@ export const useAuthStore = create<AuthState>()(
               if (payload.eventType === "DELETE") {
                 // Se permissões foram deletadas, usar defaults
                 const def = defaultPermissoes();
-                get().setPermissoes(def);
+                get().setPermissoes({ ...def, loja_id: null });
               } else if (payload.new?.acessos) {
                 // UPDATE ou INSERT
-                get().setPermissoes({ acessos: payload.new.acessos });
+                get().setPermissoes({
+                  acessos: payload.new.acessos,
+                  loja_id: payload.new.loja_id ?? null,
+                });
               }
             }
           )
@@ -353,8 +365,33 @@ export const useAuthStore = create<AuthState>()(
             console.warn("Erro ao limpar sessão anterior:", e);
           }
 
+          // Verificar se o input é um email ou nickname
+          let loginEmail = email.trim();
+
+          // Se não contém @, pode ser um nickname - buscar o email correspondente
+          if (!loginEmail.includes("@")) {
+            try {
+              const { data: userData, error: userError } = await supabase
+                .from("usuarios")
+                .select("email")
+                .eq("nickname", loginEmail)
+                .single();
+
+              if (userError || !userData?.email) {
+                set({ loading: false, error: "Nickname não encontrado" });
+                return;
+              }
+
+              loginEmail = userData.email;
+            } catch (e) {
+              console.error("Erro ao buscar email por nickname:", e);
+              set({ loading: false, error: "Erro ao buscar usuário" });
+              return;
+            }
+          }
+
           const { data, error } = await supabase.auth.signInWithPassword({
-            email,
+            email: loginEmail,
             password,
           });
 

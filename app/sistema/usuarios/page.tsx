@@ -26,6 +26,8 @@ import {
   DropdownSection,
   DropdownItem,
   Checkbox,
+  Select,
+  SelectItem,
 } from "@heroui/react";
 import {
   PlusIcon,
@@ -68,6 +70,12 @@ export default function UsuariosPage() {
   const [usuarios, setUsuarios] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
+
+  // Lojas
+  const [lojas, setLojas] = useState<Array<{ id: number; nome: string }>>([]);
+  const [lojaSelecionada, setLojaSelecionada] = useState<
+    number | "todas" | null
+  >(null);
 
   // Busca
   const [busca, setBusca] = useState("");
@@ -255,8 +263,17 @@ export default function UsuariosPage() {
         setLoading(false);
       }
     }
+    async function buscarLojas() {
+      try {
+        const data = await fetchTable("lojas");
+        setLojas(data);
+      } catch (err: any) {
+        console.error("Erro ao buscar lojas:", err);
+      }
+    }
     if (canViewUsuarios) {
       buscarUsuarios();
+      buscarLojas();
     } else {
       setLoading(false);
     }
@@ -368,15 +385,51 @@ export default function UsuariosPage() {
   async function abrirPermissoes(u: any) {
     setPermUserId(u.uuid);
     setPermissoes(null);
+    setLojaSelecionada(null); // Reset da seleção - sem loja pré-definida
     setPermissoesOpen(true);
     setPermLoading(true);
     try {
-      const { data, error } = await supabaseService
-        .from("permissoes")
-        .select("acessos")
-        .eq("id", u.uuid)
-        .maybeSingle();
-      if (error) throw error;
+      // Tenta buscar com loja_id, mas se falhar, tenta sem
+      let data: any = null;
+      let error = null;
+
+      try {
+        const result = await supabaseService
+          .from("permissoes")
+          .select("acessos, loja_id")
+          .eq("id", u.uuid)
+          .maybeSingle();
+        data = result.data;
+        error = result.error;
+      } catch (e: any) {
+        // Se falhar com loja_id (coluna não existe), tenta sem
+        console.warn("Tentando buscar sem loja_id:", e);
+        const result = await supabaseService
+          .from("permissoes")
+          .select("acessos")
+          .eq("id", u.uuid)
+          .maybeSingle();
+        data = result.data;
+        error = result.error;
+      }
+
+      console.log("Dados carregados do banco:", data);
+
+      if (error) {
+        console.error("Erro ao buscar permissões:", error);
+        throw error;
+      }
+
+      // Define a loja selecionada
+      if (data?.loja_id) {
+        setLojaSelecionada(data.loja_id);
+      } else if (data && data.loja_id === null && data.acessos) {
+        // Explicitamente definido como "todas as lojas" (null no banco)
+        setLojaSelecionada("todas");
+      } else {
+        // Sem definição ainda
+        setLojaSelecionada(null);
+      }
 
       // Merge das permissões existentes com as novas estruturas
       if (data?.acessos) {
@@ -399,9 +452,11 @@ export default function UsuariosPage() {
           // Se não existe, mantém os valores default (false)
         });
 
+        console.log("Permissões merged:", permissoesMerged);
         setPermissoes({ acessos: permissoesMerged });
       } else {
         // Usuário sem permissões, usa default
+        console.log("Usuário sem permissões, usando default");
         setPermissoes({ acessos: defaultPermissoes.acessos });
       }
     } catch (e) {
@@ -426,9 +481,20 @@ export default function UsuariosPage() {
 
   async function salvarPermissoes() {
     if (!permUserId || !permissoes) return;
+
+    // Validação: loja deve ser selecionada
+    if (lojaSelecionada === null) {
+      alert("Por favor, selecione uma loja antes de salvar as permissões.");
+      return;
+    }
+
     setPermSaving(true);
     try {
-      const payload = { id: permUserId, acessos: permissoes.acessos };
+      const payload = {
+        id: permUserId,
+        acessos: permissoes.acessos,
+        loja_id: lojaSelecionada === "todas" ? null : lojaSelecionada,
+      };
       const { error } = await supabaseService
         .from("permissoes")
         .upsert(payload, { onConflict: "id" });
@@ -841,6 +907,97 @@ export default function UsuariosPage() {
 
               {!permLoading && permissoes && (
                 <div className="space-y-6">
+                  {/* Seleção de Loja */}
+                  <div className="p-4 bg-secondary-50 rounded-lg border border-secondary-200">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="p-2 bg-secondary-100 rounded-full">
+                        <BuildingStorefrontIcon className="w-5 h-5 text-secondary-700" />
+                      </div>
+                      <div>
+                        <h4 className="font-semibold text-secondary-800">
+                          Loja de Operação
+                        </h4>
+                        <p className="text-sm text-secondary-600">
+                          Defina em qual loja o usuário terá acesso
+                        </p>
+                      </div>
+                    </div>
+
+                    <Select
+                      label="Loja"
+                      placeholder="Selecione a loja"
+                      selectedKeys={
+                        lojaSelecionada === null
+                          ? []
+                          : lojaSelecionada === "todas"
+                            ? ["todas"]
+                            : [lojaSelecionada.toString()]
+                      }
+                      onSelectionChange={(keys) => {
+                        const value = Array.from(keys)[0] as string;
+                        if (!value) {
+                          setLojaSelecionada(null);
+                        } else if (value === "todas") {
+                          setLojaSelecionada("todas");
+                        } else {
+                          setLojaSelecionada(Number(value));
+                        }
+                      }}
+                      className="max-w-full"
+                      variant="bordered"
+                      startContent={
+                        <BuildingStorefrontIcon className="w-4 h-4 text-secondary-500" />
+                      }
+                      isRequired
+                    >
+                      {
+                        [
+                          <SelectItem key="todas">Todas as Lojas</SelectItem>,
+                          ...lojas.map((loja) => (
+                            <SelectItem key={loja.id.toString()}>
+                              {loja.nome}
+                            </SelectItem>
+                          )),
+                        ] as any
+                      }
+                    </Select>
+
+                    {lojaSelecionada === "todas" && (
+                      <div className="mt-3 p-3 bg-warning-50 rounded-lg border border-warning-200">
+                        <p className="text-xs text-warning-700 flex items-center gap-2">
+                          <ExclamationTriangleIcon className="w-4 h-4" />
+                          Este usuário terá acesso a todas as lojas do sistema
+                        </p>
+                      </div>
+                    )}
+
+                    {lojaSelecionada !== null &&
+                      lojaSelecionada !== "todas" && (
+                        <div className="mt-3 p-3 bg-success-50 rounded-lg border border-success-200">
+                          <p className="text-xs text-success-700 flex items-center gap-2">
+                            <CheckCircleIcon className="w-4 h-4" />
+                            Acesso restrito à loja:{" "}
+                            <strong>
+                              {
+                                lojas.find((l) => l.id === lojaSelecionada)
+                                  ?.nome
+                              }
+                            </strong>
+                          </p>
+                        </div>
+                      )}
+
+                    {lojaSelecionada === null && (
+                      <div className="mt-3 p-3 bg-default-100 rounded-lg border border-default-200">
+                        <p className="text-xs text-default-600 flex items-center gap-2">
+                          <ExclamationTriangleIcon className="w-4 h-4" />
+                          Nenhuma loja selecionada - o usuário não terá acesso
+                          ao sistema
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
                   {/* Contador geral de permissões */}
                   <div className="p-4 bg-primary-50 rounded-lg border border-primary-200">
                     <div className="flex items-center justify-between">

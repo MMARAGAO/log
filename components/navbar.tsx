@@ -241,7 +241,7 @@ export function Navbar() {
                 className="transition-transform hover:scale-105"
                 color="default"
                 size="sm"
-                src={user?.fotourl || "https://i.pravatar.cc/150?u=default"}
+                src={user?.fotourl || ""}
               />
             </DropdownTrigger>
             <DropdownMenu aria-label="Profile Actions" variant="flat">

@@ -188,6 +188,15 @@ export default function RmaPage() {
   const canViewRma = !!permRma?.ver_rma;
   const canCreateRma = !!permRma?.criar_rma;
 
+  // Filtrar lojas disponíveis baseado nas permissões do usuário
+  const lojasDisponiveis = useMemo(() => {
+    const lojaIdUsuario = user?.permissoes?.loja_id;
+    if (lojaIdUsuario === null || lojaIdUsuario === undefined) {
+      return lojas;
+    }
+    return lojas.filter((loja) => loja.id === lojaIdUsuario);
+  }, [lojas, user?.permissoes?.loja_id]);
+
   async function loadRma() {
     setLoading(true);
     try {
@@ -2399,7 +2408,7 @@ export default function RmaPage() {
                               : undefined
                           }
                         >
-                          {lojas.map((l) => (
+                          {lojasDisponiveis.map((l) => (
                             <SelectItem key={l.id} textValue={l.nome}>
                               <div className="flex flex-col gap-1">
                                 <span className="font-medium">{l.nome}</span>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Button, Spinner, Card, CardBody } from "@heroui/react";
 import {
   ClockIcon,
@@ -111,6 +111,19 @@ export default function CaixaPage() {
   const canViewCaixa = !!permCaixa?.ver_caixa;
   const canOpenCaixa = !!permCaixa?.abrir_caixa;
   const canCloseCaixa = !!permCaixa?.fechar_caixa;
+
+  // Filtrar lojas com base nas permissões do usuário
+  const lojasDisponiveis = useMemo(() => {
+    const lojaIdUsuario = user?.permissoes?.loja_id;
+
+    // Se loja_id é null ou undefined, usuário tem acesso a todas as lojas
+    if (lojaIdUsuario === null || lojaIdUsuario === undefined) {
+      return lojas;
+    }
+
+    // Caso contrário, filtra apenas a loja do usuário
+    return lojas.filter((loja) => loja.id === lojaIdUsuario);
+  }, [lojas, user?.permissoes?.loja_id]);
 
   // Carrega dados iniciais
   useEffect(() => {
@@ -742,7 +755,7 @@ export default function CaixaPage() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-            {lojas
+            {lojasDisponiveis
               .filter(
                 (loja) => !caixasAbertos.find((c) => c.loja_id === loja.id)
               )
@@ -796,7 +809,7 @@ export default function CaixaPage() {
             observacoes_abertura: "",
           });
         }}
-        lojas={lojas.filter(
+        lojas={lojasDisponiveis.filter(
           (loja) => !caixasAbertos.find((c) => c.loja_id === loja.id)
         )}
         formData={formAbrir}

@@ -86,15 +86,16 @@ function LoginPageContent() {
         <p className="text-sm text-center mb-6 text-gray-500">
           Acesse o sistema ERP
         </p>
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form onSubmit={handleSubmit} className="space-y-5" noValidate>
           <Input
-            type="email"
-            label="Email"
+            type="text"
+            label="Email ou Nickname"
             variant="bordered"
             value={email}
             onValueChange={setEmail}
-            autoComplete="email"
+            autoComplete="username"
             isRequired
+            description="Digite seu email ou nickname"
           />
           <Input
             type="password"

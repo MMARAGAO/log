@@ -245,6 +245,19 @@ export default function VendasPage() {
   const [lojas, setLojas] = useState<Loja[]>([]);
   const [caixaAberto, setCaixaAberto] = useState<any>(null);
 
+  // Filtrar lojas com base nas permissões do usuário
+  const lojasDisponiveis = useMemo(() => {
+    const lojaIdUsuario = user?.permissoes?.loja_id;
+
+    // Se loja_id é null, usuário tem acesso a todas as lojas
+    if (lojaIdUsuario === null || lojaIdUsuario === undefined) {
+      return lojas;
+    }
+
+    // Caso contrário, filtra apenas a loja do usuário
+    return lojas.filter((loja) => loja.id === lojaIdUsuario);
+  }, [lojas, user?.permissoes?.loja_id]);
+
   // NOVOS ESTADOS PARA CRÉDITO
   const [clienteCredito, setClienteCredito] = useState(0);
   const [creditoAplicado, setCreditoAplicado] = useState(0);
@@ -2428,7 +2441,7 @@ export default function VendasPage() {
               }
               placeholder="Todas"
             >
-              {lojas.map((l) => (
+              {lojasDisponiveis.map((l) => (
                 <SelectItem key={l.id}>{l.nome}</SelectItem>
               ))}
             </Select>
@@ -2865,7 +2878,7 @@ export default function VendasPage() {
                   }
                   color={!caixaAberto ? "danger" : "default"}
                 >
-                  {lojas.map((l) => (
+                  {lojasDisponiveis.map((l) => (
                     <AutocompleteItem key={l.id}>{l.nome}</AutocompleteItem>
                   ))}
                 </Autocomplete>

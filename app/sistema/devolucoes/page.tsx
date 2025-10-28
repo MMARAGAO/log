@@ -269,6 +269,19 @@ export default function DevolucoesPagina() {
   const canProcessarCreditos = !!permDevolucoes?.processar_creditos;
   const canDeleteSemRestricao = !!permDevolucoes?.deletar_sem_restricao; // Permite deletar devoluções concluídas
 
+  // Filtrar lojas com base nas permissões do usuário
+  const lojasDisponiveis = useMemo(() => {
+    const lojaIdUsuario = user?.permissoes?.loja_id;
+
+    // Se loja_id é null ou undefined, usuário tem acesso a todas as lojas
+    if (lojaIdUsuario === null || lojaIdUsuario === undefined) {
+      return lojas;
+    }
+
+    // Caso contrário, filtra apenas a loja do usuário
+    return lojas.filter((loja) => loja.id === lojaIdUsuario);
+  }, [lojas, user?.permissoes?.loja_id]);
+
   // Dados
   const [devolucoes, setDevolucoes] = useState<Devolucao[]>([]);
   const [vendas, setVendas] = useState<Venda[]>([]);
@@ -1944,7 +1957,7 @@ export default function DevolucoesPagina() {
                     }
                     isRequired
                   >
-                    {lojas.map((loja) => (
+                    {lojasDisponiveis.map((loja) => (
                       <SelectItem key={loja.id.toString()}>
                         {loja.nome}
                       </SelectItem>
