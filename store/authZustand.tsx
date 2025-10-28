@@ -45,6 +45,7 @@ export interface PermissoesAcessos {
     criar_vendas: boolean;
     ver_vendas: boolean;
     editar_vendas: boolean;
+    editar_vendas_pagas: boolean; // NOVO: Permite editar vendas mesmo depois de pagas
     deletar_vendas: boolean;
     processar_pagamentos: boolean;
     aplicar_desconto: boolean;
@@ -149,6 +150,7 @@ function defaultPermissoes(): { acessos: PermissoesAcessos } {
         criar_vendas: false,
         ver_vendas: false,
         editar_vendas: false,
+        editar_vendas_pagas: false, // NOVO: Permite editar vendas mesmo depois de pagas
         deletar_vendas: false,
         processar_pagamentos: false,
         aplicar_desconto: false,

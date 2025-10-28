@@ -232,6 +232,7 @@ export default function VendasPage() {
   const canViewVendas = !!permVendas?.ver_vendas;
   const canCreateVendas = !!permVendas?.criar_vendas;
   const canEditVendas = !!permVendas?.editar_vendas;
+  const canEditVendasPagas = !!permVendas?.editar_vendas_pagas; // NOVO: Permite editar vendas pagas
   const canDeleteVendas = !!permVendas?.deletar_vendas;
   const canProcessarPagamentos = !!permVendas?.processar_pagamentos;
   // NOVAS PERMISSÕES DE DESCONTO
@@ -521,6 +522,13 @@ export default function VendasPage() {
   function safeOpenEditVenda(v: Venda) {
     if (!canEditVendas) {
       alert("Você não possui permissão para editar vendas.");
+      return;
+    }
+
+    // NOVO: Verificar se a venda está paga e se o usuário tem permissão para editar vendas pagas
+    const status = computeStatus(v);
+    if (status === "pago" && !canEditVendasPagas) {
+      alert("Você não possui permissão para editar vendas já pagas. Solicite essa permissão ao administrador.");
       return;
     }
 
@@ -2635,14 +2643,27 @@ export default function VendasPage() {
                             </Button>
                           </Tooltip>
                           {canEditVendas && (
-                            <Tooltip content="Editar">
+                            <Tooltip 
+                              content={
+                                computeStatus(v) === "pago" && !canEditVendasPagas
+                                  ? "Venda paga - Sem permissão para editar"
+                                  : "Editar"
+                              }
+                            >
                               <Button
                                 isIconOnly
                                 size="sm"
                                 variant="light"
                                 onPress={() => safeOpenEditVenda(v)}
+                                isDisabled={
+                                  computeStatus(v) === "pago" && !canEditVendasPagas
+                                }
                               >
-                                <PencilIcon className="w-4 h-4" />
+                                {computeStatus(v) === "pago" && !canEditVendasPagas ? (
+                                  <LockClosedIcon className="w-4 h-4" />
+                                ) : (
+                                  <PencilIcon className="w-4 h-4" />
+                                )}
                               </Button>
                             </Tooltip>
                           )}

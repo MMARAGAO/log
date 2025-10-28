@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import { useEffect, useState, useMemo } from "react";
 import { fetchTable } from "@/lib/fetchTable";
 import { insertTable } from "@/lib/insertTable";
@@ -147,6 +147,7 @@ export default function UsuariosPage() {
           criar_vendas: false,
           ver_vendas: false,
           editar_vendas: false,
+          editar_vendas_pagas: false, // NOVO: Permite editar vendas mesmo depois de pagas
           deletar_vendas: false,
           processar_pagamentos: false,
           aplicar_desconto: false,
