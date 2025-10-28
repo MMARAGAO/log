@@ -26,7 +26,7 @@
     "@heroui/theme": "2.4.20",
     "@react-aria/ssr": "3.9.10",
     "@react-aria/visually-hidden": "3.8.26",
-    "@supabase/supabase-js": "^2.55.0",
+    "@supabase/supabase-js": "^2.76.1",
     "@zxing/browser": "^0.1.5",
     "@zxing/library": "^0.21.3",
     "clsx": "2.1.1",
@@ -47,6 +47,7 @@
     "recharts": "^3.1.2",
     "rtsp-relay": "^1.9.0",
     "tesseract.js": "^6.0.1",
+    "xlsx": "^0.18.5",
     "zustand": "^5.0.7"
   },
   "devDependencies": {

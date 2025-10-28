@@ -5,12 +5,7 @@ import { insertTable } from "@/lib/insertTable";
 import { updateTable } from "@/lib/updateTable";
 import { deleteTable } from "@/lib/deleteTable";
 import { useAuthStore } from "@/store/authZustand";
-import {
-  Card,
-  CardBody,
-  Spinner,
-  useDisclosure,
-} from "@heroui/react";
+import { Card, CardBody, Spinner, useDisclosure } from "@heroui/react";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/solid";
 import DataHoje from "@/components/data";
 import {
@@ -122,18 +117,28 @@ export default function ClientesPage() {
     }
 
     try {
+      // ✅ Converte campos vazios para null
+      const cleanedData = {
+        ...data,
+        email: data.email?.trim() || null,
+        telefone: data.telefone?.trim() || null,
+        doc: data.doc?.trim() || null,
+        endereco: data.endereco?.trim() || null,
+        instagram: data.instagram?.trim() || null,
+      };
+
       if (editingCliente) {
         // Atualizar cliente existente
         await updateTable(
           "clientes",
           editingCliente.id,
-          data,
+          cleanedData,
           foto ?? undefined,
           editFotos
         );
       } else {
         // Criar novo cliente
-        await insertTable("clientes", data, foto ?? undefined);
+        await insertTable("clientes", cleanedData, foto ?? undefined);
       }
 
       await buscarClientes();

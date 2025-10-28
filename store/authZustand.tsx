@@ -75,6 +75,7 @@ export interface PermissoesAcessos {
     editar_devolucoes: boolean;
     deletar_devolucoes: boolean;
     processar_creditos: boolean;
+    deletar_sem_restricao: boolean; // Permite deletar devoluções concluídas
   };
   rma: {
     ver_rma: boolean;
@@ -178,6 +179,7 @@ function defaultPermissoes(): { acessos: PermissoesAcessos } {
         editar_devolucoes: false,
         deletar_devolucoes: false,
         processar_creditos: false,
+        deletar_sem_restricao: false,
       },
       rma: {
         ver_rma: false,

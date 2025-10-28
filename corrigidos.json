@@ -1,0 +1,109 @@
+{
+  "corrigidos": [
+    {
+      "id": 4224,
+      "descricao": "FERRAMENTA MANTA METAL AD-395 AIDA AMARELA",
+      "preco_compra_antigo": 30937,
+      "preco_venda_antigo": 420,
+      "preco_compra_corrigido": 309.37,
+      "preco_venda_corrigido": 4.2
+    },
+    {
+      "id": 4226,
+      "descricao": "FERRAMENTA MANTA METAL AD-395 AIDA PRETA",
+      "preco_compra_antigo": 32625,
+      "preco_venda_antigo": 420,
+      "preco_compra_corrigido": 326.25,
+      "preco_venda_corrigido": 4.2
+    },
+    {
+      "id": 4227,
+      "descricao": "FERRAMENTA MANTA METAL AD-395 AIDA VERMELHA",
+      "preco_compra_antigo": 30937,
+      "preco_venda_antigo": 420,
+      "preco_compra_corrigido": 309.37,
+      "preco_venda_corrigido": 4.2
+    },
+    {
+      "id": 4348,
+      "descricao": "MAQUINA DE FLEX HONYAN",
+      "preco_compra_antigo": 20000,
+      "preco_venda_antigo": 30000,
+      "preco_compra_corrigido": 200,
+      "preco_venda_corrigido": 300
+    },
+    {
+      "id": 4358,
+      "descricao": "MAQUINA ESTACAO DE RETRABALHO 8620DX SUGON",
+      "preco_compra_antigo": 145825,
+      "preco_venda_antigo": 1960,
+      "preco_compra_corrigido": 1458.25,
+      "preco_venda_corrigido": 19.6
+    },
+    {
+      "id": 4360,
+      "descricao": "MAQUINA ESTACAO DE RETRABALHO ATTEN ST-862D 220V",
+      "preco_compra_antigo": 110062,
+      "preco_venda_antigo": 1600,
+      "preco_compra_corrigido": 1100.62,
+      "preco_venda_corrigido": 16
+    },
+    {
+      "id": 4362,
+      "descricao": "MAQUINA ESTACAO DE RETRABALHO QUICK 861DW 220V",
+      "preco_compra_antigo": 183437,
+      "preco_venda_antigo": 2675,
+      "preco_compra_corrigido": 1834.37,
+      "preco_venda_corrigido": 26.75
+    },
+    {
+      "id": 4369,
+      "descricao": "MAQUINA ESTACAO DE SOLDA AIFEN A9 PLUS 220V",
+      "preco_compra_antigo": 61625,
+      "preco_venda_antigo": 850,
+      "preco_compra_corrigido": 616.25,
+      "preco_venda_corrigido": 8.5
+    },
+    {
+      "id": 4371,
+      "descricao": "MAQUINA ESTACAO DE SOLDA ATTEN ST-1203D 220V",
+      "preco_compra_antigo": 115125,
+      "preco_venda_antigo": 1550,
+      "preco_compra_corrigido": 1151.25,
+      "preco_venda_corrigido": 15.5
+    },
+    {
+      "id": 4373,
+      "descricao": "MAQUINA ESTACAO DE SOLDA DUPLA T3602 SUGON",
+      "preco_compra_antigo": 183437,
+      "preco_venda_antigo": 2300,
+      "preco_compra_corrigido": 1834.37,
+      "preco_venda_corrigido": 23
+    },
+    {
+      "id": 4384,
+      "descricao": "MAQUINA FONTE DE ALIMENTACAO DIGITAL JC AIXUN P2408 220V BRANCA",
+      "preco_compra_antigo": 65391,
+      "preco_venda_antigo": 1000,
+      "preco_compra_corrigido": 653.91,
+      "preco_venda_corrigido": 10
+    },
+    {
+      "id": 4386,
+      "descricao": "MAQUINA FONTE DE BANCADA K305DN AIDA",
+      "preco_compra_antigo": 34375,
+      "preco_venda_antigo": 550,
+      "preco_compra_corrigido": 343.75,
+      "preco_venda_corrigido": 5.5
+    },
+    {
+      "id": 4414,
+      "descricao": "MAQUINA SEPARADORA FOR WARD FW-360C 220V BRANCA",
+      "preco_compra_antigo": 36687,
+      "preco_venda_antigo": 680,
+      "preco_compra_corrigido": 366.87,
+      "preco_venda_corrigido": 6.8
+    }
+  ],
+  "suspeitos": []
+}

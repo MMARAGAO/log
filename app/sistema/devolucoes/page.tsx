@@ -267,6 +267,7 @@ export default function DevolucoesPagina() {
   const canEditDevolucoes = !!permDevolucoes?.editar_devolucoes;
   const canDeleteDevolucoes = !!permDevolucoes?.deletar_devolucoes;
   const canProcessarCreditos = !!permDevolucoes?.processar_creditos;
+  const canDeleteSemRestricao = !!permDevolucoes?.deletar_sem_restricao; // Permite deletar devoluções concluídas
 
   // Dados
   const [devolucoes, setDevolucoes] = useState<Devolucao[]>([]);
@@ -303,6 +304,7 @@ export default function DevolucoesPagina() {
   const viewModal = useDisclosure();
   const deleteModal = useDisclosure();
   const creditoModal = useDisclosure();
+  const deleteConcluidaModal = useDisclosure(); // Novo modal para confirmação de exclusão de devoluções concluídas
 
   // Estado de formulário
   const [editingDevolucao, setEditingDevolucao] = useState<Devolucao | null>(
@@ -390,13 +392,26 @@ export default function DevolucoesPagina() {
       return;
     }
 
-    // NOVA VALIDAÇÃO: Impedir exclusão se devolução já foi concluída
-    if (d.status === "concluida" || d.status === "concluida_com_credito") {
-      toast.error("Não é possível excluir uma devolução que já foi concluída.");
-      return;
-    }
+    setTargetDevolucao(d);
 
-    openDelete(d);
+    // VALIDAÇÃO: Apenas usuários com permissão especial podem deletar devoluções concluídas
+    if (d.status === "concluida" || d.status === "concluida_com_credito") {
+      if (!canDeleteSemRestricao) {
+        toast.error(
+          "⚠️ Não é possível excluir devoluções já concluídas.\n\n" +
+            "Você precisa da permissão 'Deletar Sem Restrição' para realizar esta ação.\n" +
+            "Entre em contato com um administrador do sistema.",
+          { duration: 5000 }
+        );
+        return;
+      }
+
+      // Abrir modal especial para devoluções concluídas
+      deleteConcluidaModal.onOpen();
+    } else {
+      // Para devoluções pendentes, abrir o modal normal
+      deleteModal.onOpen();
+    }
   }
 
   function safeOpenCredito(d: Devolucao) {
@@ -1106,11 +1121,6 @@ export default function DevolucoesPagina() {
   }
 
   // Delete
-  function openDelete(d: Devolucao) {
-    setTargetDevolucao(d);
-    deleteModal.onOpen();
-  }
-
   async function confirmarDelete() {
     if (!targetDevolucao) return;
 
@@ -1119,6 +1129,8 @@ export default function DevolucoesPagina() {
       await deleteTable("devolucoes", targetDevolucao.id);
       await loadAll();
       deleteModal.onClose();
+      deleteConcluidaModal.onClose();
+      toast.success("Devolução excluída com sucesso!");
     } catch (e: any) {
       console.error("Erro ao excluir devolução:", e);
       toast.error(
@@ -1486,12 +1498,18 @@ export default function DevolucoesPagina() {
                           {canDeleteDevolucoes && (
                             <Tooltip
                               content={
-                                d.status !== "pendente"
-                                  ? "Devolução concluída — exclusão não permitida"
-                                  : "Excluir"
+                                d.status !== "pendente" &&
+                                !canDeleteSemRestricao
+                                  ? "Você precisa da permissão 'Deletar Sem Restrição'"
+                                  : d.status !== "pendente"
+                                    ? "Excluir devolução concluída (com confirmação)"
+                                    : "Excluir"
                               }
                               color={
-                                d.status !== "pendente" ? "warning" : "danger"
+                                d.status !== "pendente" &&
+                                !canDeleteSemRestricao
+                                  ? "warning"
+                                  : "danger"
                               }
                             >
                               <span>
@@ -1501,7 +1519,10 @@ export default function DevolucoesPagina() {
                                   variant="light"
                                   color="danger"
                                   onPress={() => safeOpenDelete(d)}
-                                  isDisabled={d.status !== "pendente"}
+                                  isDisabled={
+                                    d.status !== "pendente" &&
+                                    !canDeleteSemRestricao
+                                  }
                                 >
                                   <TrashIcon className="w-4 h-4" />
                                 </Button>
@@ -2005,10 +2026,71 @@ export default function DevolucoesPagina() {
                     <p className="text-default-500">Cliente</p>
                     <p>{targetDevolucao.cliente_nome}</p>
                   </div>
+
                   <div>
                     <p className="text-default-500">Tipo</p>
                     <p>{tipoInfo(targetDevolucao.tipo_devolucao).label}</p>
                   </div>
+
+                  {/* Usuário que criou a devolução - ocupa linha completa */}
+                  <div className="col-span-2">
+                    <p className="text-default-500 mb-2">Criado por</p>
+                    <div className="flex items-center gap-2">
+                      {(() => {
+                        const usuario = usuarios.find(
+                          (u) => u.uuid === targetDevolucao.id_usuario
+                        );
+                        return usuario ? (
+                          <>
+                            {usuario.fotourl && usuario.fotourl.length > 0 ? (
+                              <Avatar
+                                src={usuario.fotourl[0]}
+                                size="sm"
+                                className="w-8 h-8"
+                              />
+                            ) : (
+                              <Avatar
+                                name={usuario.nome?.[0] || "?"}
+                                size="sm"
+                                className="w-8 h-8"
+                                classNames={{
+                                  base: "bg-primary-100",
+                                  name: "text-primary-600 font-semibold",
+                                }}
+                              />
+                            )}
+                            <div>
+                              <p className="font-medium">
+                                {usuario.nome || "Usuário"}
+                              </p>
+                              {usuario.cargo && (
+                                <p className="text-xs text-default-400">
+                                  {usuario.cargo}
+                                </p>
+                              )}
+                              {usuario.email && (
+                                <p className="text-xs text-default-400">
+                                  {usuario.email}
+                                </p>
+                              )}
+                            </div>
+                          </>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <Avatar
+                              icon={<UserIcon className="w-4 h-4" />}
+                              size="sm"
+                              className="w-8 h-8 bg-default-100"
+                            />
+                            <p className="text-sm text-default-400">
+                              Usuário não encontrado
+                            </p>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </div>
+
                   <div>
                     <p className="text-default-500">Valor Devolvido</p>
                     <p className="font-medium">
@@ -2282,21 +2364,109 @@ export default function DevolucoesPagina() {
         <Modal
           isOpen={deleteModal.isOpen}
           onOpenChange={deleteModal.onOpenChange}
+          size="lg"
         >
           <ModalContent>
-            <ModalHeader>Excluir Devolução</ModalHeader>
-            <ModalBody>
-              <p>
-                Tem certeza que deseja excluir definitivamente a devolução #
-                {targetDevolucao?.id}?
-              </p>
-              {targetDevolucao?.status !== "pendente" && (
-                <div className="bg-danger-50 border border-danger-200 rounded-md p-3">
-                  <p className="text-danger-700 text-sm">
-                    ⚠️ Esta devolução já foi concluída. A exclusão pode gerar
-                    inconsistências nos dados.
+            <ModalHeader className="flex items-center gap-2">
+              <ExclamationTriangleIcon className="w-6 h-6 text-danger" />
+              Excluir Devolução #{targetDevolucao?.id}
+            </ModalHeader>
+            <ModalBody className="space-y-4">
+              {targetDevolucao && (
+                <>
+                  {/* Informações da devolução */}
+                  <Card className="border-default-200">
+                    <CardBody className="space-y-2">
+                      <div className="grid grid-cols-2 gap-3 text-sm">
+                        <div>
+                          <p className="text-default-500">Cliente</p>
+                          <p className="font-medium">
+                            {targetDevolucao.cliente_nome}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-default-500">Valor</p>
+                          <p className="font-medium">
+                            {fmt(targetDevolucao.valor_total_devolvido)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-default-500">Status</p>
+                          <Chip
+                            size="sm"
+                            color={
+                              statusDevolucaoInfo(targetDevolucao.status).color
+                            }
+                            variant="flat"
+                          >
+                            {statusDevolucaoInfo(targetDevolucao.status).label}
+                          </Chip>
+                        </div>
+                        <div>
+                          <p className="text-default-500">Data</p>
+                          <p className="font-medium">
+                            {fmtDate(targetDevolucao.data_devolucao)}
+                          </p>
+                        </div>
+                      </div>
+                    </CardBody>
+                  </Card>
+
+                  {/* Aviso padrão */}
+                  <p className="text-default-700">
+                    Tem certeza que deseja excluir definitivamente esta
+                    devolução?
                   </p>
-                </div>
+
+                  {/* Aviso especial para devoluções concluídas */}
+                  {(targetDevolucao.status === "concluida" ||
+                    targetDevolucao.status === "concluida_com_credito") && (
+                    <Card className="bg-danger-50 border-2 border-danger-300">
+                      <CardBody className="space-y-3">
+                        <div className="flex items-start gap-3">
+                          <ExclamationTriangleIcon className="w-6 h-6 text-danger flex-shrink-0 mt-0.5" />
+                          <div className="space-y-2">
+                            <p className="font-bold text-danger-800">
+                              ⚠️ ATENÇÃO: DEVOLUÇÃO CONCLUÍDA
+                            </p>
+                            <p className="text-sm text-danger-700">
+                              Esta devolução já foi processada e pode ter
+                              afetado:
+                            </p>
+                            <ul className="text-sm text-danger-700 list-disc list-inside space-y-1">
+                              <li>
+                                Crédito de{" "}
+                                <strong>
+                                  {fmt(targetDevolucao.valor_credito_gerado)}
+                                </strong>{" "}
+                                {targetDevolucao.credito_aplicado
+                                  ? "já aplicado"
+                                  : "gerado"}{" "}
+                                ao cliente
+                              </li>
+                              <li>
+                                Estoque atualizado com{" "}
+                                {targetDevolucao.itens_devolvidos.length}{" "}
+                                produto(s)
+                              </li>
+                              <li>Status da venda original alterado</li>
+                            </ul>
+                            {canDeleteSemRestricao && (
+                              <div className="mt-3 p-2 bg-warning-100 rounded border border-warning-300">
+                                <p className="text-xs text-warning-800">
+                                  <strong>Permissão Especial:</strong> Você tem
+                                  a permissão "Deletar Sem Restrição" ativa.
+                                  Considere as consequências nos dados do
+                                  sistema antes de excluir.
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </CardBody>
+                    </Card>
+                  )}
+                </>
               )}
             </ModalBody>
             <ModalFooter>
@@ -2307,8 +2477,221 @@ export default function DevolucoesPagina() {
                 color="danger"
                 onPress={confirmarDelete}
                 isLoading={loading}
+                startContent={<TrashIcon className="w-4 h-4" />}
               >
-                Excluir
+                {targetDevolucao?.status === "pendente"
+                  ? "Excluir"
+                  : "Excluir Definitivamente"}
+              </Button>
+            </ModalFooter>
+          </ModalContent>
+        </Modal>
+      )}
+
+      {/* Modal Exclusão de Devolução Concluída (com permissão especial) */}
+      {canDeleteSemRestricao && (
+        <Modal
+          isOpen={deleteConcluidaModal.isOpen}
+          onOpenChange={deleteConcluidaModal.onOpenChange}
+          size="2xl"
+          backdrop="blur"
+        >
+          <ModalContent>
+            <ModalHeader className="flex items-center gap-2 bg-danger-50 dark:bg-danger-900/20">
+              <ExclamationTriangleIcon className="w-7 h-7 text-danger-600" />
+              <div>
+                <h3 className="text-danger-800 dark:text-danger-400 text-xl font-bold">
+                  ⚠️ Exclusão de Devolução Concluída
+                </h3>
+                <p className="text-sm text-danger-600 dark:text-danger-500 font-normal">
+                  Esta ação requer permissão especial
+                </p>
+              </div>
+            </ModalHeader>
+            <ModalBody className="space-y-4 py-6">
+              {targetDevolucao && (
+                <>
+                  {/* Badge de Permissão Especial */}
+                  <Card className="bg-warning-50 border-2 border-warning-300">
+                    <CardBody className="py-3">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-warning-200 rounded-full">
+                          <ShoppingCartIcon className="w-5 h-5 text-warning-800" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-warning-900">
+                            Permissão "Deletar Sem Restrição" Ativa
+                          </p>
+                          <p className="text-xs text-warning-700">
+                            Você pode excluir devoluções concluídas
+                          </p>
+                        </div>
+                      </div>
+                    </CardBody>
+                  </Card>
+
+                  {/* Informações da devolução */}
+                  <Card className="border-default-200">
+                    <CardBody className="space-y-3">
+                      <h4 className="font-semibold text-default-700">
+                        Informações da Devolução #{targetDevolucao.id}
+                      </h4>
+                      <div className="grid grid-cols-2 gap-3 text-sm">
+                        <div>
+                          <p className="text-default-500">Cliente</p>
+                          <p className="font-medium">
+                            {targetDevolucao.cliente_nome}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-default-500">Valor Devolvido</p>
+                          <p className="font-medium">
+                            {fmt(targetDevolucao.valor_total_devolvido)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-default-500">Status</p>
+                          <Chip
+                            size="sm"
+                            color={
+                              statusDevolucaoInfo(targetDevolucao.status).color
+                            }
+                            variant="flat"
+                          >
+                            {statusDevolucaoInfo(targetDevolucao.status).label}
+                          </Chip>
+                        </div>
+                        <div>
+                          <p className="text-default-500">Data</p>
+                          <p className="font-medium">
+                            {fmtDate(targetDevolucao.data_devolucao)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-default-500">Crédito Gerado</p>
+                          <p className="font-medium text-success">
+                            {fmt(targetDevolucao.valor_credito_gerado)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-default-500">Crédito Aplicado</p>
+                          <Chip
+                            size="sm"
+                            color={
+                              targetDevolucao.credito_aplicado
+                                ? "success"
+                                : "warning"
+                            }
+                            variant="flat"
+                          >
+                            {targetDevolucao.credito_aplicado ? "Sim" : "Não"}
+                          </Chip>
+                        </div>
+                      </div>
+                    </CardBody>
+                  </Card>
+
+                  {/* Aviso de impactos */}
+                  <Card className="bg-danger-50 dark:bg-danger-900/20 border-2 border-danger-300">
+                    <CardBody className="space-y-3">
+                      <div className="flex items-start gap-3">
+                        <ExclamationTriangleIcon className="w-6 h-6 text-danger-600 flex-shrink-0 mt-1" />
+                        <div className="space-y-3 flex-1">
+                          <div>
+                            <p className="font-bold text-danger-800 dark:text-danger-400 text-base">
+                              Esta ação é irreversível!
+                            </p>
+                            <p className="text-sm text-danger-700 dark:text-danger-500 mt-1">
+                              Ao excluir esta devolução concluída, os seguintes
+                              dados serão afetados:
+                            </p>
+                          </div>
+
+                          <div className="space-y-2">
+                            <div className="flex items-start gap-2 text-sm">
+                              <div className="w-5 h-5 rounded-full bg-danger-200 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                <span className="text-danger-800 text-xs font-bold">
+                                  1
+                                </span>
+                              </div>
+                              <div>
+                                <p className="font-semibold text-danger-800 dark:text-danger-400">
+                                  Crédito do Cliente
+                                </p>
+                                <p className="text-danger-700 dark:text-danger-500">
+                                  {targetDevolucao.credito_aplicado
+                                    ? `Crédito de ${fmt(targetDevolucao.valor_credito_gerado)} já foi aplicado ao cliente. A exclusão NÃO removerá automaticamente este crédito.`
+                                    : `Crédito de ${fmt(targetDevolucao.valor_credito_gerado)} foi gerado mas ainda não aplicado.`}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="flex items-start gap-2 text-sm">
+                              <div className="w-5 h-5 rounded-full bg-danger-200 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                <span className="text-danger-800 text-xs font-bold">
+                                  2
+                                </span>
+                              </div>
+                              <div>
+                                <p className="font-semibold text-danger-800 dark:text-danger-400">
+                                  Estoque
+                                </p>
+                                <p className="text-danger-700 dark:text-danger-500">
+                                  {targetDevolucao.itens_devolvidos.length}{" "}
+                                  produto(s) foram devolvidos ao estoque. A
+                                  exclusão NÃO reverterá estas alterações.
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="flex items-start gap-2 text-sm">
+                              <div className="w-5 h-5 rounded-full bg-danger-200 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                <span className="text-danger-800 text-xs font-bold">
+                                  3
+                                </span>
+                              </div>
+                              <div>
+                                <p className="font-semibold text-danger-800 dark:text-danger-400">
+                                  Histórico
+                                </p>
+                                <p className="text-danger-700 dark:text-danger-500">
+                                  O registro completo desta devolução será
+                                  permanentemente excluído do sistema.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="mt-4 p-3 bg-danger-100 dark:bg-danger-900/30 rounded-lg border border-danger-300">
+                            <p className="text-xs text-danger-800 dark:text-danger-400 font-semibold">
+                              ⚠️ IMPORTANTE: Você precisará ajustar manualmente
+                              o crédito do cliente e o estoque se necessário
+                              após a exclusão.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </CardBody>
+                  </Card>
+                </>
+              )}
+            </ModalBody>
+            <ModalFooter className="border-t border-divider">
+              <Button
+                variant="flat"
+                onPress={deleteConcluidaModal.onClose}
+                isDisabled={loading}
+              >
+                Cancelar
+              </Button>
+              <Button
+                color="danger"
+                onPress={confirmarDelete}
+                isLoading={loading}
+                startContent={<TrashIcon className="w-5 h-5" />}
+                className="font-semibold"
+              >
+                {loading ? "Excluindo..." : "Sim, Excluir Definitivamente"}
               </Button>
             </ModalFooter>
           </ModalContent>

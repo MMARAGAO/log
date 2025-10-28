@@ -1,0 +1,658 @@
+[
+  {
+    "id": 4091,
+    "descricao": "FERRAMENTA CABO DE ALIMENTACAO IBOOT ANDROID SUNSHINE",
+    "preco_compra_antigo": 8805,
+    "preco_venda_antigo": 170,
+    "preco_compra_corrigido": 88.05,
+    "preco_venda_corrigido": 170
+  },
+  {
+    "id": 4109,
+    "descricao": "FERRAMENTA CARREGADOR USB CHARGER 6 PORTAS 3.0",
+    "preco_compra_antigo": 9999,
+    "preco_venda_antigo": 160,
+    "preco_compra_corrigido": 99.99,
+    "preco_venda_corrigido": 160
+  },
+  {
+    "id": 4122,
+    "descricao": "FERRAMENTA CHAVE PHILLIPS 1.5 YAXUN",
+    "preco_compra_antigo": 1229,
+    "preco_venda_antigo": 30,
+    "preco_compra_corrigido": 12.29,
+    "preco_venda_corrigido": 30
+  },
+  {
+    "id": 4129,
+    "descricao": "FERRAMENTA COLA BULAIEN T7000 110ML PRETA",
+    "preco_compra_antigo": 748,
+    "preco_venda_antigo": 25,
+    "preco_compra_corrigido": 7.48,
+    "preco_venda_corrigido": 25
+  },
+  {
+    "id": 4146,
+    "descricao": "FERRAMENTA ESPATULA SA-10",
+    "preco_compra_antigo": 1237,
+    "preco_venda_antigo": 25,
+    "preco_compra_corrigido": 12.37,
+    "preco_venda_corrigido": 25
+  },
+  {
+    "id": 4147,
+    "descricao": "FERRAMENTA ESPATULA WL-9A WYLIE",
+    "preco_compra_antigo": 666,
+    "preco_venda_antigo": 15,
+    "preco_compra_corrigido": 6.66,
+    "preco_venda_corrigido": 15
+  },
+  {
+    "id": 4156,
+    "descricao": "FERRAMENTA FITA DUPLA FACE 3M PRETA",
+    "preco_compra_antigo": 725,
+    "preco_venda_antigo": 15,
+    "preco_compra_corrigido": 7.25,
+    "preco_venda_corrigido": 15
+  },
+  {
+    "id": 4160,
+    "descricao": "FERRAMENTA FITA KAPTON 15MM COLORIDO",
+    "preco_compra_antigo": 1028,
+    "preco_venda_antigo": 20,
+    "preco_compra_corrigido": 10.28,
+    "preco_venda_corrigido": 20
+  },
+  {
+    "id": 4166,
+    "descricao": "FERRAMENTA FLUXO DE SOLDA 223 BRANCA 10CC YAXUN",
+    "preco_compra_antigo": 825,
+    "preco_venda_antigo": 25,
+    "preco_compra_corrigido": 8.25,
+    "preco_venda_corrigido": 25
+  },
+  {
+    "id": 4176,
+    "descricao": "FERRAMENTA KIT CHAVE 2D YX 370 YAXUN",
+    "preco_compra_antigo": 928,
+    "preco_venda_antigo": 185,
+    "preco_compra_corrigido": 9.28,
+    "preco_venda_corrigido": 185
+  },
+  {
+    "id": 4187,
+    "descricao": "FERRAMENTA KIT CHAVE RL-724A RELIFE",
+    "preco_compra_antigo": 15964,
+    "preco_venda_antigo": 220,
+    "preco_compra_corrigido": 159.64,
+    "preco_venda_corrigido": 220
+  },
+  {
+    "id": 4192,
+    "descricao": "FERRAMENTA KIT ESPATULA YX-5B YAXUN",
+    "preco_compra_antigo": 2793,
+    "preco_venda_antigo": 60,
+    "preco_compra_corrigido": 27.93,
+    "preco_venda_corrigido": 60
+  },
+  {
+    "id": 4199,
+    "descricao": "FERRAMENTA LAMPADA LUZ UV RL-014D RELIFE",
+    "preco_compra_antigo": 6187,
+    "preco_venda_antigo": 120,
+    "preco_compra_corrigido": 61.87,
+    "preco_venda_corrigido": 120
+  },
+  {
+    "id": 4215,
+    "descricao": "FERRAMENTA MALHA DESSOLDADORA 2.5MM 1.5M GOOTWICK CP2515",
+    "preco_compra_antigo": 1809,
+    "preco_venda_antigo": 35,
+    "preco_compra_corrigido": 18.09,
+    "preco_venda_corrigido": 35
+  },
+  {
+    "id": 4217,
+    "descricao": "FERRAMENTA MALHA DESSOLDADORA 3.0MM 1.5M GOOTWICK CP3015",
+    "preco_compra_antigo": 2175,
+    "preco_venda_antigo": 35,
+    "preco_compra_corrigido": 21.75,
+    "preco_venda_corrigido": 35
+  },
+  {
+    "id": 4219,
+    "descricao": "FERRAMENTA MALHA DESSOLDADORA 3.5MM 1.5M GOOTWICK CP3515",
+    "preco_compra_antigo": 2175,
+    "preco_venda_antigo": 35,
+    "preco_compra_corrigido": 21.75,
+    "preco_venda_corrigido": 35
+  },
+  {
+    "id": 4230,
+    "descricao": "FERRAMENTA MASCARA UV MECHANIC 10CC BGA VERDE",
+    "preco_compra_antigo": 1188,
+    "preco_venda_antigo": 25,
+    "preco_compra_corrigido": 11.88,
+    "preco_venda_corrigido": 25
+  },
+  {
+    "id": 4226,
+    "descricao": "FERRAMENTA MANTA METAL AD-395 AIDA PRETA",
+    "preco_compra_antigo": 326.25,
+    "preco_venda_antigo": 4.2,
+    "preco_compra_corrigido": 3.26,
+    "preco_venda_corrigido": 4.2
+  },
+  {
+    "id": 4227,
+    "descricao": "FERRAMENTA MANTA METAL AD-395 AIDA VERMELHA",
+    "preco_compra_antigo": 309.37,
+    "preco_venda_antigo": 4.2,
+    "preco_compra_corrigido": 3.09,
+    "preco_venda_corrigido": 4.2
+  },
+  {
+    "id": 4238,
+    "descricao": "FERRAMENTA PARAFUSADEIRA ELETRICA YAXUN YX-801",
+    "preco_compra_antigo": 18562,
+    "preco_venda_antigo": 250,
+    "preco_compra_corrigido": 185.62,
+    "preco_venda_corrigido": 250
+  },
+  {
+    "id": 4239,
+    "descricao": "FERRAMENTA PARAFUSADEIRA YAXUN YX-803",
+    "preco_compra_antigo": 1265,
+    "preco_venda_antigo": 220,
+    "preco_compra_corrigido": 12.65,
+    "preco_venda_corrigido": 220
+  },
+  {
+    "id": 4244,
+    "descricao": "FERRAMENTA PINCA AK KING 15 YAXUN CURVA",
+    "preco_compra_antigo": 1719,
+    "preco_venda_antigo": 25,
+    "preco_compra_corrigido": 17.19,
+    "preco_venda_corrigido": 25
+  },
+  {
+    "id": 4249,
+    "descricao": "FERRAMENTA PINCA IFIX AAA-14 RETA",
+    "preco_compra_antigo": 2175,
+    "preco_venda_antigo": 40,
+    "preco_compra_corrigido": 21.75,
+    "preco_venda_corrigido": 40
+  },
+  {
+    "id": 4250,
+    "descricao": "FERRAMENTA PINCA IFIX AAA-15 CURVA",
+    "preco_compra_antigo": 2175,
+    "preco_venda_antigo": 40,
+    "preco_compra_corrigido": 21.75,
+    "preco_venda_corrigido": 40
+  },
+  {
+    "id": 4258,
+    "descricao": "FERRAMENTA PINCA YAXUN YX-15AA CURVA",
+    "preco_compra_antigo": 1084,
+    "preco_venda_antigo": 22,
+    "preco_compra_corrigido": 10.84,
+    "preco_venda_corrigido": 22
+  },
+  {
+    "id": 4267,
+    "descricao": "FERRAMENTA REATIVADOR DE BATERIA IPHONE E ANDROID IFIX FX18",
+    "preco_compra_antigo": 5075,
+    "preco_venda_antigo": 100,
+    "preco_compra_corrigido": 50.75,
+    "preco_venda_corrigido": 100
+  },
+  {
+    "id": 4268,
+    "descricao": "FERRAMENTA REATIVADOR DE BATERIA IPHONE E ANDROID OSS TEAM W209 PRO V10",
+    "preco_compra_antigo": 1045,
+    "preco_venda_antigo": 160,
+    "preco_compra_corrigido": 10.45,
+    "preco_venda_corrigido": 160
+  },
+  {
+    "id": 4271,
+    "descricao": "FERRAMENTA SUPORTE CHAVES GIRATORIO YAXUN YX 2302 CINZA",
+    "preco_compra_antigo": 4125,
+    "preco_venda_antigo": 80,
+    "preco_compra_corrigido": 41.25,
+    "preco_venda_corrigido": 80
+  },
+  {
+    "id": 4282,
+    "descricao": "FERRAMENTA SUPORTE REMOVER TELA IPHONE IFIX 601G",
+    "preco_compra_antigo": 16142,
+    "preco_venda_antigo": 250,
+    "preco_compra_corrigido": 161.42,
+    "preco_venda_corrigido": 250
+  },
+  {
+    "id": 4322,
+    "descricao": "FLEX JCID FACE ID IPHONE 13 PRO/13 PRO MAX",
+    "preco_compra_antigo": 10441,
+    "preco_venda_antigo": 135,
+    "preco_compra_corrigido": 104.41,
+    "preco_venda_corrigido": 135
+  },
+  {
+    "id": 4353,
+    "descricao": "MAQUINA ESTACAO DE RETRABALHO 2020D SUGON",
+    "preco_compra_antigo": 6525,
+    "preco_venda_antigo": 890,
+    "preco_compra_corrigido": 65.25,
+    "preco_venda_corrigido": 890
+  },
+  {
+    "id": 4361,
+    "descricao": "MAQUINA ESTACAO DE RETRABALHO QUICK 2008 220V",
+    "preco_compra_antigo": 7675,
+    "preco_venda_antigo": 1000,
+    "preco_compra_corrigido": 76.75,
+    "preco_venda_corrigido": 1000
+  },
+  {
+    "id": 4366,
+    "descricao": "MAQUINA ESTACAO DE RETRABALHO/SOLDA 881D YAXUN",
+    "preco_compra_antigo": 2726,
+    "preco_venda_antigo": 400,
+    "preco_compra_corrigido": 27.26,
+    "preco_venda_corrigido": 400
+  },
+  {
+    "id": 4370,
+    "descricao": "MAQUINA ESTACAO DE SOLDA AIFEN A9 PRO C210 220V",
+    "preco_compra_antigo": 5225,
+    "preco_venda_antigo": 750,
+    "preco_compra_corrigido": 52.25,
+    "preco_venda_corrigido": 750
+  },
+  {
+    "id": 4372,
+    "descricao": "MAQUINA ESTACAO DE SOLDA BK90 BAKON",
+    "preco_compra_antigo": 4605,
+    "preco_venda_antigo": 650,
+    "preco_compra_corrigido": 46.05,
+    "preco_venda_corrigido": 650
+  },
+  {
+    "id": 4399,
+    "descricao": "MAQUINA MICROSCOPIO PORTATIL AK 13 500X C/ SUPORTE PRETA",
+    "preco_compra_antigo": 17341,
+    "preco_venda_antigo": 250,
+    "preco_compra_corrigido": 173.41,
+    "preco_venda_corrigido": 250
+  },
+  {
+    "id": 4360,
+    "descricao": "MAQUINA ESTACAO DE RETRABALHO ATTEN ST-862D 220V",
+    "preco_compra_antigo": 1100.62,
+    "preco_venda_antigo": 16,
+    "preco_compra_corrigido": 11.01,
+    "preco_venda_corrigido": 16
+  },
+  {
+    "id": 4362,
+    "descricao": "MAQUINA ESTACAO DE RETRABALHO QUICK 861DW 220V",
+    "preco_compra_antigo": 1834.37,
+    "preco_venda_antigo": 26.75,
+    "preco_compra_corrigido": 18.34,
+    "preco_venda_corrigido": 26.75
+  },
+  {
+    "id": 4369,
+    "descricao": "MAQUINA ESTACAO DE SOLDA AIFEN A9 PLUS 220V",
+    "preco_compra_antigo": 616.25,
+    "preco_venda_antigo": 8.5,
+    "preco_compra_corrigido": 6.16,
+    "preco_venda_corrigido": 8.5
+  },
+  {
+    "id": 4371,
+    "descricao": "MAQUINA ESTACAO DE SOLDA ATTEN ST-1203D 220V",
+    "preco_compra_antigo": 1151.25,
+    "preco_venda_antigo": 15.5,
+    "preco_compra_corrigido": 11.51,
+    "preco_venda_corrigido": 15.5
+  },
+  {
+    "id": 4373,
+    "descricao": "MAQUINA ESTACAO DE SOLDA DUPLA T3602 SUGON",
+    "preco_compra_antigo": 1834.37,
+    "preco_venda_antigo": 23,
+    "preco_compra_corrigido": 18.34,
+    "preco_venda_corrigido": 23
+  },
+  {
+    "id": 4384,
+    "descricao": "MAQUINA FONTE DE ALIMENTACAO DIGITAL JC AIXUN P2408 220V BRANCA",
+    "preco_compra_antigo": 653.91,
+    "preco_venda_antigo": 10,
+    "preco_compra_corrigido": 6.54,
+    "preco_venda_corrigido": 10
+  },
+  {
+    "id": 4386,
+    "descricao": "MAQUINA FONTE DE BANCADA K305DN AIDA",
+    "preco_compra_antigo": 343.75,
+    "preco_venda_antigo": 5.5,
+    "preco_compra_corrigido": 3.44,
+    "preco_venda_corrigido": 5.5
+  },
+  {
+    "id": 4415,
+    "descricao": "MAQUINA SEPARADORA YAXUN YX899 PRETA",
+    "preco_compra_antigo": 1925,
+    "preco_venda_antigo": 300,
+    "preco_compra_corrigido": 19.25,
+    "preco_venda_corrigido": 300
+  },
+  {
+    "id": 4436,
+    "descricao": "TAG JC BATERIA IPHONE 11",
+    "preco_compra_antigo": 3187,
+    "preco_venda_antigo": 60,
+    "preco_compra_corrigido": 31.87,
+    "preco_venda_corrigido": 60
+  },
+  {
+    "id": 4438,
+    "descricao": "TAG JC BATERIA IPHONE 12 PRO MAX",
+    "preco_compra_antigo": 3739,
+    "preco_venda_antigo": 70,
+    "preco_compra_corrigido": 37.39,
+    "preco_venda_corrigido": 70
+  },
+  {
+    "id": 4439,
+    "descricao": "TAG JC BATERIA IPHONE 12/12 MINI/12 PRO",
+    "preco_compra_antigo": 3865,
+    "preco_venda_antigo": 70,
+    "preco_compra_corrigido": 38.65,
+    "preco_venda_corrigido": 70
+  },
+  {
+    "id": 4440,
+    "descricao": "TAG JC BATERIA IPHONE 13 PRO/13 PRO MAX",
+    "preco_compra_antigo": 3865,
+    "preco_venda_antigo": 70,
+    "preco_compra_corrigido": 38.65,
+    "preco_venda_corrigido": 70
+  },
+  {
+    "id": 4441,
+    "descricao": "TAG JC BATERIA IPHONE 13/13 MINI",
+    "preco_compra_antigo": 3865,
+    "preco_venda_antigo": 70,
+    "preco_compra_corrigido": 38.65,
+    "preco_venda_corrigido": 70
+  },
+  {
+    "id": 4446,
+    "descricao": "TAG JC CAMERA IPHONE 12",
+    "preco_compra_antigo": 7458,
+    "preco_venda_antigo": 120,
+    "preco_compra_corrigido": 74.58,
+    "preco_venda_corrigido": 120
+  },
+  {
+    "id": 4449,
+    "descricao": "TAG JC CAMERA IPHONE 13 PRO/13 PRO MAX",
+    "preco_compra_antigo": 8475,
+    "preco_venda_antigo": 130,
+    "preco_compra_corrigido": 84.75,
+    "preco_venda_corrigido": 130
+  },
+  {
+    "id": 4454,
+    "descricao": "TAG JC FACE ID IPHONE 11",
+    "preco_compra_antigo": 5288,
+    "preco_venda_antigo": 90,
+    "preco_compra_corrigido": 52.88,
+    "preco_venda_corrigido": 90
+  },
+  {
+    "id": 4455,
+    "descricao": "TAG JC FACE ID IPHONE 11 PRO/11 PRO MAX",
+    "preco_compra_antigo": 4678,
+    "preco_venda_antigo": 90,
+    "preco_compra_corrigido": 46.78,
+    "preco_venda_corrigido": 90
+  },
+  {
+    "id": 4457,
+    "descricao": "TAG JC FACE ID IPHONE 12 PRO MAX",
+    "preco_compra_antigo": 5695,
+    "preco_venda_antigo": 90,
+    "preco_compra_corrigido": 56.95,
+    "preco_venda_corrigido": 90
+  },
+  {
+    "id": 4458,
+    "descricao": "TAG JC FACE ID IPHONE 12/12 PRO",
+    "preco_compra_antigo": 5695,
+    "preco_venda_antigo": 90,
+    "preco_compra_corrigido": 56.95,
+    "preco_venda_corrigido": 90
+  },
+  {
+    "id": 4460,
+    "descricao": "TAG JC FACE ID IPHONE XS/XR/XS MAX",
+    "preco_compra_antigo": 3661,
+    "preco_venda_antigo": 70,
+    "preco_compra_corrigido": 36.61,
+    "preco_venda_corrigido": 70
+  },
+  {
+    "id": 5028,
+    "descricao": "BATERIA IPAD AIR 5 (A2588/A2589/A2591)",
+    "preco_compra_antigo": 5339,
+    "preco_venda_antigo": 130,
+    "preco_compra_corrigido": 53.39,
+    "preco_venda_corrigido": 130
+  },
+  {
+    "id": 5032,
+    "descricao": "BATERIA IPAD MINI 5 (A2133/A2124/A2126)",
+    "preco_compra_antigo": 2164,
+    "preco_venda_antigo": 150,
+    "preco_compra_corrigido": 21.64,
+    "preco_venda_corrigido": 150
+  },
+  {
+    "id": 5033,
+    "descricao": "BATERIA IPAD MINI 6 (A2567/A2568)",
+    "preco_compra_antigo": 4739,
+    "preco_venda_antigo": 150,
+    "preco_compra_corrigido": 47.39,
+    "preco_venda_corrigido": 150
+  },
+  {
+    "id": 5035,
+    "descricao": "BATERIA IPAD PRO 11 2º GERAÇÃO (A2228/A2068/A2230)",
+    "preco_compra_antigo": 11139,
+    "preco_venda_antigo": 180,
+    "preco_compra_corrigido": 111.39,
+    "preco_venda_corrigido": 180
+  },
+  {
+    "id": 5036,
+    "descricao": "BATERIA IPAD PRO 11 3º GERAÇÃO (A2377/A2459)",
+    "preco_compra_antigo": 11139,
+    "preco_venda_antigo": 195,
+    "preco_compra_corrigido": 111.39,
+    "preco_venda_corrigido": 195
+  },
+  {
+    "id": 5038,
+    "descricao": "BATERIA IPAD PRO 12.9 3º GERAÇÃO (A1876/A2014/A1895)",
+    "preco_compra_antigo": 11139,
+    "preco_venda_antigo": 200,
+    "preco_compra_corrigido": 111.39,
+    "preco_venda_corrigido": 200
+  },
+  {
+    "id": 5039,
+    "descricao": "BATERIA IPAD PRO 12.9 4º GERAÇÃO (A2229/A2069/A2232)",
+    "preco_compra_antigo": 8966,
+    "preco_venda_antigo": 200,
+    "preco_compra_corrigido": 89.66,
+    "preco_venda_corrigido": 200
+  },
+  {
+    "id": 5045,
+    "descricao": "BATERIA IPHONE FOXCONN 11 C/FLEX",
+    "preco_compra_antigo": 359,
+    "preco_venda_antigo": 65,
+    "preco_compra_corrigido": 3.59,
+    "preco_venda_corrigido": 65
+  },
+  {
+    "id": 5046,
+    "descricao": "BATERIA IPHONE FOXCONN 11 PRO MAX S/FLEX",
+    "preco_compra_antigo": 5052,
+    "preco_venda_antigo": 70,
+    "preco_compra_corrigido": 50.52,
+    "preco_venda_corrigido": 70
+  },
+  {
+    "id": 5047,
+    "descricao": "BATERIA IPHONE FOXCONN 11 PRO S/FLEX",
+    "preco_compra_antigo": 5005,
+    "preco_venda_antigo": 70,
+    "preco_compra_corrigido": 50.05,
+    "preco_venda_corrigido": 70
+  },
+  {
+    "id": 5048,
+    "descricao": "BATERIA IPHONE FOXCONN 12 PRO MAX C/FLEX",
+    "preco_compra_antigo": 4746,
+    "preco_venda_antigo": 85,
+    "preco_compra_corrigido": 47.46,
+    "preco_venda_corrigido": 85
+  },
+  {
+    "id": 5049,
+    "descricao": "BATERIA IPHONE FOXCONN 12 PRO MAX S/FLEX",
+    "preco_compra_antigo": 5192,
+    "preco_venda_antigo": 75,
+    "preco_compra_corrigido": 51.92,
+    "preco_venda_corrigido": 75
+  },
+  {
+    "id": 5050,
+    "descricao": "BATERIA IPHONE FOXCONN 13 PRO MAX S/FLEX",
+    "preco_compra_antigo": 5692,
+    "preco_venda_antigo": 90,
+    "preco_compra_corrigido": 56.92,
+    "preco_venda_corrigido": 90
+  },
+  {
+    "id": 5051,
+    "descricao": "BATERIA IPHONE FOXCONN 13 PRO S/FLEX",
+    "preco_compra_antigo": 5692,
+    "preco_venda_antigo": 80,
+    "preco_compra_corrigido": 56.92,
+    "preco_venda_corrigido": 80
+  },
+  {
+    "id": 5052,
+    "descricao": "BATERIA IPHONE FOXCONN 14 C/FLEX",
+    "preco_compra_antigo": 4746,
+    "preco_venda_antigo": 90,
+    "preco_compra_corrigido": 47.46,
+    "preco_venda_corrigido": 90
+  },
+  {
+    "id": 5053,
+    "descricao": "BATERIA IPHONE FOXCONN 14 PRO C/FLEX",
+    "preco_compra_antigo": 5433,
+    "preco_venda_antigo": 110,
+    "preco_compra_corrigido": 54.33,
+    "preco_venda_corrigido": 110
+  },
+  {
+    "id": 5054,
+    "descricao": "BATERIA IPHONE FOXCONN 14 PRO MAX C/FLEX",
+    "preco_compra_antigo": 5221,
+    "preco_venda_antigo": 110,
+    "preco_compra_corrigido": 52.21,
+    "preco_venda_corrigido": 110
+  },
+  {
+    "id": 5055,
+    "descricao": "BATERIA IPHONE FOXCONN BLACK 11",
+    "preco_compra_antigo": 359,
+    "preco_venda_antigo": 65,
+    "preco_compra_corrigido": 3.59,
+    "preco_venda_corrigido": 65
+  },
+  {
+    "id": 5056,
+    "descricao": "BATERIA IPHONE FOXCONN BLACK 11 PRO",
+    "preco_compra_antigo": 4521,
+    "preco_venda_antigo": 85,
+    "preco_compra_corrigido": 45.21,
+    "preco_venda_corrigido": 85
+  },
+  {
+    "id": 5057,
+    "descricao": "BATERIA IPHONE FOXCONN BLACK 11 PRO MAX",
+    "preco_compra_antigo": 457,
+    "preco_venda_antigo": 85,
+    "preco_compra_corrigido": 4.57,
+    "preco_venda_corrigido": 85
+  },
+  {
+    "id": 5058,
+    "descricao": "BATERIA IPHONE FOXCONN BLACK 11 PRO MAX S/ FLEX",
+    "preco_compra_antigo": 4136,
+    "preco_venda_antigo": 70,
+    "preco_compra_corrigido": 41.36,
+    "preco_venda_corrigido": 70
+  },
+  {
+    "id": 5059,
+    "descricao": "BATERIA IPHONE FOXCONN BLACK 11 S/FLEX",
+    "preco_compra_antigo": 4125,
+    "preco_venda_antigo": 70,
+    "preco_compra_corrigido": 41.25,
+    "preco_venda_corrigido": 70
+  },
+  {
+    "id": 5060,
+    "descricao": "BATERIA IPHONE FOXCONN BLACK 12 PRO MAX",
+    "preco_compra_antigo": 4654,
+    "preco_venda_antigo": 90,
+    "preco_compra_corrigido": 46.54,
+    "preco_venda_corrigido": 90
+  },
+  {
+    "id": 5061,
+    "descricao": "BATERIA IPHONE FOXCONN BLACK 12 PRO MAX S/FLEX",
+    "preco_compra_antigo": 4644,
+    "preco_venda_antigo": 75,
+    "preco_compra_corrigido": 46.44,
+    "preco_venda_corrigido": 75
+  },
+  {
+    "id": 5062,
+    "descricao": "BATERIA IPHONE FOXCONN BLACK 12/12 PRO",
+    "preco_compra_antigo": 4243,
+    "preco_venda_antigo": 75,
+    "preco_compra_corrigido": 42.43,
+    "preco_venda_corrigido": 75
+  },
+  {
+    "id": 5064,
+    "descricao": "BATERIA IPHONE FOXCONN BLACK 13",
+    "preco_compra_antigo": 4787,
+    "preco_venda_antigo": 90,
+    "preco_compra_corrigido": 47.87,
+    "preco_venda_corrigido": 90
+  }
+]

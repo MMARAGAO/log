@@ -169,6 +169,7 @@ export default function UsuariosPage() {
           editar_devolucoes: false,
           deletar_devolucoes: false,
           processar_creditos: false,
+          deletar_sem_restricao: false,
         },
         rma: {
           ver_rma: false,

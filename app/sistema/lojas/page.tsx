@@ -5,6 +5,7 @@ import { fetchTable } from "@/lib/fetchTable";
 import { insertTable } from "@/lib/insertTable";
 import { updateTable } from "@/lib/updateTable";
 import { deleteTable } from "@/lib/deleteTable";
+import { supabase } from "@/lib/supabaseClient";
 import { useAuthStore } from "@/store/authZustand";
 import { phoneMask } from "@/utils/maskInput";
 import {
@@ -297,7 +298,22 @@ export default function LojasPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
 
+  // Estados para o modal de exclusão
+  const [lojaParaDeletar, setLojaParaDeletar] = useState<Loja | null>(null);
+  const [dadosRelacionados, setDadosRelacionados] = useState<{
+    caixas: number;
+    estoque: number;
+    transfOrigem: number;
+    transfDestino: number;
+    vendas: number;
+  } | null>(null);
+
   const { isOpen, onOpen, onClose } = useDisclosure();
+  const {
+    isOpen: isDeleteModalOpen,
+    onOpen: onDeleteModalOpen,
+    onClose: onDeleteModalClose,
+  } = useDisclosure();
   const { user } = useAuthStore();
 
   // Controle de permissões
@@ -390,17 +406,175 @@ export default function LojasPage() {
       return;
     }
 
-    if (!confirm("Tem certeza que deseja excluir esta loja?")) return;
+    const loja = lojas.find((l) => l.id === id);
+    if (!loja) return;
 
     setLoading(true);
     try {
-      await deleteTable("lojas", id);
-      await loadLojas();
-    } catch (error) {
-      console.error("Erro ao deletar loja:", error);
-      alert("Erro ao deletar loja!");
+      // Verificar se existem registros relacionados e contar quantos
+      const { count: countCaixas } = await supabase
+        .from("caixa")
+        .select("id", { count: "exact", head: true })
+        .eq("loja_id", id);
+
+      const { count: countEstoque } = await supabase
+        .from("estoque_lojas")
+        .select("id", { count: "exact", head: true })
+        .eq("loja_id", id);
+
+      const { count: countTransfOrigem } = await supabase
+        .from("transferencias")
+        .select("id", { count: "exact", head: true })
+        .eq("loja_origem_id", id);
+
+      const { count: countTransfDestino } = await supabase
+        .from("transferencias")
+        .select("id", { count: "exact", head: true })
+        .eq("loja_destino_id", id);
+
+      const { count: countVendas } = await supabase
+        .from("vendas")
+        .select("id", { count: "exact", head: true })
+        .eq("loja_id", id);
+
+      // Verificar se tem dados relacionados
+      const temDados =
+        (countCaixas ?? 0) > 0 ||
+        (countEstoque ?? 0) > 0 ||
+        (countTransfOrigem ?? 0) > 0 ||
+        (countTransfDestino ?? 0) > 0 ||
+        (countVendas ?? 0) > 0;
+
+      if (temDados) {
+        // Mostrar modal com os detalhes
+        setLojaParaDeletar(loja);
+        setDadosRelacionados({
+          caixas: countCaixas ?? 0,
+          estoque: countEstoque ?? 0,
+          transfOrigem: countTransfOrigem ?? 0,
+          transfDestino: countTransfDestino ?? 0,
+          vendas: countVendas ?? 0,
+        });
+        onDeleteModalOpen();
+      } else {
+        // Se não houver dados relacionados, confirmar exclusão simples
+        if (confirm(`Tem certeza que deseja excluir a loja "${loja.nome}"?`)) {
+          await executarExclusao(id, loja.nome);
+        }
+      }
+    } catch (error: any) {
+      console.error("❌ Erro ao verificar dados relacionados:", error);
+      alert(
+        "Erro ao verificar dados relacionados!\n\n" +
+          (error?.message || "Erro desconhecido")
+      );
     } finally {
       setLoading(false);
+    }
+  }
+
+  // Executar a exclusão em cascata
+  async function executarExclusao(id: number, nomeLoja: string) {
+    setLoading(true);
+    try {
+      // Buscar todos os dados para deletar
+      const { data: caixas } = await supabase
+        .from("caixa")
+        .select("id")
+        .eq("loja_id", id);
+
+      const { data: estoqueLojas } = await supabase
+        .from("estoque_lojas")
+        .select("id")
+        .eq("loja_id", id);
+
+      const { data: transferenciasOrigem } = await supabase
+        .from("transferencias")
+        .select("id")
+        .eq("loja_origem_id", id);
+
+      const { data: transferenciasDestino } = await supabase
+        .from("transferencias")
+        .select("id")
+        .eq("loja_destino_id", id);
+
+      const { data: vendas } = await supabase
+        .from("vendas")
+        .select("id")
+        .eq("loja_id", id);
+
+      console.log("🗑️ Iniciando exclusão em cascata da loja:", nomeLoja);
+
+      // 1. Deletar vendas
+      if (vendas && vendas.length > 0) {
+        console.log(`🗑️ Deletando ${vendas.length} venda(s)...`);
+        for (const venda of vendas) {
+          await deleteTable("vendas", venda.id);
+        }
+      }
+
+      // 2. Deletar caixas
+      if (caixas && caixas.length > 0) {
+        console.log(`🗑️ Deletando ${caixas.length} registro(s) de caixa...`);
+        for (const caixa of caixas) {
+          await deleteTable("caixa", caixa.id);
+        }
+      }
+
+      // 3. Deletar transferências como origem
+      if (transferenciasOrigem && transferenciasOrigem.length > 0) {
+        console.log(
+          `🗑️ Deletando ${transferenciasOrigem.length} transferência(s) como origem...`
+        );
+        for (const transf of transferenciasOrigem) {
+          await deleteTable("transferencias", transf.id);
+        }
+      }
+
+      // 4. Deletar transferências como destino
+      if (transferenciasDestino && transferenciasDestino.length > 0) {
+        console.log(
+          `🗑️ Deletando ${transferenciasDestino.length} transferência(s) como destino...`
+        );
+        for (const transf of transferenciasDestino) {
+          await deleteTable("transferencias", transf.id);
+        }
+      }
+
+      // 5. Deletar estoque_lojas
+      if (estoqueLojas && estoqueLojas.length > 0) {
+        console.log(
+          `🗑️ Deletando ${estoqueLojas.length} produto(s) do estoque...`
+        );
+        for (const estoque of estoqueLojas) {
+          await deleteTable("estoque_lojas", estoque.id);
+        }
+      }
+
+      // 6. Finalmente, deletar a loja
+      console.log("🗑️ Deletando a loja...");
+      await deleteTable("lojas", id);
+
+      console.log("✅ Exclusão em cascata concluída com sucesso!");
+
+      // Fechar modal e atualizar lista
+      onDeleteModalClose();
+      await loadLojas();
+    } catch (error: any) {
+      console.error("❌ Erro ao deletar loja:", error);
+      alert(
+        "❌ Erro ao deletar loja!\n\n" +
+          (error?.message || error?.details || "Erro desconhecido")
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // Confirmar exclusão do modal
+  function confirmarExclusao() {
+    if (lojaParaDeletar) {
+      executarExclusao(lojaParaDeletar.id, lojaParaDeletar.nome);
     }
   }
 
@@ -908,6 +1082,215 @@ export default function LojasPage() {
           </ModalContent>
         </Modal>
       )}
+
+      {/* Modal de Confirmação de Exclusão em Cascata */}
+      <Modal
+        isOpen={isDeleteModalOpen}
+        onClose={onDeleteModalClose}
+        size="2xl"
+        backdrop="blur"
+      >
+        <ModalContent>
+          <ModalHeader className="flex items-center gap-2 bg-danger-50 dark:bg-danger-900/20">
+            <ExclamationTriangleIcon className="w-6 h-6 text-danger-600" />
+            <span className="text-danger-800 dark:text-danger-400">
+              ⚠️ Exclusão em Cascata
+            </span>
+          </ModalHeader>
+          <ModalBody className="py-6">
+            {lojaParaDeletar && dadosRelacionados && (
+              <div className="space-y-4">
+                {/* Aviso principal */}
+                <Card className="bg-danger-50 dark:bg-danger-900/10 border-2 border-danger-200 dark:border-danger-800">
+                  <CardBody>
+                    <p className="text-center font-semibold text-danger-800 dark:text-danger-400">
+                      Você está prestes a excluir a loja:
+                    </p>
+                    <p className="text-center text-xl font-bold text-danger-900 dark:text-danger-300 mt-2">
+                      {lojaParaDeletar.nome}
+                    </p>
+                  </CardBody>
+                </Card>
+
+                {/* Lista de dados relacionados */}
+                <div>
+                  <p className="font-semibold mb-3 text-default-700">
+                    Esta loja possui os seguintes dados relacionados:
+                  </p>
+                  <div className="space-y-2">
+                    {dadosRelacionados.vendas > 0 && (
+                      <Card className="border-l-4 border-l-danger-500">
+                        <CardBody className="py-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="bg-danger-100 dark:bg-danger-900/30 p-2 rounded-lg">
+                                <svg
+                                  className="w-5 h-5 text-danger-600"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"
+                                  />
+                                </svg>
+                              </div>
+                              <span className="font-medium">Vendas</span>
+                            </div>
+                            <Chip color="danger" variant="flat" size="lg">
+                              {dadosRelacionados.vendas}
+                            </Chip>
+                          </div>
+                        </CardBody>
+                      </Card>
+                    )}
+
+                    {dadosRelacionados.caixas > 0 && (
+                      <Card className="border-l-4 border-l-warning-500">
+                        <CardBody className="py-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="bg-warning-100 dark:bg-warning-900/30 p-2 rounded-lg">
+                                <svg
+                                  className="w-5 h-5 text-warning-600"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"
+                                  />
+                                </svg>
+                              </div>
+                              <span className="font-medium">
+                                Registros de Caixa
+                              </span>
+                            </div>
+                            <Chip color="warning" variant="flat" size="lg">
+                              {dadosRelacionados.caixas}
+                            </Chip>
+                          </div>
+                        </CardBody>
+                      </Card>
+                    )}
+
+                    {dadosRelacionados.estoque > 0 && (
+                      <Card className="border-l-4 border-l-primary-500">
+                        <CardBody className="py-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="bg-primary-100 dark:bg-primary-900/30 p-2 rounded-lg">
+                                <svg
+                                  className="w-5 h-5 text-primary-600"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"
+                                  />
+                                </svg>
+                              </div>
+                              <span className="font-medium">
+                                Produtos em Estoque
+                              </span>
+                            </div>
+                            <Chip color="primary" variant="flat" size="lg">
+                              {dadosRelacionados.estoque}
+                            </Chip>
+                          </div>
+                        </CardBody>
+                      </Card>
+                    )}
+
+                    {(dadosRelacionados.transfOrigem > 0 ||
+                      dadosRelacionados.transfDestino > 0) && (
+                      <Card className="border-l-4 border-l-secondary-500">
+                        <CardBody className="py-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="bg-secondary-100 dark:bg-secondary-900/30 p-2 rounded-lg">
+                                <svg
+                                  className="w-5 h-5 text-secondary-600"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"
+                                  />
+                                </svg>
+                              </div>
+                              <span className="font-medium">
+                                Transferências
+                              </span>
+                            </div>
+                            <Chip color="secondary" variant="flat" size="lg">
+                              {dadosRelacionados.transfOrigem +
+                                dadosRelacionados.transfDestino}
+                            </Chip>
+                          </div>
+                        </CardBody>
+                      </Card>
+                    )}
+                  </div>
+                </div>
+
+                {/* Aviso final */}
+                <Card className="bg-danger-100 dark:bg-danger-900/20 border border-danger-300 dark:border-danger-700">
+                  <CardBody>
+                    <div className="flex gap-3">
+                      <ExclamationTriangleIcon className="w-6 h-6 text-danger-600 flex-shrink-0 mt-0.5" />
+                      <div className="space-y-2">
+                        <p className="font-bold text-danger-800 dark:text-danger-400">
+                          ATENÇÃO: Esta ação é irreversível!
+                        </p>
+                        <p className="text-sm text-danger-700 dark:text-danger-500">
+                          Todos os dados listados acima serão{" "}
+                          <strong>excluídos permanentemente</strong> do sistema.
+                          Esta operação não pode ser desfeita.
+                        </p>
+                      </div>
+                    </div>
+                  </CardBody>
+                </Card>
+              </div>
+            )}
+          </ModalBody>
+          <ModalFooter>
+            <Button
+              variant="light"
+              onPress={() => {
+                onDeleteModalClose();
+                setLojaParaDeletar(null);
+                setDadosRelacionados(null);
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              color="danger"
+              onPress={confirmarExclusao}
+              isLoading={loading}
+              startContent={<TrashIcon className="w-4 h-4" />}
+            >
+              Excluir Tudo
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
     </div>
   );
 }
