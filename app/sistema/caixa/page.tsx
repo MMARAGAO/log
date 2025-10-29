@@ -22,6 +22,8 @@ import FecharCaixaModal from "@/components/caixa/FecharCaixaModal";
 import DetalhesCaixaModal from "@/components/caixa/DetalhesCaixaModal";
 import HistoricoCaixaModal from "@/components/caixa/HistoricoCaixaModal";
 import FiltroCaixaData from "@/components/caixa/FiltroCaixaData";
+import SangriaModal from "@/components/caixa/SangriaModal";
+import CancelarSangriaModal from "@/components/caixa/CancelarSangriaModal";
 import { CaixaPDFGenerator } from "@/components/caixa/CaixaPDFGenerator";
 import type {
   CaixaAberto,
@@ -30,6 +32,8 @@ import type {
   ResumoVendas,
   FormAbrir,
   FormFechar,
+  Sangria,
+  FormSangria,
 } from "@/components/caixa/types";
 
 function getErrorMessage(error: any): string {
@@ -52,14 +56,26 @@ function getDateStringInBrazil(date?: string | Date): string {
 }
 
 function getISOStringInBrazil(): string {
-  const brazilDate = getDateInBrazilTimezone();
-  const year = brazilDate.getFullYear();
-  const month = String(brazilDate.getMonth() + 1).padStart(2, "0");
-  const day = String(brazilDate.getDate()).padStart(2, "0");
-  const hours = String(brazilDate.getHours()).padStart(2, "0");
-  const minutes = String(brazilDate.getMinutes()).padStart(2, "0");
-  const seconds = String(brazilDate.getSeconds()).padStart(2, "0");
-  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+  // Cria um formatter para o horário do Brasil
+  const formatter = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+
+  const parts = formatter.formatToParts(new Date());
+  const date: Record<string, string> = {};
+  parts.forEach((part) => {
+    date[part.type] = part.value;
+  });
+
+  // Monta o timestamp no formato ISO com timezone do Brasil
+  return `${date.year}-${date.month}-${date.day}T${date.hour}:${date.minute}:${date.second}-03:00`;
 }
 
 export default function CaixaPage() {
@@ -81,6 +97,8 @@ export default function CaixaPage() {
   const [modalFechar, setModalFechar] = useState(false);
   const [modalDetalhes, setModalDetalhes] = useState(false);
   const [modalHistorico, setModalHistorico] = useState(false);
+  const [modalSangria, setModalSangria] = useState(false);
+  const [modalCancelarSangria, setModalCancelarSangria] = useState(false);
 
   // Estados dos formulários
   const [formAbrir, setFormAbrir] = useState<FormAbrir>({
@@ -94,11 +112,25 @@ export default function CaixaPage() {
     observacoes_fechamento: "",
   });
 
+  const [formSangria, setFormSangria] = useState<FormSangria>({
+    valor: "",
+    motivo: "",
+  });
+
   // Estado para controlar qual caixa/loja está selecionado
   const [caixaSelecionado, setCaixaSelecionado] = useState<CaixaAberto | null>(
     null
   );
   const [lojaHistorico, setLojaHistorico] = useState<number | null>(null);
+
+  // Estado para sangrias
+  const [sangriasPorCaixa, setSangriasPorCaixa] = useState<
+    Record<number, Sangria[]>
+  >({});
+  const [sangriaSelecionada, setSangriaSelecionada] = useState<Sangria | null>(
+    null
+  );
+  const [motivoCancelamento, setMotivoCancelamento] = useState("");
 
   // Estados para filtro de data
   const [dataInicio, setDataInicio] = useState("");
@@ -111,6 +143,8 @@ export default function CaixaPage() {
   const canViewCaixa = !!permCaixa?.ver_caixa;
   const canOpenCaixa = !!permCaixa?.abrir_caixa;
   const canCloseCaixa = !!permCaixa?.fechar_caixa;
+  // Usa permissão específica ou permite se puder fechar caixa
+  const canCancelSangria = !!permCaixa?.cancelar_sangria || canCloseCaixa;
 
   // Filtrar lojas com base nas permissões do usuário
   const lojasDisponiveis = useMemo(() => {
@@ -174,7 +208,12 @@ export default function CaixaPage() {
   async function loadAllData() {
     setLoadingInitial(true);
     try {
-      await Promise.all([loadLojas(), loadAllCaixas(), loadAllVendas()]);
+      await Promise.all([
+        loadLojas(),
+        loadAllCaixas(),
+        loadAllVendas(),
+        loadAllSangrias(),
+      ]);
     } catch (error) {
       console.error("Erro ao carregar dados:", error);
       toast.error("Erro ao carregar dados iniciais");
@@ -244,6 +283,35 @@ export default function CaixaPage() {
     } catch (error) {
       console.error("Erro ao carregar vendas:", error);
       toast.error("Erro ao carregar vendas");
+    }
+  }
+
+  // Carrega todas as sangrias
+  async function loadAllSangrias() {
+    try {
+      const data = await fetchTable("sangrias");
+      const hoje = getDateStringInBrazil();
+
+      // Filtra sangrias de hoje
+      const sangriasHoje =
+        data?.filter((s: Sangria) => {
+          const dataSangria = getDateStringInBrazil(s.data_sangria);
+          return dataSangria === hoje;
+        }) || [];
+
+      // Agrupa sangrias por caixa
+      const porCaixa: Record<number, Sangria[]> = {};
+      sangriasHoje.forEach((sangria: Sangria) => {
+        if (!porCaixa[sangria.caixa_id]) {
+          porCaixa[sangria.caixa_id] = [];
+        }
+        porCaixa[sangria.caixa_id].push(sangria);
+      });
+
+      setSangriasPorCaixa(porCaixa);
+    } catch (error) {
+      console.error("Erro ao carregar sangrias:", error);
+      toast.error("Erro ao carregar sangrias");
     }
   }
 
@@ -429,6 +497,11 @@ export default function CaixaPage() {
     return vendasPorLoja[lojaId] || [];
   }
 
+  // Função auxiliar para obter sangrias de um caixa
+  function getSangriasDoCaixa(caixaId: number): Sangria[] {
+    return sangriasPorCaixa[caixaId] || [];
+  }
+
   // Filtra caixas por data
   function filtrarCaixasPorData(caixas: CaixaAberto[]): CaixaAberto[] {
     if (!dataInicio && !dataFim) return caixas;
@@ -458,14 +531,19 @@ export default function CaixaPage() {
       }
 
       // Buscar vendas do dia do caixa
-      const data = await fetchTable("vendas");
+      const dataVendas = await fetchTable("vendas");
       const dataCaixa = getDateStringInBrazil(caixa.data_abertura);
 
       const vendasDoCaixa =
-        data?.filter((v: Venda) => {
+        dataVendas?.filter((v: Venda) => {
           const dataVenda = getDateStringInBrazil(v.data_venda);
           return v.loja_id === caixa.loja_id && dataVenda === dataCaixa;
         }) || [];
+
+      // Buscar sangrias do caixa
+      const dataSangrias = await fetchTable("sangrias");
+      const sangriasDoCaixa =
+        dataSangrias?.filter((s: Sangria) => s.caixa_id === caixa.id) || [];
 
       // Calcular resumo das vendas
       const totalVendas = vendasDoCaixa.length;
@@ -536,7 +614,13 @@ export default function CaixaPage() {
         ticketMedio: totalVendas > 0 ? valorTotalVendas / totalVendas : 0,
       };
 
-      CaixaPDFGenerator.gerar({ caixa, loja, resumo, vendas: vendasDoCaixa });
+      CaixaPDFGenerator.gerar({
+        caixa,
+        loja,
+        resumo,
+        vendas: vendasDoCaixa,
+        sangrias: sangriasDoCaixa,
+      });
       toast.success("PDF gerado com sucesso!");
     } catch (error) {
       console.error("Erro ao gerar PDF:", error);
@@ -675,6 +759,105 @@ export default function CaixaPage() {
     }
   }
 
+  // Handler para fazer sangria
+  async function handleSangria() {
+    if (!caixaSelecionado || !formSangria.valor || !formSangria.motivo.trim()) {
+      toast.error("Preencha todos os campos obrigatórios");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const valorSangria = currencyToNumber(formSangria.valor);
+      const dataHoraBrasil = getISOStringInBrazil();
+
+      console.log("🕐 Criando sangria com data/hora:", dataHoraBrasil);
+
+      const novaSangria = {
+        caixa_id: caixaSelecionado.id,
+        valor: valorSangria,
+        motivo: formSangria.motivo,
+        data_sangria: dataHoraBrasil,
+        usuario_id: user?.id,
+        status: "ativa",
+      };
+
+      await insertTable("sangrias", novaSangria);
+      toast.success("Sangria registrada com sucesso!");
+
+      setModalSangria(false);
+      setFormSangria({
+        valor: "",
+        motivo: "",
+      });
+      setCaixaSelecionado(null);
+
+      await loadAllSangrias();
+    } catch (error) {
+      console.error("Erro ao registrar sangria:", error);
+      toast.error(`Erro ao registrar sangria: ${getErrorMessage(error)}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // Handler para abrir modal de cancelar sangria
+  function handleAbrirCancelarSangria(sangriaId: number) {
+    const sangria = Object.values(sangriasPorCaixa)
+      .flat()
+      .find((s) => s.id === sangriaId);
+
+    if (!sangria) {
+      toast.error("Sangria não encontrada");
+      return;
+    }
+
+    if (sangria.status === "cancelada") {
+      toast.error("Esta sangria já foi cancelada");
+      return;
+    }
+
+    setSangriaSelecionada(sangria);
+    setMotivoCancelamento("");
+    setModalCancelarSangria(true);
+  }
+
+  // Handler para confirmar cancelamento da sangria
+  async function handleConfirmarCancelarSangria() {
+    if (!sangriaSelecionada || !motivoCancelamento.trim()) {
+      toast.error("É necessário informar o motivo do cancelamento");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const dataHoraCancelamento = getISOStringInBrazil();
+
+      console.log("🕐 Cancelando sangria com data/hora:", dataHoraCancelamento);
+
+      const updateData = {
+        status: "cancelada",
+        motivo_cancelamento: motivoCancelamento.trim(),
+        data_cancelamento: dataHoraCancelamento,
+        usuario_cancelamento_id: user?.id,
+      };
+
+      await updateTable("sangrias", sangriaSelecionada.id, updateData);
+      toast.success("Sangria cancelada com sucesso!");
+
+      setModalCancelarSangria(false);
+      setSangriaSelecionada(null);
+      setMotivoCancelamento("");
+
+      await loadAllSangrias();
+    } catch (error) {
+      console.error("Erro ao cancelar sangria:", error);
+      toast.error(`Erro ao cancelar sangria: ${getErrorMessage(error)}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   // Verifica permissão
   if (!canViewCaixa) {
     return (
@@ -751,10 +934,19 @@ export default function CaixaPage() {
                 caixa={caixa}
                 loja={lojas.find((l) => l.id === caixa.loja_id)}
                 resumo={getResumoVendas(caixa.loja_id)}
+                sangrias={getSangriasDoCaixa(caixa.id)}
                 canCloseCaixa={canCloseCaixa}
                 onVerDetalhes={() => {
                   setCaixaSelecionado(caixa);
                   setModalDetalhes(true);
+                }}
+                onFazerSangria={() => {
+                  setCaixaSelecionado(caixa);
+                  setFormSangria({
+                    valor: "",
+                    motivo: "",
+                  });
+                  setModalSangria(true);
                 }}
                 onFecharCaixa={() => {
                   setCaixaSelecionado(caixa);
@@ -893,6 +1085,32 @@ export default function CaixaPage() {
           loja={lojas.find((l) => l.id === caixaSelecionado.loja_id)}
           resumo={getResumoVendas(caixaSelecionado.loja_id)}
           vendas={getVendasDaLoja(caixaSelecionado.loja_id)}
+          sangrias={getSangriasDoCaixa(caixaSelecionado.id)}
+          onCancelarSangria={handleAbrirCancelarSangria}
+          canCancelSangria={canCancelSangria}
+        />
+      )}
+
+      {/* Modal: Sangria */}
+      {caixaSelecionado && (
+        <SangriaModal
+          isOpen={modalSangria}
+          onClose={() => {
+            setModalSangria(false);
+            setCaixaSelecionado(null);
+            setFormSangria({
+              valor: "",
+              motivo: "",
+            });
+          }}
+          caixa={caixaSelecionado}
+          loja={lojas.find((l) => l.id === caixaSelecionado.loja_id)}
+          form={formSangria}
+          onChangeForm={(field, value) =>
+            setFormSangria({ ...formSangria, [field]: value })
+          }
+          onSubmit={handleSangria}
+          loading={loading}
         />
       )}
 
@@ -907,6 +1125,21 @@ export default function CaixaPage() {
         historico={historicoCaixa}
         loja={lojas.find((l) => l.id === lojaHistorico)}
         onGerarPDF={handleGerarPDFHistorico}
+      />
+
+      {/* Modal: Cancelar Sangria */}
+      <CancelarSangriaModal
+        isOpen={modalCancelarSangria}
+        onClose={() => {
+          setModalCancelarSangria(false);
+          setSangriaSelecionada(null);
+          setMotivoCancelamento("");
+        }}
+        sangria={sangriaSelecionada}
+        motivoCancelamento={motivoCancelamento}
+        onMotivoChange={setMotivoCancelamento}
+        onConfirmar={handleConfirmarCancelarSangria}
+        loading={loading}
       />
     </div>
   );

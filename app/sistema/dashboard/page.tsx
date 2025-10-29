@@ -154,25 +154,34 @@ export default function DashboardPage() {
   }, [ordens, dateStart, dateEnd]);
 
   const kpis = useMemo<KPIData>(() => {
-    const totalVendas = vendasFiltradas.length;
-    const receita = vendasFiltradas.reduce(
+    const vendasValidas = vendasFiltradas.filter(
+      (v) =>
+        v.status_pagamento !== "cancelado" && v.status_pagamento !== "devolvido"
+    );
+
+    const totalVendas = vendasValidas.length;
+    const receita = vendasValidas.reduce(
       (acc, v) => acc + Number(v.total_liquido || 0),
       0
     );
-    const receitaBruta = vendasFiltradas.reduce(
+    const receitaBruta = vendasValidas.reduce(
       (acc, v) => acc + Number(v.total_bruto || 0),
       0
     );
-    const descontos = vendasFiltradas.reduce(
+    const descontos = vendasValidas.reduce(
       (acc, v) => acc + Number(v.desconto || 0),
       0
     );
-    const aReceber = vendasFiltradas.reduce(
-      (acc, v) => acc + Number(v.valor_restante || 0),
-      0
-    );
-    const valorPago = vendasFiltradas.reduce(
-      (acc, v) => acc + Number(v.valor_pago || 0),
+
+    // A Receber = vendas com saldo pendente (valor_restante > 0)
+    const aReceber = vendasValidas
+      .filter((v) => Number(v.valor_restante || 0) > 0.01)
+      .reduce((acc, v) => acc + Number(v.valor_restante || 0), 0);
+
+    // Valor Pago = total_liquido - valor_restante (o que já foi recebido)
+    const valorPago = vendasValidas.reduce(
+      (acc, v) =>
+        acc + (Number(v.total_liquido || 0) - Number(v.valor_restante || 0)),
       0
     );
 

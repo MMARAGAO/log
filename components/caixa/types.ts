@@ -55,3 +55,22 @@ export interface FormFechar {
   valor_final: string;
   observacoes_fechamento: string;
 }
+
+export interface Sangria {
+  id: number;
+  caixa_id: number;
+  valor: number;
+  motivo: string;
+  data_sangria: string;
+  usuario_id: string;
+  status: "ativa" | "cancelada";
+  motivo_cancelamento?: string;
+  data_cancelamento?: string;
+  usuario_cancelamento_id?: string;
+  created_at?: string;
+}
+
+export interface FormSangria {
+  valor: string;
+  motivo: string;
+}

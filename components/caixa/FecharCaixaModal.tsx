@@ -69,11 +69,11 @@ export default function FecharCaixaModal({
                   📊 Resumo do Caixa
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="bg-white rounded-lg p-4">
+                  <div className="bg-content2 rounded-lg p-4 border border-divider">
                     <p className="text-sm text-default-500 mb-1">
                       Valor Inicial
                     </p>
-                    <p className="text-lg font-bold text-default-800">
+                    <p className="text-lg font-bold text-foreground">
                       {new Intl.NumberFormat("pt-BR", {
                         style: "currency",
                         currency: "BRL",
@@ -81,11 +81,11 @@ export default function FecharCaixaModal({
                     </p>
                   </div>
 
-                  <div className="bg-white rounded-lg p-4">
+                  <div className="bg-content2 rounded-lg p-4 border border-divider">
                     <p className="text-sm text-default-500 mb-1">
                       Vendas em Dinheiro
                     </p>
-                    <p className="text-lg font-bold text-success-700">
+                    <p className="text-lg font-bold text-success">
                       {new Intl.NumberFormat("pt-BR", {
                         style: "currency",
                         currency: "BRL",
@@ -93,11 +93,11 @@ export default function FecharCaixaModal({
                     </p>
                   </div>
 
-                  <div className="bg-white rounded-lg p-4">
+                  <div className="bg-content2 rounded-lg p-4 border border-divider">
                     <p className="text-sm text-default-500 mb-1">
                       Valor Esperado
                     </p>
-                    <p className="text-lg font-bold text-primary-700">
+                    <p className="text-lg font-bold text-primary">
                       {new Intl.NumberFormat("pt-BR", {
                         style: "currency",
                         currency: "BRL",

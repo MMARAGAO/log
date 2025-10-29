@@ -75,10 +75,7 @@ export default function HistoricoCaixaModal({
                           </p>
                           <p className="text-sm font-semibold">
                             {new Date(caixa.data_abertura).toLocaleString(
-                              "pt-BR",
-                              {
-                                timeZone: "America/Sao_Paulo",
-                              }
+                              "pt-BR"
                             )}
                           </p>
                         </div>
@@ -90,8 +87,7 @@ export default function HistoricoCaixaModal({
                             </p>
                             <p className="text-sm font-semibold">
                               {new Date(caixa.data_fechamento).toLocaleString(
-                                "pt-BR",
-                                { timeZone: "America/Sao_Paulo" }
+                                "pt-BR"
                               )}
                             </p>
                           </div>

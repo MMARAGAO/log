@@ -1,15 +1,48 @@
 import jsPDF from "jspdf";
-import type { CaixaAberto, Loja, ResumoVendas, Venda } from "./types";
+import type { CaixaAberto, Loja, ResumoVendas, Venda, Sangria } from "./types";
+
+// Helper para formatar datas corretamente (timestamps UTC do banco)
+function formatarDataHora(timestamp: string): string {
+  // Se o timestamp já tem timezone (+00, -03, Z), usa direto
+  // Se não tem, adiciona 'Z' para forçar interpretação como UTC
+  const ts =
+    timestamp.includes("+") || timestamp.includes("Z")
+      ? timestamp
+      : timestamp + "Z";
+  const date = new Date(ts);
+  return date.toLocaleString("pt-BR");
+}
+
+function formatarDataHoraSimples(timestamp: string): string {
+  const ts =
+    timestamp.includes("+") || timestamp.includes("Z")
+      ? timestamp
+      : timestamp + "Z";
+  const date = new Date(ts);
+  return date.toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 interface CaixaPDFProps {
   caixa: CaixaAberto;
   loja: Loja;
   resumo: ResumoVendas;
   vendas?: Venda[];
+  sangrias?: Sangria[];
 }
 
 export class CaixaPDFGenerator {
-  static gerar({ caixa, loja, resumo, vendas = [] }: CaixaPDFProps) {
+  static gerar({
+    caixa,
+    loja,
+    resumo,
+    vendas = [],
+    sangrias = [],
+  }: CaixaPDFProps) {
     const doc = new jsPDF();
 
     // Cores
@@ -75,7 +108,6 @@ export class CaixaPDFGenerator {
     doc.text("Data de Abertura:", 25, yPos + 16);
     doc.setFont("helvetica", "normal");
     const dataAbertura = new Date(caixa.data_abertura).toLocaleString("pt-BR", {
-      timeZone: "America/Sao_Paulo",
       dateStyle: "short",
       timeStyle: "short",
     });
@@ -89,7 +121,6 @@ export class CaixaPDFGenerator {
       const dataFechamento = new Date(caixa.data_fechamento).toLocaleString(
         "pt-BR",
         {
-          timeZone: "America/Sao_Paulo",
           dateStyle: "short",
           timeStyle: "short",
         }
@@ -455,13 +486,7 @@ export class CaixaPDFGenerator {
           // Data e hora
           doc.setFont("helvetica", "normal");
           doc.setTextColor(...textColor);
-          const dataVenda = new Date(venda.data_venda);
-          const dataFormatada = dataVenda.toLocaleString("pt-BR", {
-            day: "2-digit",
-            month: "2-digit",
-            hour: "2-digit",
-            minute: "2-digit",
-          });
+          const dataFormatada = formatarDataHoraSimples(venda.data_venda);
           doc.text(dataFormatada, 40, yPos + 2.5);
 
           // Cliente (truncar se muito longo)
@@ -492,6 +517,239 @@ export class CaixaPDFGenerator {
         // Espaço entre formas de pagamento
         yPos += 5;
       });
+    }
+
+    // ========== SANGRIAS ==========
+    if (sangrias && sangrias.length > 0) {
+      // Adiciona nova página se necessário
+      if (yPos > 220) {
+        doc.addPage();
+        yPos = 20;
+      }
+
+      doc.setTextColor(...textColor);
+      doc.setFontSize(14);
+      doc.setFont("helvetica", "bold");
+      doc.text("[$] Sangrias Realizadas", 20, yPos);
+      yPos += 8;
+
+      // Separar sangrias ativas e canceladas
+      // Sangrias sem status são consideradas ativas (retrocompatibilidade)
+      const sangriasAtivas = sangrias.filter(
+        (s) => !s.status || s.status === "ativa"
+      );
+      const sangriasCanceladas = sangrias.filter(
+        (s) => s.status === "cancelada"
+      );
+
+      // ========== SANGRIAS ATIVAS ==========
+      if (sangriasAtivas.length > 0) {
+        doc.setFontSize(11);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(...successColor);
+        doc.text(`Sangrias Ativas (${sangriasAtivas.length})`, 20, yPos);
+        doc.setTextColor(...textColor);
+        yPos += 6;
+
+        // Box com lista de sangrias ativas
+        doc.setFillColor(...lightGray);
+        doc.rect(20, yPos, 170, 6, "F");
+
+        doc.setFontSize(8);
+        doc.setFont("helvetica", "bold");
+        doc.text("Data/Hora", 25, yPos + 4);
+        doc.text("Motivo", 70, yPos + 4);
+        doc.text("Valor", 165, yPos + 4);
+        yPos += 6;
+
+        doc.setFont("helvetica", "normal");
+        let totalSangriasAtivas = 0;
+
+        sangriasAtivas.forEach((sangria, idx) => {
+          // Verifica se precisa de nova página
+          if (yPos > 270) {
+            doc.addPage();
+            yPos = 20;
+
+            // Repete cabeçalho
+            doc.setFillColor(...lightGray);
+            doc.rect(20, yPos, 170, 6, "F");
+            doc.setFont("helvetica", "bold");
+            doc.text("Data/Hora", 25, yPos + 4);
+            doc.text("Motivo", 70, yPos + 4);
+            doc.text("Valor", 165, yPos + 4);
+            yPos += 6;
+            doc.setFont("helvetica", "normal");
+          }
+
+          // Linha zebrada
+          if (idx % 2 === 0) {
+            doc.setFillColor(255, 255, 255);
+          } else {
+            doc.setFillColor(250, 250, 250);
+          }
+          doc.rect(20, yPos, 170, 5, "F");
+
+          // Data e hora
+          const dataSangria = new Date(sangria.data_sangria).toLocaleString(
+            "pt-BR",
+            {
+              dateStyle: "short",
+              timeStyle: "short",
+            }
+          );
+          doc.text(dataSangria, 25, yPos + 3.5);
+
+          // Motivo (truncado)
+          const motivoTruncado = doc.splitTextToSize(sangria.motivo, 85);
+          doc.text(motivoTruncado[0], 70, yPos + 3.5);
+
+          // Valor
+          doc.setTextColor(...dangerColor);
+          doc.text(
+            "- " +
+              sangria.valor.toLocaleString("pt-BR", {
+                style: "currency",
+                currency: "BRL",
+              }),
+            165,
+            yPos + 3.5
+          );
+          doc.setTextColor(...textColor);
+
+          totalSangriasAtivas += sangria.valor;
+          yPos += 5;
+        });
+
+        // Total de sangrias ativas
+        yPos += 2;
+        doc.setFillColor(...warningColor);
+        doc.rect(20, yPos, 170, 7, "F");
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(10);
+        doc.text("Total de Sangrias Ativas:", 25, yPos + 5);
+        doc.setTextColor(255, 255, 255);
+        doc.text(
+          "- " +
+            totalSangriasAtivas.toLocaleString("pt-BR", {
+              style: "currency",
+              currency: "BRL",
+            }),
+          165,
+          yPos + 5
+        );
+        doc.setTextColor(...textColor);
+        doc.setFontSize(9);
+        yPos += 12;
+      }
+
+      // ========== SANGRIAS CANCELADAS ==========
+      if (sangriasCanceladas.length > 0) {
+        // Verifica se precisa de nova página
+        if (yPos > 250) {
+          doc.addPage();
+          yPos = 20;
+        }
+
+        doc.setFontSize(11);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(...dangerColor);
+        doc.text(
+          `Sangrias Canceladas (${sangriasCanceladas.length})`,
+          20,
+          yPos
+        );
+        doc.setTextColor(...textColor);
+        yPos += 6;
+
+        // Box com lista de sangrias canceladas
+        doc.setFillColor(...lightGray);
+        doc.rect(20, yPos, 170, 6, "F");
+
+        doc.setFontSize(7);
+        doc.setFont("helvetica", "bold");
+        doc.text("Criada em", 25, yPos + 4);
+        doc.text("Cancelada em", 60, yPos + 4);
+        doc.text("Motivo", 95, yPos + 4);
+        doc.text("Valor", 165, yPos + 4);
+        yPos += 6;
+
+        doc.setFont("helvetica", "normal");
+
+        sangriasCanceladas.forEach((sangria, idx) => {
+          // Verifica se precisa de nova página
+          if (yPos > 270) {
+            doc.addPage();
+            yPos = 20;
+
+            // Repete cabeçalho
+            doc.setFillColor(...lightGray);
+            doc.rect(20, yPos, 170, 6, "F");
+            doc.setFont("helvetica", "bold");
+            doc.text("Criada em", 25, yPos + 4);
+            doc.text("Cancelada em", 60, yPos + 4);
+            doc.text("Motivo", 95, yPos + 4);
+            doc.text("Valor", 165, yPos + 4);
+            yPos += 6;
+            doc.setFont("helvetica", "normal");
+          }
+
+          // Linha zebrada (mais clara para indicar cancelada)
+          if (idx % 2 === 0) {
+            doc.setFillColor(254, 226, 226); // Red-100
+          } else {
+            doc.setFillColor(252, 245, 245); // Red-50
+          }
+          doc.rect(20, yPos, 170, 5, "F");
+
+          // Data de criação
+          const dataCriacao = new Date(sangria.data_sangria).toLocaleString(
+            "pt-BR",
+            {
+              dateStyle: "short",
+              timeStyle: "short",
+            }
+          );
+          doc.setFontSize(7);
+          doc.text(dataCriacao, 25, yPos + 3.5);
+
+          // Data de cancelamento
+          if (sangria.data_cancelamento) {
+            const dataCancelamento = new Date(
+              sangria.data_cancelamento
+            ).toLocaleString("pt-BR", {
+              dateStyle: "short",
+              timeStyle: "short",
+            });
+            doc.text(dataCancelamento, 60, yPos + 3.5);
+          }
+
+          // Motivo cancelamento (truncado)
+          if (sangria.motivo_cancelamento) {
+            const motivoTrunc = doc.splitTextToSize(
+              sangria.motivo_cancelamento,
+              60
+            );
+            doc.text(motivoTrunc[0], 95, yPos + 3.5);
+          }
+
+          // Valor (riscado)
+          doc.setTextColor(156, 163, 175); // Gray-400
+          doc.text(
+            sangria.valor.toLocaleString("pt-BR", {
+              style: "currency",
+              currency: "BRL",
+            }),
+            165,
+            yPos + 3.5
+          );
+          doc.setTextColor(...textColor);
+
+          yPos += 5;
+        });
+
+        yPos += 6;
+      }
     }
 
     // ========== OBSERVAÇÕES ==========
@@ -543,9 +801,7 @@ export class CaixaPDFGenerator {
     doc.setFontSize(8);
     doc.setFont("helvetica", "normal");
     doc.text(
-      `Relatório gerado em: ${new Date().toLocaleString("pt-BR", {
-        timeZone: "America/Sao_Paulo",
-      })}`,
+      `Relatório gerado em: ${new Date().toLocaleString("pt-BR")}`,
       105,
       pageHeight - 12,
       { align: "center" }

@@ -223,6 +223,29 @@ interface FilterState {
 
 const PAGE_SIZE = 15;
 
+// Helper para obter timestamp no horário do Brasil (UTC-3)
+function getISOStringInBrazil(): string {
+  const formatter = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+
+  const parts = formatter.formatToParts(new Date());
+  const date: Record<string, string> = {};
+  parts.forEach((part) => {
+    date[part.type] = part.value;
+  });
+
+  // Retorna timestamp ISO com timezone do Brasil (-03:00)
+  return `${date.year}-${date.month}-${date.day}T${date.hour}:${date.minute}:${date.second}-03:00`;
+}
+
 export default function VendasPage() {
   // Auth
   const { user } = useAuthStore();
@@ -820,6 +843,15 @@ export default function VendasPage() {
     return new Date(d).toLocaleDateString("pt-BR");
   }
 
+  function fmtHora(d?: string | null) {
+    if (!d) return "-";
+    const ts = d.includes("+") || d.includes("Z") ? d : d + "Z";
+    return new Date(ts).toLocaleTimeString("pt-BR", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+
   function computeStatus(v: Venda): StatusPagamento {
     return v.status_pagamento;
   }
@@ -834,6 +866,12 @@ export default function VendasPage() {
 
   function getNomeLoja(lojaId?: number) {
     return lojas.find((l) => l.id === lojaId)?.nome || "Sem loja";
+  }
+
+  function getNomeUsuario(usuarioId?: string | null) {
+    if (!usuarioId) return "-";
+    const usuario = usuarios.find((u) => u.uuid === usuarioId);
+    return usuario?.nome || usuario?.email || "-";
   }
 
   // Filtros / ordenação
@@ -1453,7 +1491,7 @@ export default function VendasPage() {
 
       // MODIFICADO: payload agora inclui informações de crédito e log de alterações
       const payloadRaw = {
-        data_venda: new Date(formData.data_venda + "T00:00:00").toISOString(),
+        data_venda: getISOStringInBrazil(), // Usa horário atual do Brasil
         data_vencimento: formData.data_vencimento
           ? new Date(formData.data_vencimento + "T00:00:00").toISOString()
           : null,
@@ -2593,6 +2631,8 @@ export default function VendasPage() {
               <TableHeader>
                 <TableColumn>ID</TableColumn>
                 <TableColumn>Data</TableColumn>
+                <TableColumn>Hora</TableColumn>
+                <TableColumn>Funcionário</TableColumn>
                 <TableColumn>Cliente</TableColumn>
                 <TableColumn>Pagamento</TableColumn>
                 <TableColumn>Total</TableColumn>
@@ -2611,6 +2651,10 @@ export default function VendasPage() {
                     <TableRow key={v.id}>
                       <TableCell>{v.id}</TableCell>
                       <TableCell>{fmtDate(v.data_venda)}</TableCell>
+                      <TableCell>{fmtHora(v.data_venda)}</TableCell>
+                      <TableCell className="text-xs">
+                        {getNomeUsuario(v.id_usuario)}
+                      </TableCell>
                       <TableCell className="max-w-[160px] truncate">
                         {v.cliente_nome || "-"}
                       </TableCell>

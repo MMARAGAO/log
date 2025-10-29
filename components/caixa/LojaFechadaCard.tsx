@@ -1,11 +1,22 @@
 "use client";
 
-import { Card, CardBody, Button, Chip } from "@heroui/react";
+import {
+  Card,
+  CardBody,
+  Button,
+  Chip,
+  Dropdown,
+  DropdownTrigger,
+  DropdownMenu,
+  DropdownSection,
+  DropdownItem,
+} from "@heroui/react";
 import {
   LockOpenIcon,
   LockClosedIcon,
   ClockIcon,
   ArrowPathIcon,
+  EllipsisVerticalIcon,
 } from "@heroicons/react/24/outline";
 import type { Loja } from "./types";
 
@@ -41,16 +52,59 @@ export default function LojaFechadaCard({
               </p>
             </div>
           </div>
-          <Chip
-            color={hasCaixaFechadoHoje ? "warning" : "default"}
-            variant="flat"
-            size="sm"
-          >
-            {hasCaixaFechadoHoje ? "Fechado Hoje" : "Fechado"}
-          </Chip>
+          <div className="flex items-center gap-2">
+            <Chip
+              color={hasCaixaFechadoHoje ? "warning" : "default"}
+              variant="flat"
+              size="sm"
+            >
+              {hasCaixaFechadoHoje ? "Fechado Hoje" : "Fechado"}
+            </Chip>
+
+            <Dropdown>
+              <DropdownTrigger>
+                <Button
+                  isIconOnly
+                  size="sm"
+                  variant="light"
+                  startContent={<EllipsisVerticalIcon className="w-5 h-5" />}
+                />
+              </DropdownTrigger>
+              <DropdownMenu>
+                <DropdownSection title="Ações">
+                  {canOpenCaixa ? (
+                    <DropdownItem
+                      key="abrir"
+                      onPress={onAbrirCaixa}
+                      startContent={
+                        hasCaixaFechadoHoje ? (
+                          <ArrowPathIcon className="w-5 h-5 text-warning" />
+                        ) : (
+                          <LockOpenIcon className="w-5 h-5 text-success" />
+                        )
+                      }
+                      color={hasCaixaFechadoHoje ? "warning" : "success"}
+                    >
+                      {hasCaixaFechadoHoje ? "Reabrir Caixa" : "Abrir Caixa"}
+                    </DropdownItem>
+                  ) : null}
+
+                  <DropdownItem
+                    key="historico"
+                    onPress={onVerHistorico}
+                    startContent={
+                      <ClockIcon className="w-5 h-5 text-default-500" />
+                    }
+                  >
+                    Ver Histórico
+                  </DropdownItem>
+                </DropdownSection>
+              </DropdownMenu>
+            </Dropdown>
+          </div>
         </div>
 
-        <div className="bg-white rounded-lg p-3 mb-4">
+        <div className="bg-content2 rounded-lg p-3 border border-divider">
           <p className="text-sm text-default-500 text-center">
             {hasCaixaFechadoHoje
               ? "Caixa foi fechado hoje. Você pode reabrir este caixa."
@@ -58,35 +112,7 @@ export default function LojaFechadaCard({
           </p>
         </div>
 
-        <div className="flex gap-2">
-          {canOpenCaixa && (
-            <Button
-              size="sm"
-              color={hasCaixaFechadoHoje ? "warning" : "success"}
-              className="flex-1"
-              startContent={
-                hasCaixaFechadoHoje ? (
-                  <ArrowPathIcon className="w-4 h-4" />
-                ) : (
-                  <LockOpenIcon className="w-4 h-4" />
-                )
-              }
-              onPress={onAbrirCaixa}
-            >
-              {hasCaixaFechadoHoje ? "Reabrir Caixa" : "Abrir Caixa"}
-            </Button>
-          )}
-
-          <Button
-            size="sm"
-            variant="flat"
-            color="default"
-            isIconOnly
-            onPress={onVerHistorico}
-          >
-            <ClockIcon className="w-4 h-4" />
-          </Button>
-        </div>
+        {/* Botões de Ação - Removidos, substituídos pelo dropdown */}
       </CardBody>
     </Card>
   );
