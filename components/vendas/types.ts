@@ -79,6 +79,7 @@ export interface Venda {
   total_liquido: number;
   forma_pagamento: string;
   status_pagamento: StatusPagamento;
+  data_pagamento?: string | null; // NOVO: Data/hora em que foi marcado como pago
   fiado: boolean;
   data_vencimento?: string | null;
   valor_pago: number;

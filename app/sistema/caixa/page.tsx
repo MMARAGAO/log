@@ -267,7 +267,8 @@ export default function CaixaPage() {
       const vendasHoje =
         data?.filter((v: Venda) => {
           const dataVenda = getDateStringInBrazil(v.data_venda);
-          return dataVenda === hoje;
+          // MODIFICADO: Considera apenas vendas PAGAS para o caixa
+          return dataVenda === hoje && v.status_pagamento === "pago";
         }) || [];
 
       // Agrupa vendas por loja

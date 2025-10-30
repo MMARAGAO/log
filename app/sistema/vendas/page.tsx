@@ -145,6 +145,7 @@ interface Venda {
   total_liquido: number;
   forma_pagamento: string;
   status_pagamento: StatusPagamento;
+  data_pagamento?: string | null; // NOVO: Data/hora em que foi marcado como pago
   fiado: boolean;
   data_vencimento?: string | null;
   valor_pago: number;
@@ -1342,13 +1343,17 @@ export default function VendasPage() {
 
     // NOVO: Atualizar status automaticamente baseado no pagamento
     let novoStatus: StatusPagamento = formData.status_pagamento || "pendente";
+    let dataPagamento: string | null = formData.data_pagamento || null;
+
     if (restante === 0 && num > 0) {
       novoStatus = "pago";
+      dataPagamento = new Date().toISOString(); // Registra data/hora do pagamento
       console.log(
         "[VENDAS] ✅ Valor total quitado! Status atualizado para 'pago'"
       );
     } else if (num > 0 && restante > 0) {
       novoStatus = "pendente";
+      dataPagamento = null; // Limpa data de pagamento se ainda está pendente
       console.log(
         `[VENDAS] 💰 Pagamento parcial: R$ ${num} de R$ ${formData.total_liquido}. Status: pendente`
       );
@@ -1359,6 +1364,7 @@ export default function VendasPage() {
       valor_pago: num,
       valor_restante: restante,
       status_pagamento: novoStatus,
+      data_pagamento: dataPagamento,
     }));
   }
 
@@ -1441,6 +1447,7 @@ export default function VendasPage() {
       if (editingVenda && itensOriginaisVenda.length > 0) {
         const alteracoes: string[] = [];
         const dataHora = new Date().toLocaleString("pt-BR");
+        const nomeUsuario = user?.nome || user?.email || "Usuário";
 
         // Verificar alterações de quantidade
         itensOriginaisVenda.forEach((itemOriginal) => {
@@ -1480,10 +1487,11 @@ export default function VendasPage() {
         });
 
         if (alteracoes.length > 0) {
-          logAlteracoes = `\n\n📝 [${dataHora}] Alterações:\n${alteracoes.join("\n")}`;
+          logAlteracoes = `\n\n📝 [${dataHora}] Alterações por ${nomeUsuario}:\n${alteracoes.join("\n")}`;
           console.log("[VENDAS] 📝 Histórico de alterações gerado:", {
             quantidade: alteracoes.length,
             alteracoes: alteracoes,
+            usuario: nomeUsuario,
             log: logAlteracoes,
           });
         }
@@ -1506,6 +1514,10 @@ export default function VendasPage() {
         total_liquido,
         forma_pagamento: formData.forma_pagamento,
         status_pagamento,
+        data_pagamento:
+          status_pagamento === "pago"
+            ? formData.data_pagamento || new Date().toISOString()
+            : null, // NOVO: salva data/hora do pagamento
         fiado: !!formData.fiado,
         valor_pago,
         valor_restante,
@@ -2032,13 +2044,17 @@ export default function VendasPage() {
 
     // NOVO: Determinar status baseado no pagamento
     let novoStatus: StatusPagamento = targetVenda.status_pagamento;
+    let dataPagamento: string | null = targetVenda.data_pagamento || null;
+
     if (restante === 0) {
       novoStatus = "pago";
+      dataPagamento = new Date().toISOString(); // Registra data/hora do pagamento
       console.log(
         "[VENDAS] ✅ Pagamento quitado! Status atualizado para 'pago'"
       );
     } else if (novoPago > 0 && restante > 0) {
       novoStatus = "pendente";
+      dataPagamento = null; // Limpa data de pagamento se ainda está pendente
       console.log(
         `[VENDAS] 💰 Pagamento parcial registrado. Restante: ${fmt(restante)}`
       );
@@ -2046,7 +2062,7 @@ export default function VendasPage() {
 
     const obsConcat = [
       targetVenda.observacoes || "",
-      `${new Date().toLocaleDateString("pt-BR")}: Pagamento ${fmt(valor)}${
+      `${new Date().toLocaleDateString("pt-BR")} - ${user?.nome || user?.email || "Usuário"}: Pagamento ${fmt(valor)}${
         pagamentoObs ? " - " + pagamentoObs : ""
       }${
         pagamentoFormaPagamento &&
@@ -2085,6 +2101,7 @@ export default function VendasPage() {
         valor_pago: novoPago,
         valor_restante: restante,
         status_pagamento: novoStatus,
+        data_pagamento: dataPagamento, // NOVO: salva data/hora do pagamento
         observacoes: obsConcat,
       };
 
@@ -2286,22 +2303,126 @@ export default function VendasPage() {
 
     setLoading(true);
     try {
+      console.log("[VENDAS] ═══════════════════════════════════════");
+      console.log("[VENDAS] 🗑️ INICIANDO EXCLUSÃO DE VENDA");
+      console.log("[VENDAS] ═══════════════════════════════════════");
+      console.log(`[VENDAS] Venda ID: ${targetVenda.id}`);
+      console.log(`[VENDAS] Loja ID: ${targetVenda.loja_id}`);
+      console.log(`[VENDAS] Total de itens: ${targetVenda.itens?.length || 0}`);
+
+      // 1. DEVOLVER ITENS AO ESTOQUE DA LOJA
+      if (
+        targetVenda.itens &&
+        targetVenda.itens.length > 0 &&
+        targetVenda.loja_id
+      ) {
+        console.log("[VENDAS] ───────────────────────────────────────");
+        console.log("[VENDAS] 🔄 DEVOLVENDO ITENS AO ESTOQUE...");
+        console.log("[VENDAS] ───────────────────────────────────────");
+
+        await Promise.all(
+          targetVenda.itens.map(async (item) => {
+            if (!item.id_estoque || !item.quantidade) {
+              console.log(
+                `[VENDAS] ⚠️ Item sem id_estoque ou quantidade, pulando...`
+              );
+              return;
+            }
+
+            try {
+              // Buscar estoque atual da loja
+              const { data: estoqueAtual, error: fetchError } = await supabase
+                .from("estoque_lojas")
+                .select("quantidade")
+                .eq("produto_id", item.id_estoque)
+                .eq("loja_id", targetVenda.loja_id)
+                .single();
+
+              if (fetchError) {
+                console.error(
+                  `[VENDAS] ❌ Erro ao buscar estoque do produto ${item.id_estoque} (${item.descricao}):`,
+                  fetchError
+                );
+                return;
+              }
+
+              const quantidadeAtual = Number(estoqueAtual?.quantidade) || 0;
+              const novaQuantidade = quantidadeAtual + item.quantidade;
+
+              console.log(
+                `[VENDAS] 📦 Produto: ${item.descricao} (ID: ${item.id_estoque})`
+              );
+              console.log(`[VENDAS]    • Estoque atual: ${quantidadeAtual}`);
+              console.log(`[VENDAS]    • Devolvendo: +${item.quantidade}`);
+              console.log(`[VENDAS]    • Novo estoque: ${novaQuantidade}`);
+
+              // Atualizar estoque
+              const { error: updateError } = await supabase
+                .from("estoque_lojas")
+                .update({
+                  quantidade: novaQuantidade,
+                  updatedat: new Date().toISOString(),
+                })
+                .eq("produto_id", item.id_estoque)
+                .eq("loja_id", targetVenda.loja_id);
+
+              if (updateError) {
+                console.error(
+                  `[VENDAS] ❌ Erro ao atualizar estoque do produto ${item.id_estoque}:`,
+                  updateError
+                );
+              } else {
+                console.log(
+                  `[VENDAS] ✅ Estoque atualizado: ${quantidadeAtual} → ${novaQuantidade}`
+                );
+              }
+            } catch (itemError) {
+              console.error(
+                `[VENDAS] ❌ Erro ao processar item ${item.id_estoque}:`,
+                itemError
+              );
+            }
+          })
+        );
+
+        console.log("[VENDAS] ───────────────────────────────────────");
+        console.log("[VENDAS] ✅ DEVOLUÇÃO AO ESTOQUE CONCLUÍDA");
+        console.log("[VENDAS] ───────────────────────────────────────");
+      }
+
+      // 2. EXCLUIR A VENDA DO BANCO
+      console.log("[VENDAS] 🗑️ Excluindo venda do banco de dados...");
       await deleteTable("vendas", targetVenda.id);
+      console.log("[VENDAS] ✅ Venda excluída com sucesso!");
+
+      // 3. RECARREGAR DADOS
       await loadAll();
       deleteModal.onClose();
-      toast.success("Venda excluída com sucesso!", {
-        duration: 2000,
-        icon: "🗑️",
-      });
+
+      console.log("[VENDAS] ═══════════════════════════════════════");
+      console.log("[VENDAS] ✅ EXCLUSÃO CONCLUÍDA COM SUCESSO!");
+      console.log("[VENDAS] ═══════════════════════════════════════");
+
+      toast.success(
+        `Venda #${targetVenda.id} excluída e ${targetVenda.itens?.length || 0} ${targetVenda.itens?.length === 1 ? "item devolvido" : "itens devolvidos"} ao estoque!`,
+        {
+          duration: 3000,
+          icon: "✅",
+        }
+      );
     } catch (e: any) {
-      console.error("Erro ao excluir venda:", e);
-      alert(
+      console.error("[VENDAS] ❌ Erro ao excluir venda:", e);
+      toast.error(
         "Erro ao excluir: " +
           (e?.message ||
             e?.details ||
             e?.hint ||
             JSON.stringify(e) ||
-            "erro desconhecido")
+            "erro desconhecido"),
+        {
+          duration: 4000,
+          icon: "❌",
+        }
       );
     } finally {
       setLoading(false);
@@ -4085,6 +4206,13 @@ export default function VendasPage() {
                             .map((section, idx) => {
                               // Se a seção começa com 📝, é um log de alterações
                               const isLog = section.startsWith("📝");
+                              // Extrair usuário se houver (formato: "Alterações por NomeUsuario:")
+                              const usuarioMatch = section.match(
+                                /Alterações por (.+?):/
+                              );
+                              const nomeUsuarioLog = usuarioMatch
+                                ? usuarioMatch[1]
+                                : null;
 
                               return (
                                 <div
@@ -4095,6 +4223,14 @@ export default function VendasPage() {
                                       : ""
                                   }
                                 >
+                                  {nomeUsuarioLog && (
+                                    <div className="flex items-center gap-2 mb-2 text-primary-700">
+                                      <UserIcon className="w-3.5 h-3.5" />
+                                      <span className="font-semibold">
+                                        {nomeUsuarioLog}
+                                      </span>
+                                    </div>
+                                  )}
                                   <div className="whitespace-pre-line">
                                     {section
                                       .split("\n")
@@ -4755,12 +4891,88 @@ export default function VendasPage() {
         <Modal
           isOpen={deleteModal.isOpen}
           onOpenChange={deleteModal.onOpenChange}
+          size="lg"
         >
           <ModalContent>
-            <ModalHeader>Excluir Venda</ModalHeader>
+            <ModalHeader className="flex items-center gap-2 text-danger">
+              <ExclamationTriangleIcon className="w-6 h-6" />
+              Excluir Venda
+            </ModalHeader>
             <ModalBody>
-              Tem certeza que deseja excluir definitivamente a venda #
-              {targetVenda?.id}?
+              <div className="space-y-4">
+                <p className="text-default-700">
+                  Tem certeza que deseja excluir definitivamente a venda{" "}
+                  <strong className="text-danger">#{targetVenda?.id}</strong>?
+                </p>
+
+                {targetVenda && (
+                  <>
+                    <Divider />
+
+                    {/* Informações sobre devolução ao estoque */}
+                    <div className="bg-warning-50 dark:bg-warning-100/10 border border-warning-200 dark:border-warning-200/20 rounded-lg p-4">
+                      <div className="flex items-start gap-3">
+                        <div className="flex-shrink-0">
+                          <ArrowPathIcon className="w-5 h-5 text-warning-600 mt-0.5" />
+                        </div>
+                        <div className="flex-1 space-y-2">
+                          <p className="text-sm font-semibold text-warning-800 dark:text-warning-600">
+                            ⚠️ Atenção: Devolução ao Estoque
+                          </p>
+                          <p className="text-sm text-warning-700 dark:text-warning-500">
+                            Os produtos desta venda serão devolvidos ao estoque
+                            da loja:
+                          </p>
+                          <div className="bg-white dark:bg-default-100 rounded-md p-3 border border-warning-200 dark:border-warning-200/20">
+                            <div className="flex items-center gap-2 mb-2">
+                              <BuildingStorefrontIcon className="w-4 h-4 text-primary" />
+                              <span className="font-semibold text-sm">
+                                {lojas.find((l) => l.id === targetVenda.loja_id)
+                                  ?.nome || `Loja #${targetVenda.loja_id}`}
+                              </span>
+                            </div>
+                            {targetVenda.itens &&
+                              targetVenda.itens.length > 0 && (
+                                <div className="space-y-1.5 mt-2">
+                                  {targetVenda.itens.map((item, idx) => (
+                                    <div
+                                      key={idx}
+                                      className="flex items-center justify-between text-xs bg-default-50 dark:bg-default-200/50 rounded px-2 py-1.5"
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        <CubeIcon className="w-3.5 h-3.5 text-success" />
+                                        <span className="text-default-700 dark:text-default-600">
+                                          {item.descricao}
+                                          {item.modelo && ` - ${item.modelo}`}
+                                        </span>
+                                      </div>
+                                      <span className="font-semibold text-success">
+                                        +{item.quantidade} un.
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <Divider />
+
+                    {/* Alerta de ação irreversível */}
+                    <div className="bg-danger-50 dark:bg-danger-100/10 border border-danger-200 dark:border-danger-200/20 rounded-lg p-3">
+                      <div className="flex items-center gap-2">
+                        <ExclamationTriangleIcon className="w-5 h-5 text-danger flex-shrink-0" />
+                        <p className="text-sm text-danger-700 dark:text-danger-600">
+                          <strong>Esta ação não pode ser desfeita!</strong> A
+                          venda será permanentemente excluída do sistema.
+                        </p>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
             </ModalBody>
             <ModalFooter>
               <Button variant="flat" onPress={deleteModal.onClose}>
@@ -4770,8 +4982,9 @@ export default function VendasPage() {
                 color="danger"
                 onPress={confirmarDelete}
                 isLoading={loading}
+                startContent={<TrashIcon className="w-4 h-4" />}
               >
-                Excluir
+                Sim, Excluir Venda
               </Button>
             </ModalFooter>
           </ModalContent>

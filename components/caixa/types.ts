@@ -20,6 +20,8 @@ export interface Venda {
   total_liquido?: number; // Ou como total_liquido (dependendo da origem)
   data_venda: string;
   status: string;
+  status_pagamento?: string; // NOVO: Status do pagamento (pago, pendente, etc)
+  data_pagamento?: string | null; // NOVO: Data/hora em que foi marcado como pago
   forma_pagamento?: string;
   cliente_nome?: string;
   observacoes?: string;
