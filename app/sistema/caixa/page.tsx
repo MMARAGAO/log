@@ -264,11 +264,12 @@ export default function CaixaPage() {
       const data = await fetchTable("vendas");
       const hoje = getDateStringInBrazil();
 
+      // Considera apenas vendas pagas no mesmo dia do caixa (data_pagamento)
       const vendasHoje =
         data?.filter((v: Venda) => {
-          const dataVenda = getDateStringInBrazil(v.data_venda);
-          // MODIFICADO: Considera apenas vendas PAGAS para o caixa
-          return dataVenda === hoje && v.status_pagamento === "pago";
+          if (v.status_pagamento !== "pago" || !v.data_pagamento) return false;
+          const dataPagamento = getDateStringInBrazil(v.data_pagamento);
+          return dataPagamento === hoje;
         }) || [];
 
       // Agrupa vendas por loja
