@@ -841,7 +841,10 @@ export default function VendasPage() {
 
   function fmtDate(d?: string | null) {
     if (!d) return "-";
-    return new Date(d).toLocaleDateString("pt-BR");
+    // Se vier só a data (YYYY-MM-DD), adiciona horário e timezone Brasil
+    const isOnlyDate = /^\d{4}-\d{2}-\d{2}$/.test(d);
+    const dateStr = isOnlyDate ? `${d}T12:00:00-03:00` : d;
+    return new Date(dateStr).toLocaleDateString("pt-BR");
   }
 
   function fmtHora(d?: string | null) {
@@ -1444,47 +1447,69 @@ export default function VendasPage() {
 
       // NOVO: Gerar log de alterações de quantidade (apenas para edições)
       let logAlteracoes = "";
-      if (editingVenda && itensOriginaisVenda.length > 0) {
+      if (editingVenda) {
         const alteracoes: string[] = [];
         const dataHora = new Date().toLocaleString("pt-BR");
         const nomeUsuario = user?.nome || user?.email || "Usuário";
 
-        // Verificar alterações de quantidade
-        itensOriginaisVenda.forEach((itemOriginal) => {
-          const itemNovo = itensLimpos.find(
-            (i) => i.id_estoque === itemOriginal.id_estoque
+        // Verificar alterações de data de vencimento
+        const dataVencimentoOriginal = editingVenda.data_vencimento || null;
+        const dataVencimentoNova = formData.data_vencimento
+          ? new Date(formData.data_vencimento + "T12:00:00-03:00").toISOString()
+          : null;
+
+        if (
+          dataVencimentoOriginal !== dataVencimentoNova &&
+          (dataVencimentoOriginal || dataVencimentoNova)
+        ) {
+          const formatarData = (isoDate: string | null) => {
+            if (!isoDate) return "Sem vencimento";
+            return new Date(isoDate).toLocaleDateString("pt-BR");
+          };
+
+          alteracoes.push(
+            `📅 Vencimento: ${formatarData(dataVencimentoOriginal)} → ${formatarData(dataVencimentoNova)}`
           );
+        }
 
-          if (itemNovo) {
-            const qtdOriginal = itemOriginal.quantidade;
-            const qtdNova = itemNovo.quantidade;
+        // Verificar alterações de quantidade (se houver itens originais)
+        if (itensOriginaisVenda.length > 0) {
+          itensOriginaisVenda.forEach((itemOriginal) => {
+            const itemNovo = itensLimpos.find(
+              (i) => i.id_estoque === itemOriginal.id_estoque
+            );
 
-            if (qtdOriginal !== qtdNova) {
-              const diff = qtdNova - qtdOriginal;
-              const sinal = diff > 0 ? "+" : "";
+            if (itemNovo) {
+              const qtdOriginal = itemOriginal.quantidade;
+              const qtdNova = itemNovo.quantidade;
+
+              if (qtdOriginal !== qtdNova) {
+                const diff = qtdNova - qtdOriginal;
+                const sinal = diff > 0 ? "+" : "";
+                alteracoes.push(
+                  `${itemOriginal.descricao}: ${qtdOriginal} → ${qtdNova} (${sinal}${diff})`
+                );
+              }
+            } else {
+              // Item removido
               alteracoes.push(
-                `${itemOriginal.descricao}: ${qtdOriginal} → ${qtdNova} (${sinal}${diff})`
+                `${itemOriginal.descricao}: ${itemOriginal.quantidade} → 0 (removido)`
               );
             }
-          } else {
-            // Item removido
-            alteracoes.push(
-              `${itemOriginal.descricao}: ${itemOriginal.quantidade} → 0 (removido)`
-            );
-          }
-        });
+          });
 
-        // Verificar itens adicionados
-        itensLimpos.forEach((itemNovo) => {
-          const itemOriginal = itensOriginaisVenda.find(
-            (i) => i.id_estoque === itemNovo.id_estoque
-          );
-          if (!itemOriginal) {
-            alteracoes.push(
-              `${itemNovo.descricao}: 0 → ${itemNovo.quantidade} (adicionado)`
+          // Verificar itens adicionados
+          itensLimpos.forEach((itemNovo) => {
+            const itemOriginal = itensOriginaisVenda.find(
+              (i) => i.id_estoque === itemNovo.id_estoque
             );
-          }
-        });
+            if (!itemOriginal) {
+              alteracoes.push(
+                `${itemNovo.descricao}: 0 → ${itemNovo.quantidade} (adicionado)`
+              );
+            }
+          });
+        }
 
         if (alteracoes.length > 0) {
           logAlteracoes = `\n\n📝 [${dataHora}] Alterações por ${nomeUsuario}:\n${alteracoes.join("\n")}`;
@@ -1499,9 +1524,11 @@ export default function VendasPage() {
 
       // MODIFICADO: payload agora inclui informações de crédito e log de alterações
       const payloadRaw = {
-        data_venda: getISOStringInBrazil(), // Usa horário atual do Brasil
+        data_venda: editingVenda
+          ? editingVenda.data_venda
+          : getISOStringInBrazil(), // CORRIGIDO: Mantém data original ao editar
         data_vencimento: formData.data_vencimento
-          ? new Date(formData.data_vencimento + "T00:00:00").toISOString()
+          ? new Date(formData.data_vencimento + "T12:00:00-03:00").toISOString()
           : null,
         id_cliente: selectedCliente.id,
         cliente_nome: selectedCliente.nome,
@@ -2926,7 +2953,7 @@ export default function VendasPage() {
           isOpen={vendaModal.isOpen}
           onOpenChange={vendaModal.onOpenChange}
           size="5xl"
-          scrollBehavior="inside"
+          scrollBehavior="outside"
           isDismissable={false}
         >
           <ModalContent>
@@ -4037,6 +4064,7 @@ export default function VendasPage() {
         isOpen={viewModal.isOpen}
         onOpenChange={viewModal.onOpenChange}
         size="lg"
+        scrollBehavior="outside"
       >
         <ModalContent>
           <ModalHeader className="flex items-center gap-2">
@@ -4243,11 +4271,17 @@ export default function VendasPage() {
                                           line.includes("(removido)");
                                         const isAdicao =
                                           line.includes("(adicionado)");
+                                        const isVencimento =
+                                          line.includes("📅 Vencimento:");
 
                                         let lineClass = "";
                                         let icon = null;
 
-                                        if (isAumento) {
+                                        if (isVencimento) {
+                                          lineClass =
+                                            "text-blue-700 font-medium";
+                                          icon = "📅";
+                                        } else if (isAumento) {
                                           lineClass =
                                             "text-success-700 font-medium";
                                           icon = "📈";
@@ -4270,7 +4304,7 @@ export default function VendasPage() {
                                             key={lineIdx}
                                             className={lineClass}
                                           >
-                                            {icon && (
+                                            {icon && !isVencimento && (
                                               <span className="mr-1">
                                                 {icon}
                                               </span>
@@ -4997,7 +5031,7 @@ export default function VendasPage() {
           isOpen={comprovantesModal.isOpen}
           onOpenChange={comprovantesModal.onOpenChange}
           size="2xl"
-          scrollBehavior="inside"
+          scrollBehavior="outside"
         >
           <ModalContent>
             <ModalHeader className="flex items-center gap-2">
