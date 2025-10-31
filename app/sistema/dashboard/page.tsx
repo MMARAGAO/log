@@ -154,9 +154,10 @@ export default function DashboardPage() {
   }, [ordens, dateStart, dateEnd]);
 
   const kpis = useMemo<KPIData>(() => {
+    // Considera apenas vendas com pagamento efetivamente marcado como "pago"
+    // para que a receita apresentada no dashboard reflita o faturamento realizado.
     const vendasValidas = vendasFiltradas.filter(
-      (v) =>
-        v.status_pagamento !== "cancelado" && v.status_pagamento !== "devolvido"
+      (v) => v.status_pagamento === "pago"
     );
 
     const totalVendas = vendasValidas.length;

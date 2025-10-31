@@ -962,22 +962,21 @@ export default function VendasPage() {
   }, [filters]);
 
   // Estatísticas
+  // Estatísticas baseadas no conjunto filtrado (aplica período/filtros da UI)
+  // e faturamento calculado apenas com vendas com status "pago".
   const stats = useMemo(() => {
-    const count = vendas.length;
-    const faturamento = vendas.reduce(
-      (acc, v) => acc + (Number(v.total_liquido) || 0),
-      0
-    );
-    const pagas = vendas.filter((v) => computeStatus(v) === "pago").length;
-    const vencidas = vendas.filter(
-      (v) => computeStatus(v) === "vencido"
-    ).length;
-    const receber = vendas
+    const count = filtered.length;
+    const faturamento = filtered
+      .filter((v) => computeStatus(v) === "pago")
+      .reduce((acc, v) => acc + (Number(v.total_liquido) || 0), 0);
+    const pagas = filtered.filter((v) => computeStatus(v) === "pago").length;
+    const vencidas = filtered.filter((v) => computeStatus(v) === "vencido").length;
+    const receber = filtered
       .filter((v) => v.valor_restante > 0)
       .reduce((acc, v) => acc + Number(v.valor_restante), 0);
     const ticket = count > 0 ? faturamento / count : 0;
     return { count, faturamento, pagas, vencidas, receber, ticket };
-  }, [vendas]);
+  }, [filtered]);
 
   function openNewVenda() {
     // Verificar se há caixa aberto
