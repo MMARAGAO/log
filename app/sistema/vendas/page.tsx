@@ -970,7 +970,9 @@ export default function VendasPage() {
       .filter((v) => computeStatus(v) === "pago")
       .reduce((acc, v) => acc + (Number(v.total_liquido) || 0), 0);
     const pagas = filtered.filter((v) => computeStatus(v) === "pago").length;
-    const vencidas = filtered.filter((v) => computeStatus(v) === "vencido").length;
+    const vencidas = filtered.filter(
+      (v) => computeStatus(v) === "vencido"
+    ).length;
     const receber = filtered
       .filter((v) => v.valor_restante > 0)
       .reduce((acc, v) => acc + Number(v.valor_restante), 0);
