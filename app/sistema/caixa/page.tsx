@@ -103,6 +103,7 @@ export default function CaixaPage() {
   );
   const [lojas, setLojas] = useState<Loja[]>([]);
   const [historicoCaixa, setHistoricoCaixa] = useState<CaixaAberto[]>([]);
+  const [devolucoes, setDevolucoes] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingInitial, setLoadingInitial] = useState(true);
 
@@ -227,6 +228,7 @@ export default function CaixaPage() {
         loadAllCaixas(),
         loadAllVendas(),
         loadAllSangrias(),
+        loadAllDevolucoes(),
       ]);
     } catch (error) {
       console.error("Erro ao carregar dados:", error);
@@ -338,6 +340,17 @@ export default function CaixaPage() {
     } catch (error) {
       console.error("Erro ao carregar vendas:", error);
       toast.error("Erro ao carregar vendas");
+    }
+  }
+
+  // Carrega todas as devoluções
+  async function loadAllDevolucoes() {
+    try {
+      const data = await fetchTable("devolucoes");
+      setDevolucoes(data || []);
+    } catch (error) {
+      console.error("Erro ao carregar devoluções:", error);
+      toast.error("Erro ao carregar devoluções");
     }
   }
 
@@ -468,13 +481,50 @@ export default function CaixaPage() {
 
   // Calcula resumo de vendas por loja
   // Gera um resumo (ResumoVendas) a partir de uma lista de vendas.
+  // A lista recebida JÁ está filtrada por data_pagamento
   function computeResumoFromList(vendas: Venda[]): ResumoVendas {
-    const totalVendas = vendas.length;
+    // Separar vendas por status
+    const vendasPagas = vendas.filter((v) => v.status_pagamento === "pago");
+    const vendasDevolvidas = vendas.filter((v) => v.status_pagamento === "devolvido");
+    
+    // Processar devoluções para determinar quais contam no caixa
+    let vendasDevolvidasComCredito: Venda[] = [];
+    let vendasDevolvidasSemCredito: Venda[] = [];
+    let valorDevolvidoSemCredito = 0;
 
-    const valorTotalVendas = vendas.reduce((acc, v) => {
+    vendasDevolvidas.forEach((vendaDevolvida) => {
+      const devolucao = devolucoes.find((d: any) => d.id_venda === vendaDevolvida.id);
+      
+      if (devolucao) {
+        if (devolucao.credito_aplicado) {
+          // COM crédito: dinheiro ficou no caixa, conta normalmente
+          vendasDevolvidasComCredito.push(vendaDevolvida);
+        } else {
+          // SEM crédito: dinheiro foi devolvido, subtrai do caixa
+          vendasDevolvidasSemCredito.push(vendaDevolvida);
+          valorDevolvidoSemCredito += Number(devolucao.valor_total_devolvido || 0);
+        }
+      }
+    });
+
+    // Total de vendas = pagas + devolvidas COM crédito
+    const totalVendas = vendasPagas.length + vendasDevolvidasComCredito.length;
+
+    // Calcular valor bruto: vendas pagas + devolvidas com crédito
+    let valorBrutoVendas = vendasPagas.reduce((acc, v) => {
       const val = (v as any).valor_total ?? (v as any).total_liquido ?? 0;
       return acc + Number(val || 0);
     }, 0);
+
+    valorBrutoVendas += vendasDevolvidasComCredito.reduce((acc, v) => {
+      const val = (v as any).valor_total ?? (v as any).total_liquido ?? 0;
+      return acc + Number(val || 0);
+    }, 0);
+
+    // Valor real do caixa = Vendas (pagas + devolvidas com crédito) - Devoluções sem Crédito
+    const valorTotalVendas = valorBrutoVendas - valorDevolvidoSemCredito;
+    const valorTotalDevolvido = valorDevolvidoSemCredito;
+    const totalDevolvidas = vendasDevolvidasSemCredito.length;
 
     // Inicializa acumuladores
     let valorDinheiro = 0;
@@ -486,7 +536,10 @@ export default function CaixaPage() {
     let valorCrediario = 0;
     let valorFiado = 0;
 
-    vendas.forEach((v) => {
+    // Processar formas de pagamento: vendas PAGAS + devolvidas COM crédito
+    const vendasParaProcessar = [...vendasPagas, ...vendasDevolvidasComCredito];
+    
+    vendasParaProcessar.forEach((v: Venda) => {
       const valorVenda = Number(
         (v as any).valor_total ?? (v as any).total_liquido ?? 0
       );
@@ -544,6 +597,37 @@ export default function CaixaPage() {
       }
     });
 
+    // Subtrair devoluções SEM crédito das formas de pagamento
+    vendasDevolvidasSemCredito.forEach((vendaDevolvida: Venda) => {
+      const devolucao = devolucoes.find((d: any) => d.id_venda === vendaDevolvida.id);
+      
+      if (devolucao) {
+        const valorDevolvido = Number(devolucao.valor_total_devolvido || 0);
+        const forma = (vendaDevolvida.forma_pagamento || "").toLowerCase();
+        
+        // Subtrair da forma de pagamento correspondente
+        if (forma.includes("dinheiro")) valorDinheiro -= valorDevolvido;
+        else if (forma.includes("pix")) valorPix -= valorDevolvido;
+        else if (
+          forma.includes("débito") ||
+          forma.includes("debito") ||
+          forma.includes("cartão de débito")
+        )
+          valorCartaoDebito -= valorDevolvido;
+        else if (
+          forma.includes("crédito") ||
+          forma.includes("credito") ||
+          forma.includes("cartão de crédito")
+        )
+          valorCartaoCredito -= valorDevolvido;
+        else if (forma.includes("transfer")) valorTransferencia -= valorDevolvido;
+        else if (forma.includes("boleto")) valorBoleto -= valorDevolvido;
+        else if (forma.includes("credi")) valorCrediario -= valorDevolvido;
+        else if (forma.includes("fiad")) valorFiado -= valorDevolvido;
+        else valorDinheiro -= valorDevolvido; // fallback
+      }
+    });
+
     return {
       totalVendas,
       valorTotalVendas,
@@ -556,6 +640,8 @@ export default function CaixaPage() {
       valorCrediario,
       valorFiado,
       ticketMedio: totalVendas > 0 ? valorTotalVendas / totalVendas : 0,
+      totalDevolvidas,
+      valorTotalDevolvido,
     };
   }
 

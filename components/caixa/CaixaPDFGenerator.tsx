@@ -247,6 +247,47 @@ export class CaixaPDFGenerator {
 
     yPos += 32;
 
+    // ========== DEVOLUÇÕES (SE HOUVER) ==========
+    if (resumo.totalDevolvidas > 0) {
+      doc.setFillColor(254, 242, 242); // red-50
+      doc.rect(20, yPos, 170, 22, "F");
+      
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(...dangerColor);
+      doc.text("⚠ DEVOLUÇÕES:", 25, yPos + 6);
+      
+      doc.setFont("helvetica", "normal");
+      doc.text(
+        `${resumo.totalDevolvidas} venda${resumo.totalDevolvidas > 1 ? 's' : ''} devolvida${resumo.totalDevolvidas > 1 ? 's' : ''}`,
+        25,
+        yPos + 12
+      );
+      
+      doc.setFont("helvetica", "bold");
+      doc.text("Valor Total:", 110, yPos + 6);
+      doc.setFont("helvetica", "normal");
+      doc.text(
+        resumo.valorTotalDevolvido.toLocaleString("pt-BR", {
+          style: "currency",
+          currency: "BRL",
+        }),
+        145,
+        yPos + 6
+      );
+
+      doc.setFontSize(8);
+      doc.setTextColor(127, 29, 29); // red-900
+      doc.text(
+        "* Vendas devolvidas estão incluídas no valor total acima",
+        25,
+        yPos + 18
+      );
+
+      doc.setTextColor(...textColor);
+      yPos += 28;
+    }
+
     // ========== FORMAS DE PAGAMENTO ==========
     doc.setFontSize(14);
     doc.setFont("helvetica", "bold");

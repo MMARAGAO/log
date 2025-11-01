@@ -45,6 +45,9 @@ export interface ResumoVendas {
   valorCrediario: number;
   valorFiado: number;
   ticketMedio: number;
+  // Devoluções
+  totalDevolvidas: number; // Quantidade de vendas com status "devolvido"
+  valorTotalDevolvido: number; // Valor total das vendas devolvidas
 }
 
 export interface FormAbrir {

@@ -155,6 +155,7 @@ export interface FilterState {
   fim: string;
   valorMin: string;
   valorMax: string;
+  filtrarPorDataPagamento: boolean; // true = data_pagamento (Caixa), false = data_venda (padrão)
 }
 
 export interface VendasStats {
@@ -164,6 +165,8 @@ export interface VendasStats {
   ticket: number;
   receber: number;
   vencidas: number;
+  devolvidas: number;
+  totalDevolvido: number;
 }
 
 export interface VendasPermissions {

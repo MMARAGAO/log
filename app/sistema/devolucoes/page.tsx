@@ -1045,23 +1045,32 @@ export default function DevolucoesPagina() {
         updated_at: new Date().toISOString(),
       });
 
+      // Com crédito: mantém a venda no Caixa com valor original
+      // Apenas marca como devolvida se for devolução TOTAL
       const vendaId = targetDevolucao.id_venda;
-      const { error: vendaError } = await supabase
-        .from("vendas")
-        .update({
-          status_pagamento: "devolvido",
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", vendaId);
+      const vendaAtual = vendas.find((v) => v.id === vendaId);
+      
+      if (targetDevolucao.tipo_devolucao === "total") {
+        // Devolução total: marca a venda inteira como devolvida
+        const { error: vendaError } = await supabase
+          .from("vendas")
+          .update({
+            status_pagamento: "devolvido",
+            data_pagamento: new Date().toISOString(), // Mantém data_pagamento para aparecer no Caixa
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", vendaId);
 
-      if (vendaError) {
-        console.warn(
-          "[DEVOLUCAO] Falha ao atualizar status_pagamento para 'devolvido' (provável CHECK constraint):",
-          vendaError.message
-        );
-
-        const vendaAtual = vendas.find((v) => v.id === vendaId);
-        const marca = `[[devolucao_aplicada:id=${targetDevolucao.id};ts=${new Date().toISOString()}]]`;
+        if (vendaError) {
+          console.warn(
+            "[DEVOLUCAO] Falha ao atualizar status para 'devolvido':",
+            vendaError.message
+          );
+        }
+      } else {
+        // Devolução parcial com crédito: mantém status "pago" e valor original
+        // Adiciona observação para rastreabilidade
+        const marca = `[[devolucao_parcial_com_credito:id=${targetDevolucao.id};valor=${targetDevolucao.valor_credito_gerado};ts=${new Date().toISOString()}]]`;
         const novaObservacao = (vendaAtual?.observacoes || "").trim()
           ? `${vendaAtual?.observacoes}\n${marca}`
           : marca;
@@ -1076,10 +1085,9 @@ export default function DevolucoesPagina() {
 
         if (obsError) {
           console.error(
-            "[DEVOLUCAO] Falha ao aplicar fallback nas observacoes da venda:",
+            "[DEVOLUCAO] Falha ao adicionar observação na venda:",
             obsError
           );
-          throw obsError;
         }
       }
 
@@ -1120,9 +1128,58 @@ export default function DevolucoesPagina() {
         updated_at: new Date().toISOString(),
       });
 
+      // Sem crédito: reduz o valor da venda (desconta o produto devolvido)
+      const vendaId = targetDevolucao.id_venda;
+      const vendaAtual = vendas.find((v) => v.id === vendaId);
+      
+      if (vendaAtual) {
+        if (targetDevolucao.tipo_devolucao === "total") {
+          // Devolução total sem crédito: marca como devolvida
+          const { error: vendaError } = await supabase
+            .from("vendas")
+            .update({
+              status_pagamento: "devolvido",
+              total_liquido: 0, // Zera o valor
+              data_pagamento: null, // Remove do Caixa
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", vendaId);
+
+          if (vendaError) {
+            console.error("[DEVOLUCAO] Erro ao atualizar venda total:", vendaError);
+            throw vendaError;
+          }
+        } else {
+          // Devolução parcial sem crédito: reduz o valor da venda
+          const novoValor = Math.max(
+            0,
+            Number(vendaAtual.total_liquido || 0) - Number(targetDevolucao.valor_total_devolvido)
+          );
+          
+          const marca = `[[devolucao_parcial_sem_credito:id=${targetDevolucao.id};valor_devolvido=${targetDevolucao.valor_total_devolvido};ts=${new Date().toISOString()}]]`;
+          const novaObservacao = (vendaAtual.observacoes || "").trim()
+            ? `${vendaAtual.observacoes}\n${marca}`
+            : marca;
+
+          const { error: vendaError } = await supabase
+            .from("vendas")
+            .update({
+              total_liquido: novoValor,
+              observacoes: novaObservacao,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", vendaId);
+
+          if (vendaError) {
+            console.error("[DEVOLUCAO] Erro ao reduzir valor da venda:", vendaError);
+            throw vendaError;
+          }
+        }
+      }
+
       await loadAll();
       concluirModal.onClose();
-      toast.success("Devolução concluída sem gerar crédito!");
+      toast.success("Devolução concluída sem gerar crédito! Valor da venda ajustado.");
     } catch (e: any) {
       console.error("Erro ao concluir devolução:", e);
       toast.error(

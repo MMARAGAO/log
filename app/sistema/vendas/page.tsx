@@ -220,6 +220,7 @@ interface FilterState {
   fim: string;
   valorMin: string;
   valorMax: string;
+  filtrarPorDataPagamento: boolean; // true = filtra por data_pagamento (modo Caixa), false = filtra por data_venda (padrão)
 }
 
 const PAGE_SIZE = 15;
@@ -271,6 +272,7 @@ export default function VendasPage() {
   const [estoque, setEstoque] = useState<EstoqueItem[]>([]);
   const [lojas, setLojas] = useState<Loja[]>([]);
   const [caixaAberto, setCaixaAberto] = useState<any>(null);
+  const [devolucoes, setDevolucoes] = useState<any[]>([]); // Para identificar itens devolvidos
 
   // Filtrar lojas com base nas permissões do usuário
   const lojasDisponiveis = useMemo(() => {
@@ -593,6 +595,7 @@ export default function VendasPage() {
     fim: "",
     valorMin: "",
     valorMax: "",
+    filtrarPorDataPagamento: false, // Padrão: filtrar por data_venda
   });
 
   const [page, setPage] = useState(1);
@@ -680,13 +683,14 @@ export default function VendasPage() {
   async function loadAll() {
     setLoading(true);
     try {
-      const [vendasData, clientesData, usuariosData, lojasData, caixaData] =
+      const [vendasData, clientesData, usuariosData, lojasData, caixaData, devolucoesData] =
         await Promise.all([
           fetchTable("vendas"),
           fetchTable("clientes"),
           fetchTable("usuarios"),
           fetchTable("lojas"),
           fetchTable("caixa"),
+          fetchTable("devolucoes"),
         ]);
       setVendas(
         (vendasData || []).map((v: any) => ({
@@ -697,6 +701,7 @@ export default function VendasPage() {
       setClientes(clientesData || []);
       setUsuarios(usuariosData || []);
       setLojas(lojasData || []);
+      setDevolucoes(devolucoesData || []);
 
       // Verificar se há caixa aberto
       const caixaAbertoAtual = caixaData?.find(
@@ -912,9 +917,25 @@ export default function VendasPage() {
         if (filters.cliente && v.cliente_nome !== filters.cliente) return false;
         if (filters.loja && v.loja_id?.toString() !== filters.loja)
           return false;
-        if (filters.inicio && v.data_venda < filters.inicio) return false;
-        if (filters.fim && v.data_venda > filters.fim + "T23:59:59")
-          return false;
+        
+        // Filtro de data: por data_venda (padrão) ou data_pagamento (modo Caixa)
+        if (filters.filtrarPorDataPagamento) {
+          // Modo Caixa: apenas vendas com data_pagamento (já pagas/recebidas)
+          if (!v.data_pagamento) return false; // Excluir vendas não pagas
+          
+          // Se houver filtro de data, aplicar ao data_pagamento
+          if (filters.inicio || filters.fim) {
+            const dataPagamento = v.data_pagamento.slice(0, 10); // YYYY-MM-DD
+            if (filters.inicio && dataPagamento < filters.inicio) return false;
+            if (filters.fim && dataPagamento > filters.fim) return false;
+          }
+        } else {
+          // Modo padrão: filtrar por data_venda
+          if (filters.inicio && v.data_venda < filters.inicio) return false;
+          if (filters.fim && v.data_venda > filters.fim + "T23:59:59")
+            return false;
+        }
+
         const minVal =
           filters.valorMin && currencyToNumber(filters.valorMin) > 0
             ? currencyToNumber(filters.valorMin)
@@ -970,22 +991,46 @@ export default function VendasPage() {
 
   // Estatísticas
   // Estatísticas baseadas no conjunto filtrado (aplica período/filtros da UI)
-  // e faturamento calculado apenas com vendas com status "pago".
   const stats = useMemo(() => {
     const count = filtered.length;
-    const faturamento = filtered
-      .filter((v) => computeStatus(v) === "pago")
-      .reduce((acc, v) => acc + (Number(v.total_liquido) || 0), 0);
-    const pagas = filtered.filter((v) => computeStatus(v) === "pago").length;
+    
+    // Vendas pagas (status = pago)
+    const vendasPagas = filtered.filter((v) => computeStatus(v) === "pago");
+    const faturamento = vendasPagas.reduce(
+      (acc, v) => acc + (Number(v.total_liquido) || 0),
+      0
+    );
+    
+    // Vendas devolvidas (status = devolvido)
+    const vendasDevolvidas = filtered.filter((v) => computeStatus(v) === "devolvido");
+    const totalDevolvido = vendasDevolvidas.reduce(
+      (acc, v) => acc + (Number(v.total_liquido) || 0),
+      0
+    );
+    
+    const pagas = vendasPagas.length;
+    const devolvidas = vendasDevolvidas.length;
     const vencidas = filtered.filter(
       (v) => computeStatus(v) === "vencido"
     ).length;
     const receber = filtered
       .filter((v) => v.valor_restante > 0)
       .reduce((acc, v) => acc + Number(v.valor_restante), 0);
-    const ticket = count > 0 ? faturamento / count : 0;
-    return { count, faturamento, pagas, vencidas, receber, ticket };
-  }, [filtered]);
+    
+    // Ticket médio: baseado apenas em vendas pagas (não inclui devolvidas)
+    const ticket = pagas > 0 ? faturamento / pagas : 0;
+    
+    return { 
+      count, 
+      faturamento, 
+      pagas, 
+      devolvidas,
+      totalDevolvido,
+      vencidas, 
+      receber, 
+      ticket 
+    };
+  }, [filtered, filters.filtrarPorDataPagamento]);
 
   function openNewVenda() {
     // Verificar se há caixa aberto
@@ -2784,6 +2829,70 @@ export default function VendasPage() {
       {/* Estatísticas */}
       <VendasStats stats={stats} formatCurrency={fmt} />
 
+      {/* Aviso sobre diferença de datas */}
+      {(filters.inicio || filters.fim) && (
+        <Card className="bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
+          <CardBody className="py-3">
+            <div className="flex items-start gap-3">
+              <div className="text-blue-600 dark:text-blue-400 mt-0.5">
+                <ExclamationTriangleIcon className="w-5 h-5" />
+              </div>
+              <div className="flex-1 text-sm">
+                <p className="font-medium text-blue-900 dark:text-blue-100 mb-1">
+                  📊 Sobre os valores exibidos
+                </p>
+                {filters.filtrarPorDataPagamento ? (
+                  <p className="text-blue-700 dark:text-blue-300 text-xs leading-relaxed">
+                    <strong>Modo: Filtrar por Data de Pagamento</strong> ✅
+                    <br />
+                    Exibindo <strong>apenas vendas que já foram pagas</strong> (com data de pagamento registrada).
+                    {filters.inicio || filters.fim ? (
+                      <>
+                        <br />
+                        Período: vendas <strong>pagas</strong> {filters.inicio && `de ${filters.inicio.split('-').reverse().join('/')}`} {filters.fim && `até ${filters.fim.split('-').reverse().join('/')}`}.
+                      </>
+                    ) : null}
+                    <br />
+                    💡 <em>Neste modo, os valores devem coincidir com o Caixa, 
+                    pois ambos filtram por quando o pagamento foi recebido. 
+                    {!filters.inicio && !filters.fim && 'Sem filtro de data, mostra todas as vendas já pagas (histórico completo).'}</em>
+                    {" "}
+                    <a 
+                      href="/DIFERENCA_CAIXA_VENDAS.md" 
+                      target="_blank" 
+                      className="underline hover:text-blue-900 dark:hover:text-blue-100"
+                    >
+                      Ver documentação completa →
+                    </a>
+                  </p>
+                ) : (
+                  <p className="text-blue-700 dark:text-blue-300 text-xs leading-relaxed">
+                    <strong>Modo: Filtrar por Data de Venda</strong> (padrão)
+                    <br />
+                    <strong>Faturamento</strong> = vendas <strong>criadas</strong> no período filtrado e já pagas (status: pago).
+                    <br />
+                    <strong>A Receber</strong> = vendas criadas no período mas ainda pendentes de pagamento.
+                    <br />
+                    💡 <em>O Caixa mostra valores por data de <strong>pagamento</strong> (quando o dinheiro entrou), 
+                    enquanto este modo filtra por data de <strong>criação da venda</strong>. 
+                    Por isso, os totais podem não coincidir. 
+                    Use o filtro "Filtrar por Data de Pagamento" para comparar com o Caixa.</em>
+                    {" "}
+                    <a 
+                      href="/DIFERENCA_CAIXA_VENDAS.md" 
+                      target="_blank" 
+                      className="underline hover:text-blue-900 dark:hover:text-blue-100"
+                    >
+                      Ver documentação completa →
+                    </a>
+                  </p>
+                )}
+              </div>
+            </div>
+          </CardBody>
+        </Card>
+      )}
+
       {/* Barra de busca e filtros */}
       <VendasFilters
         searchTerm={filters.search}
@@ -2813,6 +2922,7 @@ export default function VendasPage() {
             fim: "",
             valorMin: "",
             valorMax: "",
+            filtrarPorDataPagamento: false,
           })
         }
         showFiltersPanel={showFilters}
@@ -2829,7 +2939,8 @@ export default function VendasPage() {
           filters.inicio !== "" ||
           filters.fim !== "" ||
           filters.valorMin !== "" ||
-          filters.valorMax !== ""
+          filters.valorMax !== "" ||
+          filters.filtrarPorDataPagamento
         }
       />
 
@@ -2958,6 +3069,17 @@ export default function VendasPage() {
                 }
               >
                 Vencidas
+              </Switch>
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch
+                size="sm"
+                isSelected={filters.filtrarPorDataPagamento}
+                onValueChange={(v) =>
+                  setFilters((p) => ({ ...p, filtrarPorDataPagamento: v }))
+                }
+              >
+                Filtrar por Data de Pagamento
               </Switch>
             </div>
           </CardBody>
@@ -4436,17 +4558,60 @@ export default function VendasPage() {
                   <p className="text-xs font-semibold">
                     Itens ({targetVenda.itens.length})
                   </p>
-                  {targetVenda.itens.map((i, idx) => (
-                    <div
-                      key={idx}
-                      className="flex justify-between text-xs border-b border-default-100 pb-1"
-                    >
-                      <span className="truncate">
-                        {i.descricao} x{i.quantidade}
-                      </span>
-                      <span>{fmt(i.subtotal)}</span>
-                    </div>
-                  ))}
+                  {targetVenda.itens.map((i, idx) => {
+                    // Verificar se este item foi devolvido
+                    const devolucoesVenda = devolucoes.filter(
+                      (d: any) => d.id_venda === targetVenda.id
+                    );
+                    
+                    let itemDevolvido = false;
+                    let quantidadeDevolvida = 0;
+                    
+                    devolucoesVenda.forEach((dev: any) => {
+                      if (dev.itens_devolvidos && Array.isArray(dev.itens_devolvidos)) {
+                        dev.itens_devolvidos.forEach((itemDev: any) => {
+                          // Comparar por id_estoque ou descricao
+                          if (
+                            (i.id_estoque && itemDev.id_estoque === i.id_estoque) ||
+                            (!i.id_estoque && itemDev.descricao === i.descricao)
+                          ) {
+                            itemDevolvido = true;
+                            quantidadeDevolvida += Number(itemDev.quantidade || 0);
+                          }
+                        });
+                      }
+                    });
+
+                    return (
+                      <div
+                        key={idx}
+                        className={`flex justify-between text-xs border-b pb-1 px-2 py-1.5 rounded ${
+                          itemDevolvido
+                            ? "bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800"
+                            : "border-default-100"
+                        }`}
+                      >
+                        <span className="truncate flex items-center gap-2">
+                          {itemDevolvido && (
+                            <span className="text-red-600 dark:text-red-400 font-semibold">
+                              ↩
+                            </span>
+                          )}
+                          <span className={itemDevolvido ? "text-red-700 dark:text-red-300" : ""}>
+                            {i.descricao} x{i.quantidade}
+                            {itemDevolvido && quantidadeDevolvida > 0 && (
+                              <span className="ml-1 text-red-600 dark:text-red-400 font-medium">
+                                ({quantidadeDevolvida === i.quantidade ? "total" : `${quantidadeDevolvida} devolvido${quantidadeDevolvida > 1 ? 's' : ''}`})
+                              </span>
+                            )}
+                          </span>
+                        </span>
+                        <span className={itemDevolvido ? "text-red-700 dark:text-red-300 font-medium" : ""}>
+                          {fmt(i.subtotal)}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
                 {targetVenda.observacoes && (
                   <>

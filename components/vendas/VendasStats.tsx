@@ -15,14 +15,20 @@ export default function VendasStats({
   stats,
   formatCurrency: fmt,
 }: VendasStatsProps) {
+  const hasDevolvidas = stats.devolvidas > 0;
+  const gridCols = hasDevolvidas ? "lg:grid-cols-5" : "lg:grid-cols-4";
+  
   return (
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+    <div className={`grid gap-4 md:grid-cols-2 ${gridCols}`}>
       {/* Total de Vendas */}
       <Card>
         <CardBody className="p-4">
           <p className="text-xs text-default-500">Total de Vendas</p>
           <p className="text-2xl font-semibold">{stats.count}</p>
-          <p className="text-xs text-default-400">{stats.pagas} pagas</p>
+          <p className="text-xs text-default-400">
+            {stats.pagas} pagas
+            {hasDevolvidas && ` • ${stats.devolvidas} devolvidas`}
+          </p>
         </CardBody>
       </Card>
 
@@ -30,12 +36,29 @@ export default function VendasStats({
       <Card>
         <CardBody className="p-4">
           <p className="text-xs text-default-500">Faturamento</p>
-          <p className="text-xl font-semibold">{fmt(stats.faturamento)}</p>
+          <p className="text-xl font-semibold text-green-600">
+            {fmt(stats.faturamento)}
+          </p>
           <p className="text-xs text-default-400">
             Ticket médio {fmt(stats.ticket)}
           </p>
         </CardBody>
       </Card>
+
+      {/* Devolvidas - só aparece se houver devoluções */}
+      {hasDevolvidas && (
+        <Card>
+          <CardBody className="p-4">
+            <p className="text-xs text-default-500">Devolvido</p>
+            <p className="text-xl font-semibold text-red-600">
+              {fmt(stats.totalDevolvido)}
+            </p>
+            <p className="text-xs text-default-400">
+              {stats.devolvidas} {stats.devolvidas === 1 ? "venda" : "vendas"}
+            </p>
+          </CardBody>
+        </Card>
+      )}
 
       {/* A Receber */}
       <Card>
@@ -45,8 +68,8 @@ export default function VendasStats({
             {fmt(stats.receber)}
           </p>
           <p className="text-xs text-default-400">
-            {stats.count > 0
-              ? `${Math.round((stats.receber / stats.faturamento) * 100)}% pendente`
+            {stats.faturamento > 0
+              ? `${Math.round((stats.receber / (stats.faturamento + stats.receber)) * 100)}% pendente`
               : "Sem vendas"}
           </p>
         </CardBody>
