@@ -290,7 +290,6 @@ export default function VendasPage() {
   const [creditoAplicado, setCreditoAplicado] = useState(0);
   const [creditoInput, setCreditoInput] = useState(numberToCurrencyInput(0));
   const [usarCredito, setUsarCredito] = useState(false);
-  const [pagamentoFormaPagamento, setPagamentoFormaPagamento] = useState("");
 
   // Adicionar novos estados para controle do tipo de desconto
   const [tipoDesconto, setTipoDesconto] = useState<"valor" | "porcentagem">(
@@ -607,6 +606,7 @@ export default function VendasPage() {
   const payModal = useDisclosure();
   // Modal exclusão
   const deleteModal = useDisclosure();
+
   // Modal gerenciar comprovantes
   const comprovantesModal = useDisclosure();
 
@@ -653,10 +653,17 @@ export default function VendasPage() {
   const PRODUCTS_PAGE_SIZE = 12;
 
   // Pagamento incremental
-  const [pagamentoValor, setPagamentoValor] = useState("");
   const [pagamentoObs, setPagamentoObs] = useState("");
   const [comprovanteFiles, setComprovanteFiles] = useState<File[]>([]);
   const [uploadingComprovante, setUploadingComprovante] = useState(false);
+  // Novas linhas de pagamento (suporta múltiplas formas)
+  const [pagamentoRows, setPagamentoRows] = useState<
+    { forma: string; valorInput: string }[]
+  >([]);
+  const totalPagamento = useMemo(
+    () => pagamentoRows.reduce((s, r) => s + currencyToNumber(r.valorInput), 0),
+    [pagamentoRows]
+  );
 
   // Gerenciamento de comprovantes
   const [novosComprovantesFiles, setNovosComprovantesFiles] = useState<File[]>(
@@ -1924,42 +1931,85 @@ export default function VendasPage() {
           const novoCredito = Math.max(0, clienteCredito - credito_usado);
 
           console.log(
-            `[VENDAS] Atualizando crédito do cliente ${selectedCliente.id}: ${fmt(clienteCredito)} → ${fmt(novoCredito)}`
+            `[VENDAS] Aplicando crédito do cliente ${selectedCliente.id}: ${fmt(clienteCredito)} → ${fmt(novoCredito)}`
           );
 
-          const { error: creditoError } = await supabase
-            .from("clientes")
-            .update({
-              credito: novoCredito,
-              updated_at: new Date().toISOString(),
-            })
-            .eq("id", selectedCliente.id);
+          // Preferir RPC atômica que atualiza saldo e insere histórico com created_by
+          // Assinatura esperada (ver migration): registrar_credito_cliente(p_cliente_id bigint, p_tipo text, p_valor numeric, p_observacao text, p_creator uuid)
+          const currentUserId = user?.id ?? null;
+          let rpcErr: any = null;
 
-          if (creditoError) {
+          try {
+            const rpcPayload = {
+              p_cliente_id: selectedCliente.id,
+              p_tipo: "remove",
+              p_valor: credito_usado,
+              p_observacao: `Crédito usado na venda #${vendaId ?? ""}`,
+              p_creator: currentUserId,
+            };
+
+            const { error } = await supabase.rpc(
+              "registrar_credito_cliente",
+              rpcPayload as any
+            );
+            rpcErr = error;
+            if (error) {
+              console.warn(
+                "[VENDAS] RPC registrar_credito_cliente retornou erro:",
+                error.message || error
+              );
+            } else {
+              console.log(
+                "[VENDAS] RPC registrar_credito_cliente executada com sucesso"
+              );
+            }
+          } catch (errRpc) {
+            rpcErr = errRpc;
             console.warn(
-              "[VENDAS] Erro ao atualizar crédito do cliente:",
-              creditoError
+              "[VENDAS] Erro ao chamar RPC registrar_credito_cliente:",
+              (errRpc as any).message || errRpc
             );
-            alert(
-              `Venda salva com sucesso, mas houve erro ao atualizar o crédito do cliente: ${creditoError.message}`
-            );
-          } else {
+          }
+
+          // Se RPC falhar (não existe ou sem permissão), fazer fallback para update direto
+          if (rpcErr) {
             console.log(
-              `[VENDAS] Crédito atualizado com sucesso: ${fmt(clienteCredito)} → ${fmt(novoCredito)}`
+              "[VENDAS] Fallback: atualizando crédito diretamente na tabela clientes"
             );
+            const { error: updErr } = await supabase
+              .from("clientes")
+              .update({
+                credito: novoCredito,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", selectedCliente.id);
 
-            // Atualiza o estado local para refletir o novo saldo
-            setClienteCredito(novoCredito);
-
-            // Se não há mais crédito, desativa o uso
-            if (novoCredito === 0) {
-              setUsarCredito(false);
-              setCreditoAplicado(0);
-              setCreditoInput(numberToCurrencyInput(0));
+            if (updErr) {
+              console.warn(
+                "[VENDAS] Erro ao atualizar crédito do cliente (fallback):",
+                updErr.message || updErr
+              );
+              alert(
+                `Venda salva, mas houve erro ao atualizar o crédito do cliente: ${updErr.message || updErr}`
+              );
+            } else {
+              console.log(
+                "[VENDAS] Crédito atualizado com fallback com sucesso"
+              );
             }
           }
+
+          // Atualiza o estado local para refletir o novo saldo
+          setClienteCredito(novoCredito);
+
+          // Se não há mais crédito, desativa o uso
+          if (novoCredito === 0) {
+            setUsarCredito(false);
+            setCreditoAplicado(0);
+            setCreditoInput(numberToCurrencyInput(0));
+          }
         } catch (e) {
-          console.error("[VENDAS] Erro ao processar crédito:", e);
+          console.error("[VENDAS] Erro ao aplicar crédito do cliente:", e);
           alert(
             `Venda salva com sucesso, mas houve erro ao processar o crédito: ${e}`
           );
@@ -2010,9 +2060,17 @@ export default function VendasPage() {
   // Pagamento incremental
   function openPagamento(v: Venda) {
     setTargetVenda(v);
-    setPagamentoValor("");
+    // reset single valor (we now use pagamentoRows)
     setPagamentoObs("");
-    setPagamentoFormaPagamento(v.forma_pagamento || ""); // Inicializa com a forma atual
+    // inicializa forma(s) na pagamentoRows abaixo
+    // Inicializa linhas de pagamento com uma linha pré-preenchida com o restante
+    const restanteInicial = Number(v.valor_restante) || 0;
+    setPagamentoRows([
+      {
+        forma: v.forma_pagamento || "Dinheiro",
+        valorInput: numberToCurrencyInput(restanteInicial),
+      },
+    ]);
     setComprovanteFiles([]); // Limpar arquivos anteriores
     payModal.onOpen();
   }
@@ -2060,7 +2118,7 @@ export default function VendasPage() {
       return;
     }
 
-    const valor = currencyToNumber(pagamentoValor);
+    const valor = totalPagamento;
     if (valor <= 0) return;
     const restanteAtual = Number(targetVenda.valor_restante) || 0;
     if (valor > restanteAtual) {
@@ -2088,16 +2146,13 @@ export default function VendasPage() {
       );
     }
 
+    const breakdown = pagamentoRows
+      .map((r) => `${r.forma}: ${fmt(currencyToNumber(r.valorInput))}`)
+      .join("; ");
+
     const obsConcat = [
       targetVenda.observacoes || "",
-      `${new Date().toLocaleDateString("pt-BR")} - ${user?.nome || user?.email || "Usuário"}: Pagamento ${fmt(valor)}${
-        pagamentoObs ? " - " + pagamentoObs : ""
-      }${
-        pagamentoFormaPagamento &&
-        pagamentoFormaPagamento !== targetVenda.forma_pagamento
-          ? ` (${pagamentoFormaPagamento})`
-          : ""
-      }`,
+      `${new Date().toLocaleDateString("pt-BR")} - ${user?.nome || user?.email || "Usuário"}: Pagamento ${fmt(valor)}${pagamentoObs ? " - " + pagamentoObs : ""}${breakdown ? ` (${breakdown})` : ""}`,
     ]
       .join("\n")
       .trim();
@@ -2139,11 +2194,11 @@ export default function VendasPage() {
       }
 
       // Se a forma de pagamento foi alterada, atualiza também
-      if (
-        pagamentoFormaPagamento &&
-        pagamentoFormaPagamento !== targetVenda.forma_pagamento
-      ) {
-        updateData.forma_pagamento = pagamentoFormaPagamento;
+      // Atualiza forma_pagamento: se houver apenas uma linha, usa ela, caso contrário marca como 'Múltiplo'
+      if (pagamentoRows.length === 1 && pagamentoRows[0].forma) {
+        updateData.forma_pagamento = pagamentoRows[0].forma;
+      } else if (pagamentoRows.length > 1) {
+        updateData.forma_pagamento = "Múltiplo";
       }
 
       try {
@@ -2418,7 +2473,148 @@ export default function VendasPage() {
         console.log("[VENDAS] ───────────────────────────────────────");
       }
 
-      // 2. EXCLUIR A VENDA DO BANCO
+      // 2. SE HOUVE CRÉDITO USADO, DEVOLVER AO CLIENTE ANTES DE EXCLUIR A VENDA
+      if (
+        targetVenda.credito_usado &&
+        targetVenda.credito_usado > 0 &&
+        targetVenda.id_cliente
+      ) {
+        try {
+          const devolver = Number(targetVenda.credito_usado) || 0;
+          console.log(
+            `[VENDAS] Devolvendo crédito ao cliente ${targetVenda.id_cliente}: R$ ${fmt(devolver)}`
+          );
+
+          const currentUserId = user?.id ?? null;
+
+          // Tentar RPC atômica para registrar crédito (adicionar)
+          let rpcErr: any = null;
+          try {
+            const rpcPayload = {
+              p_cliente_id: targetVenda.id_cliente,
+              p_tipo: "add",
+              p_valor: devolver,
+              p_observacao: `Crédito devolvido por exclusão da venda #${targetVenda.id}`,
+              p_creator: currentUserId,
+            };
+            const { error: rpcError } = await supabase.rpc(
+              "registrar_credito_cliente",
+              rpcPayload as any
+            );
+            rpcErr = rpcError;
+            if (rpcError) {
+              console.warn(
+                "[VENDAS] RPC registrar_credito_cliente retornou erro:",
+                rpcError.message || rpcError
+              );
+            } else {
+              console.log(
+                "[VENDAS] RPC registrar_credito_cliente executada com sucesso (crédito devolvido)"
+              );
+            }
+          } catch (e) {
+            rpcErr = e;
+            console.warn(
+              "[VENDAS] Erro ao chamar RPC registrar_credito_cliente:",
+              (e as any).message || e
+            );
+          }
+
+          // Fallback: atualizar diretamente clientes e tentar inserir histórico manualmente
+          if (rpcErr) {
+            console.log(
+              "[VENDAS] Fallback: atualizando crédito diretamente na tabela clientes"
+            );
+
+            // Obter crédito atual
+            try {
+              const { data: cliData, error: cliErr } = await supabase
+                .from("clientes")
+                .select("credito")
+                .eq("id", targetVenda.id_cliente)
+                .single();
+
+              if (cliErr) {
+                console.warn(
+                  "[VENDAS] Erro ao buscar crédito do cliente no fallback:",
+                  cliErr.message || cliErr
+                );
+              } else {
+                const atual = Number(cliData?.credito) || 0;
+                const novo = atual + devolver;
+                const { error: updErr } = await supabase
+                  .from("clientes")
+                  .update({
+                    credito: novo,
+                    updated_at: new Date().toISOString(),
+                  })
+                  .eq("id", targetVenda.id_cliente);
+
+                if (updErr) {
+                  console.warn(
+                    "[VENDAS] Erro ao atualizar crédito do cliente (fallback):",
+                    updErr.message || updErr
+                  );
+                } else {
+                  console.log(
+                    `[VENDAS] Crédito do cliente atualizado (fallback): ${fmt(atual)} → ${fmt(novo)}`
+                  );
+                }
+
+                // Tentar inserir histórico direto em tabelas candidatas
+                const payload = {
+                  cliente_id: targetVenda.id_cliente,
+                  tipo: "add",
+                  valor: devolver,
+                  observacao: `Crédito devolvido por exclusão da venda #${targetVenda.id}`,
+                  saldo_apos: novo,
+                  created_by: currentUserId,
+                };
+
+                const tableCandidates = [
+                  "clientes_creditos",
+                  "clientes_credito",
+                  "cliente_creditos",
+                  "cliente_credito",
+                ];
+
+                for (const t of tableCandidates) {
+                  try {
+                    const { data: insData, error: insErr } = await supabase
+                      .from(t)
+                      .insert(payload)
+                      .select();
+                    if (insErr) {
+                      console.warn(
+                        `Inserção de histórico em ${t} falhou:`,
+                        insErr.message || insErr
+                      );
+                      continue;
+                    }
+                    console.log(`Histórico inserido em ${t}:`, insData);
+                    break;
+                  } catch (ie) {
+                    console.warn(
+                      `Erro ao inserir histórico em ${t}:`,
+                      (ie as any).message || ie
+                    );
+                    continue;
+                  }
+                }
+              }
+            } catch (e) {
+              console.error(
+                "[VENDAS] Erro no fallback de devolução de crédito:",
+                e
+              );
+            }
+          }
+        } catch (err) {
+          console.error("[VENDAS] Erro ao devolver crédito ao cliente:", err);
+        }
+      }
+
+      // 3. EXCLUIR A VENDA DO BANCO
       console.log("[VENDAS] 🗑️ Excluindo venda do banco de dados...");
       await deleteTable("vendas", targetVenda.id);
       console.log("[VENDAS] ✅ Venda excluída com sucesso!");
@@ -3029,6 +3225,38 @@ export default function VendasPage() {
               )}
 
               <Divider />
+
+              {/* Aviso de devolução de crédito ao cliente (se aplicável) */}
+              {Number(targetVenda?.credito_usado || 0) > 0 &&
+                ((targetVenda as any)?.id_cliente ??
+                  (targetVenda as any)?.cliente_id) && (
+                  <div className="bg-info-50 dark:bg-info-100/10 border border-info-200 dark:border-info-200/20 rounded-lg p-3">
+                    <div className="flex items-start gap-3">
+                      <div className="flex-shrink-0">
+                        <CurrencyDollarIcon className="w-5 h-5 text-info-600 mt-0.5" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-semibold text-info-800 dark:text-info-600">
+                          🔁 Crédito será devolvido
+                        </p>
+                        <p className="text-sm text-info-700 dark:text-info-500">
+                          Esta venda utilizou{" "}
+                          <strong>
+                            R${" "}
+                            {Number(
+                              targetVenda?.credito_usado || 0
+                            ).toLocaleString("pt-BR", {
+                              minimumFractionDigits: 2,
+                            })}
+                          </strong>{" "}
+                          de crédito do cliente. Ao confirmar a exclusão, esse
+                          valor será devolvido ao saldo do cliente
+                          automaticamente.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
               {/* Seleção de Cliente, Vendedor e Loja */}
               <div className="grid md:grid-cols-3 gap-4">
@@ -4443,7 +4671,7 @@ export default function VendasPage() {
         <Modal
           isOpen={payModal.isOpen}
           onOpenChange={payModal.onOpenChange}
-          size="lg"
+          size="4xl"
           scrollBehavior="outside"
         >
           <ModalContent>
@@ -4546,9 +4774,24 @@ export default function VendasPage() {
                                       0.25 *
                                       100
                                   ) / 100;
-                                setPagamentoValor(
-                                  numberToCurrencyInput(restante)
-                                );
+                                setPagamentoRows((prev) => {
+                                  if (prev.length === 0)
+                                    return [
+                                      {
+                                        forma:
+                                          targetVenda.forma_pagamento ||
+                                          "Dinheiro",
+                                        valorInput:
+                                          numberToCurrencyInput(restante),
+                                      },
+                                    ];
+                                  const copy = [...prev];
+                                  copy[0] = {
+                                    ...copy[0],
+                                    valorInput: numberToCurrencyInput(restante),
+                                  };
+                                  return copy;
+                                });
                               }}
                               isDisabled={
                                 Number(targetVenda.valor_restante) === 0
@@ -4568,9 +4811,24 @@ export default function VendasPage() {
                                       0.5 *
                                       100
                                   ) / 100;
-                                setPagamentoValor(
-                                  numberToCurrencyInput(restante)
-                                );
+                                setPagamentoRows((prev) => {
+                                  if (prev.length === 0)
+                                    return [
+                                      {
+                                        forma:
+                                          targetVenda.forma_pagamento ||
+                                          "Dinheiro",
+                                        valorInput:
+                                          numberToCurrencyInput(restante),
+                                      },
+                                    ];
+                                  const copy = [...prev];
+                                  copy[0] = {
+                                    ...copy[0],
+                                    valorInput: numberToCurrencyInput(restante),
+                                  };
+                                  return copy;
+                                });
                               }}
                               isDisabled={
                                 Number(targetVenda.valor_restante) === 0
@@ -4586,9 +4844,24 @@ export default function VendasPage() {
                                 if (!targetVenda) return;
                                 const restante =
                                   Number(targetVenda.valor_restante) || 0;
-                                setPagamentoValor(
-                                  numberToCurrencyInput(restante)
-                                );
+                                setPagamentoRows((prev) => {
+                                  if (prev.length === 0)
+                                    return [
+                                      {
+                                        forma:
+                                          targetVenda.forma_pagamento ||
+                                          "Dinheiro",
+                                        valorInput:
+                                          numberToCurrencyInput(restante),
+                                      },
+                                    ];
+                                  const copy = [...prev];
+                                  copy[0] = {
+                                    ...copy[0],
+                                    valorInput: numberToCurrencyInput(restante),
+                                  };
+                                  return copy;
+                                });
                               }}
                               isDisabled={
                                 Number(targetVenda.valor_restante) === 0
@@ -4602,94 +4875,156 @@ export default function VendasPage() {
                           </div>
                         </div>
 
-                        <Input
-                          label="Valor a Pagar"
-                          placeholder="R$ 0,00"
-                          value={pagamentoValor}
-                          size="lg"
-                          startContent={
-                            <CurrencyDollarIcon className="w-5 h-5" />
-                          }
-                          isDisabled={Number(targetVenda.valor_restante) === 0}
-                          color={
-                            currencyToNumber(pagamentoValor) >
-                            Number(targetVenda.valor_restante || 0)
-                              ? "danger"
-                              : currencyToNumber(pagamentoValor) ===
-                                  Number(targetVenda.valor_restante || 0)
-                                ? "success"
-                                : "primary"
-                          }
-                          description={
-                            Number(targetVenda.valor_restante) === 0
-                              ? "Esta venda já foi totalmente paga"
-                              : currencyToNumber(pagamentoValor) >
-                                  Number(targetVenda.valor_restante || 0)
-                                ? "⚠️ Valor não pode exceder o restante"
-                                : currencyToNumber(pagamentoValor) ===
-                                    Number(targetVenda.valor_restante || 0)
-                                  ? "✅ Venda será totalmente quitada"
-                                  : currencyToNumber(pagamentoValor) > 0
-                                    ? `Restará: ${fmt(Number(targetVenda.valor_restante) - currencyToNumber(pagamentoValor))}`
-                                    : `Máximo permitido: ${fmt(targetVenda.valor_restante)}`
-                          }
-                          onChange={(e) => {
-                            const masked = currencyMask(e.target.value);
-                            const valNum = currencyToNumber(masked);
-                            const restante =
-                              Number(targetVenda?.valor_restante) || 0;
-
-                            // GARANTIR que nunca exceda o valor restante
-                            if (valNum > restante) {
-                              setPagamentoValor(
-                                numberToCurrencyInput(restante)
-                              );
-                            } else {
-                              setPagamentoValor(masked);
-                            }
-                          }}
-                          onBlur={() => {
-                            // Revalidar no blur para garantir consistência
-                            const valNum = currencyToNumber(pagamentoValor);
-                            const restante =
-                              Number(targetVenda?.valor_restante) || 0;
-                            if (valNum > restante) {
-                              setPagamentoValor(
-                                numberToCurrencyInput(restante)
-                              );
-                            }
-                          }}
-                        />
-                      </div>
-
-                      {/* Forma de Pagamento */}
-                      <Select
-                        label="Forma de Pagamento"
-                        placeholder="Selecione a forma de pagamento"
-                        startContent={<CreditCardIcon className="w-4 h-4" />}
-                        selectedKeys={
-                          pagamentoFormaPagamento
-                            ? [pagamentoFormaPagamento]
-                            : []
-                        }
-                        isDisabled={Number(targetVenda.valor_restante) === 0}
-                        onSelectionChange={(keys) => {
-                          const selected = Array.from(keys)[0] as string;
-                          setPagamentoFormaPagamento(selected); // Atualiza o estado
-                        }}
-                      >
-                        {PAGAMENTO_OPTIONS.map((option) => {
-                          const Icon = option.icon;
-                          return (
-                            <SelectItem
-                              key={option.key}
-                              startContent={<Icon className="w-4 h-4" />}
+                        <div className="space-y-3">
+                          {pagamentoRows.map((row, idx) => (
+                            <div
+                              key={idx}
+                              className="grid md:grid-cols-4 gap-2 items-end"
                             >
-                              {option.label}
-                            </SelectItem>
-                          );
-                        })}
-                      </Select>
+                              <Select
+                                label={`Forma ${idx + 1}`}
+                                size="sm"
+                                selectedKeys={row.forma ? [row.forma] : []}
+                                onSelectionChange={(k) => {
+                                  const selected = Array.from(k)[0] as string;
+                                  setPagamentoRows((prev) => {
+                                    const copy = [...prev];
+                                    copy[idx] = {
+                                      ...copy[idx],
+                                      forma: selected,
+                                    };
+                                    return copy;
+                                  });
+                                }}
+                              >
+                                {PAGAMENTO_OPTIONS.map((option) => {
+                                  const Icon = option.icon;
+                                  return (
+                                    <SelectItem
+                                      key={option.key}
+                                      startContent={
+                                        <Icon className="w-4 h-4" />
+                                      }
+                                    >
+                                      {option.label}
+                                    </SelectItem>
+                                  );
+                                })}
+                              </Select>
+
+                              <Input
+                                placeholder="R$ 0,00"
+                                value={row.valorInput}
+                                size="lg"
+                                startContent={
+                                  <CurrencyDollarIcon className="w-5 h-5" />
+                                }
+                                isDisabled={
+                                  Number(targetVenda.valor_restante) === 0
+                                }
+                                onChange={(e) => {
+                                  const masked = currencyMask(e.target.value);
+                                  setPagamentoRows((prev) => {
+                                    const copy = [...prev];
+                                    copy[idx] = {
+                                      ...copy[idx],
+                                      valorInput: masked,
+                                    };
+                                    return copy;
+                                  });
+                                }}
+                              />
+
+                              <div className="flex items-center gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="flat"
+                                  color="danger"
+                                  onPress={() => {
+                                    setPagamentoRows((prev) =>
+                                      prev.filter((_, i) => i !== idx)
+                                    );
+                                  }}
+                                >
+                                  Remover
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+
+                          <div className="flex items-center gap-2">
+                            <Button
+                              size="sm"
+                              variant="flat"
+                              onPress={() =>
+                                setPagamentoRows((prev) => [
+                                  ...prev,
+                                  {
+                                    forma: "Dinheiro",
+                                    valorInput: numberToCurrencyInput(0),
+                                  },
+                                ])
+                              }
+                            >
+                              + Adicionar Forma
+                            </Button>
+
+                            <Button
+                              size="sm"
+                              variant="flat"
+                              color="success"
+                              onPress={() => {
+                                if (!targetVenda) return;
+                                const restante =
+                                  Number(targetVenda.valor_restante) || 0;
+                                // se não houver linhas, adiciona uma
+                                if (pagamentoRows.length === 0) {
+                                  setPagamentoRows([
+                                    {
+                                      forma:
+                                        targetVenda.forma_pagamento ||
+                                        "Dinheiro",
+                                      valorInput:
+                                        numberToCurrencyInput(restante),
+                                    },
+                                  ]);
+                                } else {
+                                  // preenche a primeira linha com o restante
+                                  setPagamentoRows((prev) => {
+                                    const copy = [...prev];
+                                    copy[0] = {
+                                      ...copy[0],
+                                      valorInput:
+                                        numberToCurrencyInput(restante),
+                                    };
+                                    return copy;
+                                  });
+                                }
+                              }}
+                            >
+                              Preencher com Total
+                            </Button>
+
+                            <div className="ml-auto text-sm">
+                              Total: <strong>{fmt(totalPagamento)}</strong>
+                            </div>
+                          </div>
+
+                          <div className="text-xs text-default-500">
+                            {Number(targetVenda?.valor_restante) === 0
+                              ? "Esta venda já foi totalmente paga"
+                              : totalPagamento >
+                                  Number(targetVenda?.valor_restante || 0)
+                                ? "⚠️ Soma dos pagamentos excede o restante"
+                                : totalPagamento ===
+                                    Number(targetVenda?.valor_restante || 0)
+                                  ? "✅ Pagamento quitará a venda"
+                                  : totalPagamento > 0
+                                    ? `Restará: ${fmt(Number(targetVenda?.valor_restante || 0) - totalPagamento)}`
+                                    : `Máximo permitido: ${fmt(targetVenda?.valor_restante)}`}
+                          </div>
+                        </div>
+                      </div>
 
                       {/* Observações */}
                       <Textarea
@@ -4822,7 +5157,7 @@ export default function VendasPage() {
                       </div>
 
                       {/* Preview do Resultado */}
-                      {currencyToNumber(pagamentoValor) > 0 &&
+                      {totalPagamento > 0 &&
                         Number(targetVenda.valor_restante) > 0 && (
                           <Card className="border-success-200 bg-success-50">
                             <CardBody className="p-3">
@@ -4839,7 +5174,7 @@ export default function VendasPage() {
                                 <div className="flex justify-between">
                                   <span>+ Este pagamento:</span>
                                   <span className="font-medium text-primary">
-                                    {fmt(currencyToNumber(pagamentoValor))}
+                                    {fmt(totalPagamento)}
                                   </span>
                                 </div>
                                 <Divider className="my-1" />
@@ -4847,8 +5182,7 @@ export default function VendasPage() {
                                   <span>Total pago após:</span>
                                   <span className="text-success">
                                     {fmt(
-                                      targetVenda.valor_pago +
-                                        currencyToNumber(pagamentoValor)
+                                      targetVenda.valor_pago + totalPagamento
                                     )}
                                   </span>
                                 </div>
@@ -4857,7 +5191,7 @@ export default function VendasPage() {
                                   <span
                                     className={
                                       targetVenda.valor_restante -
-                                        currencyToNumber(pagamentoValor) ===
+                                        totalPagamento ===
                                       0
                                         ? "text-success font-semibold"
                                         : "text-warning"
@@ -4867,7 +5201,7 @@ export default function VendasPage() {
                                       Math.max(
                                         0,
                                         targetVenda.valor_restante -
-                                          currencyToNumber(pagamentoValor)
+                                          totalPagamento
                                       )
                                     )}
                                   </span>
@@ -4901,17 +5235,16 @@ export default function VendasPage() {
                   )
                 }
                 isDisabled={
-                  currencyToNumber(pagamentoValor) <= 0 ||
+                  totalPagamento <= 0 ||
                   Number(targetVenda?.valor_restante || 0) === 0 ||
-                  currencyToNumber(pagamentoValor) >
-                    Number(targetVenda?.valor_restante || 0)
+                  totalPagamento > Number(targetVenda?.valor_restante || 0)
                 }
               >
                 {uploadingComprovante
                   ? "Enviando comprovantes..."
                   : Number(targetVenda?.valor_restante || 0) === 0
                     ? "Venda Já Paga"
-                    : currencyToNumber(pagamentoValor) ===
+                    : totalPagamento ===
                         Number(targetVenda?.valor_restante || 0)
                       ? "Finalizar Venda"
                       : "Registrar Pagamento"}
@@ -4994,6 +5327,36 @@ export default function VendasPage() {
                     </div>
 
                     <Divider />
+
+                    {/* Aviso: Devolução de crédito ao cliente (quando aplicável) */}
+                    {Number(targetVenda?.credito_usado || 0) > 0 &&
+                      ((targetVenda as any)?.id_cliente ??
+                        (targetVenda as any)?.cliente_id) && (
+                        <div className="bg-info-50 dark:bg-info-100/10 border border-info-200 dark:border-info-200/20 rounded-lg p-3">
+                          <div className="flex items-start gap-3">
+                            <div className="flex-shrink-0">
+                              <CurrencyDollarIcon className="w-5 h-5 text-info-600 mt-0.5" />
+                            </div>
+                            <div className="flex-1">
+                              <p className="text-sm font-semibold text-info-800 dark:text-info-600">
+                                Crédito será devolvido ao cliente
+                              </p>
+                              <p className="text-sm text-info-700 dark:text-info-500">
+                                Ao excluir esta venda,{" "}
+                                <strong>
+                                  R${" "}
+                                  {Number(
+                                    targetVenda?.credito_usado || 0
+                                  ).toLocaleString("pt-BR", {
+                                    minimumFractionDigits: 2,
+                                  })}
+                                </strong>{" "}
+                                será devolvido ao saldo do cliente.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
 
                     {/* Alerta de ação irreversível */}
                     <div className="bg-danger-50 dark:bg-danger-100/10 border border-danger-200 dark:border-danger-200/20 rounded-lg p-3">

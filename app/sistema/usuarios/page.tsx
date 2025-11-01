@@ -117,6 +117,7 @@ export default function UsuariosPage() {
           ver_clientes: false,
           editar_clientes: false,
           deletar_clientes: false,
+          processar_creditos: false,
         },
         ordens: {
           criar_ordens: false,

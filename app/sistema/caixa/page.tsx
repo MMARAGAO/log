@@ -51,8 +51,22 @@ function getDateInBrazilTimezone(date?: string | Date): Date {
 }
 
 function getDateStringInBrazil(date?: string | Date): string {
-  const brazilDate = getDateInBrazilTimezone(date);
-  return brazilDate.toISOString().split("T")[0];
+  // Use Intl with timezone to extract date parts directly (avoids parsing
+  // issues caused by toLocaleString -> new Date conversions).
+  const d = date ? new Date(date) : new Date();
+  const formatter = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+
+  const parts = formatter.formatToParts(d);
+  const year = parts.find((p) => p.type === "year")?.value || "0000";
+  const month = parts.find((p) => p.type === "month")?.value || "01";
+  const day = parts.find((p) => p.type === "day")?.value || "01";
+
+  return `${year}-${month}-${day}`;
 }
 
 function getISOStringInBrazil(): string {
@@ -261,20 +275,59 @@ export default function CaixaPage() {
   // Carrega todas as vendas do dia
   async function loadAllVendas() {
     try {
-      const data = await fetchTable("vendas");
+      // Buscar vendas e pagamentos normalizados para agregar ao relatório do caixa
+      const [vendasData, pagamentosData] = await Promise.all([
+        fetchTable("vendas"),
+        fetchTable("vendas_pagamentos"),
+      ]);
+
       const hoje = getDateStringInBrazil();
 
-      // Considera apenas vendas pagas no mesmo dia do caixa (data_pagamento)
+      // Agrupa pagamentos por venda_id
+      const pagamentosPorVenda: Record<number, any[]> = {};
+      (pagamentosData || []).forEach((p: any) => {
+        const vid = Number(p.venda_id);
+        if (!pagamentosPorVenda[vid]) pagamentosPorVenda[vid] = [];
+        pagamentosPorVenda[vid].push(p);
+      });
+
+      // Considera vendas que possuem data_pagamento no mesmo dia do caixa.
+      // Inclui vendas que foram marcadas como 'devolvido' no dia (data_pagamento definida).
+      // Exclui apenas vendas explicitamente canceladas.
       const vendasHoje =
-        data?.filter((v: Venda) => {
-          if (v.status_pagamento !== "pago" || !v.data_pagamento) return false;
+        (vendasData || []).filter((v: Venda) => {
+          if (!v.data_pagamento) return false;
+          if (v.status_pagamento === "cancelado") return false;
           const dataPagamento = getDateStringInBrazil(v.data_pagamento);
           return dataPagamento === hoje;
         }) || [];
 
+      // Enriquecer cada venda com pagamento_detalhes (compatível com campo existente em vendas)
+      const vendasEnriquecidas = vendasHoje.map((v: any) => {
+        const pagamentos = pagamentosPorVenda[Number(v.id)] || [];
+        const detalhes: Record<string, number> = {};
+        pagamentos.forEach((p: any) => {
+          const key = (p.forma || p.forma_pagamento || "Outros").toString();
+          const amt = Number(p.valor || 0);
+          detalhes[key] = (detalhes[key] || 0) + amt;
+        });
+
+        // Se não houver registros normalizados, mantém o campo já existente em vendas
+        const pagamento_detalhes =
+          Object.keys(detalhes).length > 0
+            ? detalhes
+            : v.pagamento_detalhes || null;
+
+        return {
+          ...v,
+          itens: Array.isArray(v.itens) ? v.itens : v.itens || [],
+          pagamento_detalhes,
+        } as Venda;
+      });
+
       // Agrupa vendas por loja
       const porLoja: Record<number, Venda[]> = {};
-      vendasHoje.forEach((venda: Venda) => {
+      vendasEnriquecidas.forEach((venda: Venda) => {
         if (!porLoja[venda.loja_id]) {
           porLoja[venda.loja_id] = [];
         }
@@ -414,89 +467,119 @@ export default function CaixaPage() {
   }
 
   // Calcula resumo de vendas por loja
-  function getResumoVendas(lojaId: number): ResumoVendas {
-    const vendas = vendasPorLoja[lojaId] || [];
+  // Gera um resumo (ResumoVendas) a partir de uma lista de vendas.
+  function computeResumoFromList(vendas: Venda[]): ResumoVendas {
     const totalVendas = vendas.length;
+
     const valorTotalVendas = vendas.reduce((acc, v) => {
-      // Algumas vendas podem ter o campo valor_total ou total_liquido dependendo de onde foram salvas
       const val = (v as any).valor_total ?? (v as any).total_liquido ?? 0;
       return acc + Number(val || 0);
     }, 0);
 
+    // Inicializa acumuladores
+    let valorDinheiro = 0;
+    let valorPix = 0;
+    let valorCartaoDebito = 0;
+    let valorCartaoCredito = 0;
+    let valorTransferencia = 0;
+    let valorBoleto = 0;
+    let valorCrediario = 0;
+    let valorFiado = 0;
+
+    vendas.forEach((v) => {
+      const valorVenda = Number(
+        (v as any).valor_total ?? (v as any).total_liquido ?? 0
+      );
+
+      // Se existir detalhe de pagamento (pagamentos mistos), somar por chave
+      const detalhes: any = (v as any).pagamento_detalhes;
+      if (detalhes && typeof detalhes === "object") {
+        if (detalhes.dinheiro) valorDinheiro += Number(detalhes.dinheiro);
+        if (detalhes.pix) valorPix += Number(detalhes.pix);
+        if (detalhes.debito) valorCartaoDebito += Number(detalhes.debito);
+        if (detalhes.credito) valorCartaoCredito += Number(detalhes.credito);
+        if (detalhes.carteira_digital)
+          valorCartaoCredito += Number(detalhes.carteira_digital);
+
+        // Para tipos não cobertos pelos campos, distribuir o restante proporcionalmente
+        const somaDetalhes =
+          Number(detalhes.dinheiro || 0) +
+          Number(detalhes.pix || 0) +
+          Number(detalhes.debito || 0) +
+          Number(detalhes.credito || 0) +
+          Number(detalhes.carteira_digital || 0);
+
+        const restante = Math.max(0, valorVenda - somaDetalhes);
+        if (restante > 0) {
+          // Se a forma principal indicar 'Fiado' ou 'Crediário' etc, alocar lá
+          const forma = (v.forma_pagamento || "").toLowerCase();
+          if (forma.includes("fiad")) valorFiado += restante;
+          else if (forma.includes("credi")) valorCrediario += restante;
+          else if (forma.includes("boleto")) valorBoleto += restante;
+          else if (forma.includes("transfer")) valorTransferencia += restante;
+          else valorDinheiro += restante; // fallback
+        }
+      } else {
+        // Não há detalhes: usar forma_pagamento como fonte
+        const forma = (v.forma_pagamento || "").toLowerCase();
+        if (forma.includes("dinheiro")) valorDinheiro += valorVenda;
+        else if (forma.includes("pix")) valorPix += valorVenda;
+        else if (
+          forma.includes("débito") ||
+          forma.includes("debito") ||
+          forma.includes("cartão de débito")
+        )
+          valorCartaoDebito += valorVenda;
+        else if (
+          forma.includes("crédito") ||
+          forma.includes("credito") ||
+          forma.includes("cartão de crédito")
+        )
+          valorCartaoCredito += valorVenda;
+        else if (forma.includes("transfer")) valorTransferencia += valorVenda;
+        else if (forma.includes("boleto")) valorBoleto += valorVenda;
+        else if (forma.includes("credi")) valorCrediario += valorVenda;
+        else if (forma.includes("fiad")) valorFiado += valorVenda;
+        else valorDinheiro += valorVenda; // fallback
+      }
+    });
+
     return {
       totalVendas,
       valorTotalVendas,
-      valorDinheiro: vendas
-        .filter((v) => v.forma_pagamento === "Dinheiro")
-        .reduce(
-          (acc, v) =>
-            acc +
-            Number((v as any).valor_total ?? (v as any).total_liquido ?? 0),
-          0
-        ),
-      valorPix: vendas
-        .filter((v) => v.forma_pagamento === "PIX")
-        .reduce(
-          (acc, v) =>
-            acc +
-            Number((v as any).valor_total ?? (v as any).total_liquido ?? 0),
-          0
-        ),
-      valorCartaoDebito: vendas
-        .filter((v) => v.forma_pagamento === "Cartão de Débito")
-        .reduce(
-          (acc, v) =>
-            acc +
-            Number((v as any).valor_total ?? (v as any).total_liquido ?? 0),
-          0
-        ),
-      valorCartaoCredito: vendas
-        .filter((v) => v.forma_pagamento === "Cartão de Crédito")
-        .reduce(
-          (acc, v) =>
-            acc +
-            Number((v as any).valor_total ?? (v as any).total_liquido ?? 0),
-          0
-        ),
-      valorTransferencia: vendas
-        .filter((v) => v.forma_pagamento === "Transferência")
-        .reduce(
-          (acc, v) =>
-            acc +
-            Number((v as any).valor_total ?? (v as any).total_liquido ?? 0),
-          0
-        ),
-      valorBoleto: vendas
-        .filter((v) => v.forma_pagamento === "Boleto")
-        .reduce(
-          (acc, v) =>
-            acc +
-            Number((v as any).valor_total ?? (v as any).total_liquido ?? 0),
-          0
-        ),
-      valorCrediario: vendas
-        .filter((v) => v.forma_pagamento === "Crediário")
-        .reduce(
-          (acc, v) =>
-            acc +
-            Number((v as any).valor_total ?? (v as any).total_liquido ?? 0),
-          0
-        ),
-      valorFiado: vendas
-        .filter((v) => v.forma_pagamento === "Fiado")
-        .reduce(
-          (acc, v) =>
-            acc +
-            Number((v as any).valor_total ?? (v as any).total_liquido ?? 0),
-          0
-        ),
+      valorDinheiro,
+      valorPix,
+      valorCartaoDebito,
+      valorCartaoCredito,
+      valorTransferencia,
+      valorBoleto,
+      valorCrediario,
+      valorFiado,
       ticketMedio: totalVendas > 0 ? valorTotalVendas / totalVendas : 0,
     };
   }
 
+  function getResumoVendas(lojaId: number, dataCaixa?: string): ResumoVendas {
+    let vendas = vendasPorLoja[lojaId] || [];
+    if (dataCaixa) {
+      vendas = vendas.filter((v: Venda) => {
+        if (!v.data_pagamento) return false;
+        return getDateStringInBrazil(v.data_pagamento) === dataCaixa;
+      });
+    }
+    return computeResumoFromList(vendas);
+  }
+
   // Função auxiliar para obter vendas de uma loja
-  function getVendasDaLoja(lojaId: number): Venda[] {
-    return vendasPorLoja[lojaId] || [];
+  function getVendasDaLoja(lojaId: number, dataCaixa?: string): Venda[] {
+    let vendas = vendasPorLoja[lojaId] || [];
+    if (dataCaixa) {
+      vendas = vendas.filter((v: Venda) => {
+        if (!v.data_pagamento) return false;
+        return getDateStringInBrazil(v.data_pagamento) === dataCaixa;
+      });
+    }
+    return vendas;
   }
 
   // Função auxiliar para obter sangrias de um caixa
@@ -536,10 +619,15 @@ export default function CaixaPage() {
       const dataVendas = await fetchTable("vendas");
       const dataCaixa = getDateStringInBrazil(caixa.data_abertura);
 
+      // Considera apenas vendas que foram pagas no mesmo dia do caixa
+      // Buscar vendas do dia do caixa: qualquer venda que tenha data_pagamento
+      // coincidente com a data do caixa (inclui 'devolvido' se data_pagamento foi setada).
       const vendasDoCaixa =
         dataVendas?.filter((v: Venda) => {
-          const dataVenda = getDateStringInBrazil(v.data_venda);
-          return v.loja_id === caixa.loja_id && dataVenda === dataCaixa;
+          if (!v.data_pagamento) return false;
+          if (v.status_pagamento === "cancelado") return false;
+          const dataPagamento = getDateStringInBrazil(v.data_pagamento);
+          return v.loja_id === caixa.loja_id && dataPagamento === dataCaixa;
         }) || [];
 
       // Buscar sangrias do caixa
@@ -547,74 +635,8 @@ export default function CaixaPage() {
       const sangriasDoCaixa =
         dataSangrias?.filter((s: Sangria) => s.caixa_id === caixa.id) || [];
 
-      // Calcular resumo das vendas
-      const totalVendas = vendasDoCaixa.length;
-      const valorTotalVendas = vendasDoCaixa.reduce(
-        (acc: number, v: Venda) => acc + (v.valor_total || 0),
-        0
-      );
-
-      const resumo: ResumoVendas = {
-        totalVendas,
-        valorTotalVendas,
-        valorDinheiro: vendasDoCaixa
-          .filter((v: Venda) => v.forma_pagamento === "Dinheiro")
-          .reduce(
-            (acc: number, v: Venda) =>
-              acc + (v.valor_total ?? v.total_liquido ?? 0),
-            0
-          ),
-        valorPix: vendasDoCaixa
-          .filter((v: Venda) => v.forma_pagamento === "PIX")
-          .reduce(
-            (acc: number, v: Venda) =>
-              acc + (v.valor_total ?? v.total_liquido ?? 0),
-            0
-          ),
-        valorCartaoDebito: vendasDoCaixa
-          .filter((v: Venda) => v.forma_pagamento === "Cartão de Débito")
-          .reduce(
-            (acc: number, v: Venda) =>
-              acc + (v.valor_total ?? v.total_liquido ?? 0),
-            0
-          ),
-        valorCartaoCredito: vendasDoCaixa
-          .filter((v: Venda) => v.forma_pagamento === "Cartão de Crédito")
-          .reduce(
-            (acc: number, v: Venda) =>
-              acc + (v.valor_total ?? v.total_liquido ?? 0),
-            0
-          ),
-        valorTransferencia: vendasDoCaixa
-          .filter((v: Venda) => v.forma_pagamento === "Transferência")
-          .reduce(
-            (acc: number, v: Venda) =>
-              acc + (v.valor_total ?? v.total_liquido ?? 0),
-            0
-          ),
-        valorBoleto: vendasDoCaixa
-          .filter((v: Venda) => v.forma_pagamento === "Boleto")
-          .reduce(
-            (acc: number, v: Venda) =>
-              acc + (v.valor_total ?? v.total_liquido ?? 0),
-            0
-          ),
-        valorCrediario: vendasDoCaixa
-          .filter((v: Venda) => v.forma_pagamento === "Crediário")
-          .reduce(
-            (acc: number, v: Venda) =>
-              acc + (v.valor_total ?? v.total_liquido ?? 0),
-            0
-          ),
-        valorFiado: vendasDoCaixa
-          .filter((v: Venda) => v.forma_pagamento === "Fiado")
-          .reduce(
-            (acc: number, v: Venda) =>
-              acc + (v.valor_total ?? v.total_liquido ?? 0),
-            0
-          ),
-        ticketMedio: totalVendas > 0 ? valorTotalVendas / totalVendas : 0,
-      };
+      // Calcular resumo das vendas (suporta pagamentos mistos via pagamento_detalhes)
+      const resumo = computeResumoFromList(vendasDoCaixa);
 
       CaixaPDFGenerator.gerar({
         caixa,
@@ -935,7 +957,10 @@ export default function CaixaPage() {
                 key={caixa.id}
                 caixa={caixa}
                 loja={lojas.find((l) => l.id === caixa.loja_id)}
-                resumo={getResumoVendas(caixa.loja_id)}
+                resumo={getResumoVendas(
+                  caixa.loja_id,
+                  getDateStringInBrazil(caixa.data_abertura)
+                )}
                 sangrias={getSangriasDoCaixa(caixa.id)}
                 canCloseCaixa={canCloseCaixa}
                 onVerDetalhes={() => {
@@ -1065,7 +1090,10 @@ export default function CaixaPage() {
           }}
           caixa={caixaSelecionado}
           loja={lojas.find((l) => l.id === caixaSelecionado.loja_id)}
-          resumo={getResumoVendas(caixaSelecionado.loja_id)}
+          resumo={getResumoVendas(
+            caixaSelecionado.loja_id,
+            getDateStringInBrazil(caixaSelecionado.data_abertura)
+          )}
           formData={formFechar}
           onFormChange={(field, value) =>
             setFormFechar({ ...formFechar, [field]: value })
@@ -1085,8 +1113,14 @@ export default function CaixaPage() {
           }}
           caixa={caixaSelecionado}
           loja={lojas.find((l) => l.id === caixaSelecionado.loja_id)}
-          resumo={getResumoVendas(caixaSelecionado.loja_id)}
-          vendas={getVendasDaLoja(caixaSelecionado.loja_id)}
+          resumo={getResumoVendas(
+            caixaSelecionado.loja_id,
+            getDateStringInBrazil(caixaSelecionado.data_abertura)
+          )}
+          vendas={getVendasDaLoja(
+            caixaSelecionado.loja_id,
+            getDateStringInBrazil(caixaSelecionado.data_abertura)
+          )}
           sangrias={getSangriasDoCaixa(caixaSelecionado.id)}
           onCancelarSangria={handleAbrirCancelarSangria}
           canCancelSangria={canCancelSangria}

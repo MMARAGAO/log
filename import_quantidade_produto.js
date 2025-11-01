@@ -57,7 +57,7 @@ async function importarEstoque({ file = DEFAULT_FILE, increment = false }) {
     if (!ans) return false;
     const a = ans.trim();
     if (a === "r") return "replace";
-    if (a === "i") return "increment";
+    i;
     if (a === "R") {
       globalUpdateMode = "replaceAll";
       return "replace";

@@ -12,6 +12,7 @@ import {
   numberToCurrencyInput,
 } from "@/utils/maskInput";
 import { EstoqueStats, EstoqueCard } from "@/components/estoque";
+import * as XLSX from "xlsx";
 import {
   Card,
   CardBody,
@@ -1059,6 +1060,72 @@ export default function EstoquePage() {
     }
   }
 
+  // Exportar itens para arquivo Excel (.xlsx)
+  async function exportToExcel(itemsToExport?: EstoqueItem[]) {
+    try {
+      const source =
+        itemsToExport && itemsToExport.length > 0 ? itemsToExport : estoque;
+
+      if (!source || source.length === 0) {
+        alert("Nenhum produto no estoque para exportar.");
+        return;
+      }
+
+      // Cabeçalho: colunas fixas + uma coluna por loja
+      const lojaCols = lojas.map((l) => `Loja: ${l.nome}`);
+      const header = [
+        "ID",
+        "Descrição",
+        "Marca",
+        "Modelo",
+        "Observações",
+        "Preço Compra",
+        "Preço Venda",
+        "Lucro Unitário",
+        "Quantidade Total",
+        ...lojaCols,
+      ];
+
+      const aoa: any[] = [header];
+
+      for (const item of source) {
+        const row: any[] = [];
+        row.push(item.id);
+        row.push(item.descricao || "");
+        row.push(item.marca || "");
+        row.push(item.modelo || "");
+        row.push(item.observacoes || "");
+        row.push(item.preco_compra || 0);
+        row.push(item.preco_venda || 0);
+        row.push((item.preco_venda || 0) - (item.preco_compra || 0));
+        row.push(item.quantidade_total || 0);
+
+        // Quantidades por loja (na ordem de `lojas`)
+        for (const loja of lojas) {
+          const q =
+            item.estoque_lojas?.find((el) => el.loja_id === loja.id)
+              ?.quantidade || 0;
+          row.push(Number(q));
+        }
+
+        aoa.push(row);
+      }
+
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Estoque");
+
+      const now = new Date();
+      const fmt = now.toISOString().slice(0, 10).replace(/-/g, "");
+      const filename = `estoque_produtos_${fmt}.xlsx`;
+
+      XLSX.writeFile(wb, filename);
+    } catch (error) {
+      console.error("Erro ao gerar Excel:", error);
+      throw error;
+    }
+  }
+
   // Aplicar filtros e ordenação
   const filteredAndSortedEstoque = estoque
     .filter((item) => {
@@ -1290,6 +1357,7 @@ export default function EstoquePage() {
             Novo Item
           </Button>
         )}
+        {/* Botão para exportar estoque em Excel - visível para quem pode ver o estoque */}
       </div>
 
       {/* Estatísticas */}
@@ -1315,6 +1383,22 @@ export default function EstoquePage() {
           >
             Filtros
           </Button>
+          {canViewEstoque && (
+            <Button
+              color="secondary"
+              variant="flat"
+              startContent={<ChartBarIcon className="w-4 h-4" />}
+              onPress={() => {
+                exportToExcel(filteredAndSortedEstoque).catch((err) => {
+                  console.error("Erro ao exportar Excel:", err);
+                  alert("Erro ao gerar o arquivo Excel.");
+                });
+              }}
+              className="ml-2"
+            >
+              Exportar Excel
+            </Button>
+          )}
 
           {(searchTerm ||
             Object.values(filters).some(

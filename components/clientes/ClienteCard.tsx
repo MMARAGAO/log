@@ -24,6 +24,8 @@ import {
   MapPinIcon,
   TrashIcon,
   EllipsisVerticalIcon,
+  CurrencyDollarIcon,
+  ChartBarIcon,
 } from "@heroicons/react/24/solid";
 import { PencilSquareIcon } from "@heroicons/react/24/outline";
 import { cpfCnpjMask, phoneMask } from "@/utils/maskInput";
@@ -33,16 +35,22 @@ interface ClienteCardProps {
   cliente: Cliente;
   onEdit: (cliente: Cliente) => void;
   onDelete: (id: number) => void;
+  onManageCredit?: (cliente: Cliente) => void;
+  onViewHistory?: (cliente: Cliente) => void;
   canEdit: boolean;
   canDelete: boolean;
+  canProcessCredit?: boolean;
 }
 
 export default function ClienteCard({
   cliente,
   onEdit,
   onDelete,
+  onManageCredit,
+  onViewHistory,
   canEdit,
   canDelete,
+  canProcessCredit,
 }: ClienteCardProps) {
   // Função para obter nome resumido (primeiro e último)
   const getNomeResumido = (nomeCompleto: string) => {
@@ -119,6 +127,37 @@ export default function ClienteCard({
                             Editar
                           </DropdownItem>
                         ) : null}
+
+                        {/* Gerenciar crédito */}
+                        {canProcessCredit ? (
+                          <DropdownItem
+                            key="credit"
+                            onPress={() =>
+                              onManageCredit && onManageCredit(cliente)
+                            }
+                            startContent={
+                              <CurrencyDollarIcon className="w-5 h-5 text-amber-500" />
+                            }
+                          >
+                            Gerenciar Crédito
+                          </DropdownItem>
+                        ) : null}
+
+                        {/* Histórico de crédito */}
+                        {canProcessCredit ? (
+                          <DropdownItem
+                            key="history"
+                            onPress={() =>
+                              onViewHistory && onViewHistory(cliente)
+                            }
+                            startContent={
+                              <ChartBarIcon className="w-5 h-5 text-primary" />
+                            }
+                          >
+                            Histórico de Crédito
+                          </DropdownItem>
+                        ) : null}
+
                         {canDelete ? (
                           <DropdownItem
                             key="delete"

@@ -327,18 +327,92 @@ export class CaixaPDFGenerator {
       doc.line(20, yPos, 190, yPos);
       yPos += 10;
 
-      // Agrupar vendas por forma de pagamento
-      const vendasPorFormaPagamento: { [key: string]: Venda[] } = {};
+      // Cabeçalho da tabela
+      doc.setFillColor(220, 220, 220);
+      doc.rect(20, yPos, 170, 7, "F");
+
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(60, 60, 60);
+      doc.text("ID", 23, yPos + 4.5);
+      doc.text("Data/Hora", 40, yPos + 4.5);
+      doc.text("Cliente", 80, yPos + 4.5);
+      // Mantemos Status na coluna (ex.: pago, devolvido, fiado)
+      doc.text("Status", 140, yPos + 4.5);
+      doc.text("Valor", 185, yPos + 4.5, { align: "right" });
+
+      yPos += 9;
+
+      // Reintroduzimos a listagem agrupada por forma de pagamento. Vendas
+      // com múltiplas formas aparecem apenas sob o tópico "Múltiplo" com um
+      // resumo explícito dos tipos/valores (ex.: "Dinheiro R$150 • PIX R$150").
+      const mapPaymentKeyToLabel = (key: string): string => {
+        const k = (key || "").toLowerCase();
+        if (k === "dinheiro") return "Dinheiro";
+        if (k === "pix") return "PIX";
+        if (k === "debito" || k === "débito") return "Cartão de Débito";
+        if (k === "credito" || k === "crédito") return "Cartão de Crédito";
+        if (k === "carteira_digital") return "Carteira";
+        if (k === "transferencia" || k === "transferência" || k === "transfer")
+          return "Transferência";
+        if (k === "boleto") return "Boleto";
+        if (k === "crediario") return "Crediário";
+        if (k === "fiado") return "Fiado";
+        return key.charAt(0).toUpperCase() + key.slice(1);
+      };
+
+      type VendaEntry = {
+        venda: Venda;
+        resumo: string; // e.g. "Dinheiro R$150 • PIX R$150" ou "PIX R$300"
+        parts: { label: string; amt: number }[];
+      };
+
+      const vendasPorFormaPagamento: { [key: string]: VendaEntry[] } = {};
 
       vendas.forEach((venda) => {
-        const forma = venda.forma_pagamento || "Não especificado";
-        if (!vendasPorFormaPagamento[forma]) {
-          vendasPorFormaPagamento[forma] = [];
+        const detalhes: any = (venda as any).pagamento_detalhes;
+        const valorTotal = Number(
+          (venda as any).valor_total ?? (venda as any).total_liquido ?? 0
+        );
+
+        const parts: { label: string; amt: number }[] = [];
+        if (detalhes && typeof detalhes === "object") {
+          Object.entries(detalhes).forEach(([k, val]) => {
+            const amt = Number(val || 0);
+            if (amt > 0) parts.push({ label: mapPaymentKeyToLabel(k), amt });
+          });
         }
-        vendasPorFormaPagamento[forma].push(venda);
+
+        // Se há diferença entre valor_total e soma dos detalhes, consideramos
+        // o restante como forma principal (fallback)
+        const soma = parts.reduce((s, p) => s + p.amt, 0);
+        const restante = Math.max(0, valorTotal - soma);
+        if (restante > 0) {
+          parts.push({
+            label: venda.forma_pagamento || "Outros",
+            amt: restante,
+          });
+        }
+
+        const isMultiple = parts.length > 1;
+
+        const resumo = parts
+          .map(
+            (p) =>
+              `${p.label} ${p.amt.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`
+          )
+          .join(" • ");
+
+        const groupKey = isMultiple
+          ? "Múltiplo"
+          : parts[0]?.label || venda.forma_pagamento || "Não especificado";
+
+        if (!vendasPorFormaPagamento[groupKey])
+          vendasPorFormaPagamento[groupKey] = [];
+        vendasPorFormaPagamento[groupKey].push({ venda, resumo, parts });
       });
 
-      // Ordenar formas de pagamento (ordem fixa)
+      // Ordem fixa das formas (Múltiplo colocado por último)
       const ordemFormasPagamento = [
         "Dinheiro",
         "PIX",
@@ -352,6 +426,8 @@ export class CaixaPDFGenerator {
 
       const formasOrdenadas = Object.keys(vendasPorFormaPagamento).sort(
         (a, b) => {
+          if (a === "Múltiplo") return 1;
+          if (b === "Múltiplo") return -1;
           const indexA = ordemFormasPagamento.indexOf(a);
           const indexB = ordemFormasPagamento.indexOf(b);
           if (indexA === -1 && indexB === -1) return a.localeCompare(b);
@@ -361,7 +437,7 @@ export class CaixaPDFGenerator {
         }
       );
 
-      // Mapa de ícones para cada forma de pagamento
+      // Ícones para cada forma
       const iconesFormas: { [key: string]: string } = {
         Dinheiro: "$",
         PIX: ">",
@@ -371,10 +447,12 @@ export class CaixaPDFGenerator {
         Boleto: "=",
         Crediário: "+",
         Fiado: "*",
+        Múltiplo: "≡",
       };
 
-      formasOrdenadas.forEach((formaPagamento, formaIndex) => {
-        const vendasDaForma = vendasPorFormaPagamento[formaPagamento];
+      formasOrdenadas.forEach((formaPagamento) => {
+        const vendasDaForma = vendasPorFormaPagamento[formaPagamento] || [];
+        if (vendasDaForma.length === 0) return;
 
         // Verificar se precisa adicionar nova página
         if (yPos > 235) {
@@ -386,17 +464,16 @@ export class CaixaPDFGenerator {
         doc.setFillColor(...lightGray);
         doc.roundedRect(20, yPos - 3, 170, 12, 2, 2, "F");
 
-        // Ícone e título da forma de pagamento
         const icone = iconesFormas[formaPagamento] || "$";
         doc.setFontSize(12);
         doc.setFont("helvetica", "bold");
         doc.setTextColor(...primaryColor);
         doc.text(`[${icone}] ${formaPagamento}`, 25, yPos + 3);
 
-        // Quantidade e total no mesmo nível
+        // Quantidade e total
         const totalForma = vendasDaForma.reduce((acc, v) => {
           const valor = Number(
-            (v as any).valor_total ?? (v as any).total_liquido ?? 0
+            (v.venda as any).valor_total ?? (v.venda as any).total_liquido ?? 0
           );
           return acc + valor;
         }, 0);
@@ -431,25 +508,25 @@ export class CaixaPDFGenerator {
         doc.text("ID", 23, yPos + 4.5);
         doc.text("Data/Hora", 40, yPos + 4.5);
         doc.text("Cliente", 80, yPos + 4.5);
+        doc.text("Status", 140, yPos + 4.5);
         doc.text("Valor", 185, yPos + 4.5, { align: "right" });
 
         yPos += 9;
 
-        // Listar vendas
-        vendasDaForma.forEach((venda, index) => {
-          // Verificar se precisa adicionar nova página
+        vendasDaForma.forEach((entry, idx) => {
+          // Nova página se necessário
           if (yPos > 270) {
             doc.addPage();
             yPos = 20;
 
-            // Repetir info da forma de pagamento
+            // Repetir box
             doc.setFillColor(...lightGray);
             doc.roundedRect(20, yPos - 3, 170, 8, 2, 2, "F");
             doc.setFontSize(10);
             doc.setFont("helvetica", "bold");
             doc.setTextColor(...primaryColor);
             doc.text(
-              `[${icone}] ${formaPagamento} (continuacao)`,
+              `[${icone}] ${formaPagamento} (continuação)`,
               25,
               yPos + 3
             );
@@ -464,57 +541,147 @@ export class CaixaPDFGenerator {
             doc.text("ID", 23, yPos + 4.5);
             doc.text("Data/Hora", 40, yPos + 4.5);
             doc.text("Cliente", 80, yPos + 4.5);
+            doc.text("Status", 140, yPos + 4.5);
             doc.text("Valor", 185, yPos + 4.5, { align: "right" });
             yPos += 9;
           }
 
-          // Linha alternada
-          if (index % 2 === 0) {
-            doc.setFillColor(248, 248, 248);
-            doc.rect(20, yPos - 2, 170, 6.5, "F");
+          // Se o grupo é Múltiplo, listar uma linha por parte (tipo de pagamento)
+          if (formaPagamento === "Múltiplo") {
+            const cliente = entry.venda.cliente_nome || "Cliente avulso";
+            const dataFormatada = formatarDataHoraSimples(
+              entry.venda.data_pagamento || entry.venda.data_venda
+            );
+            const statusTexto = (
+              entry.venda.status_pagamento || "-"
+            ).toString();
+            const valorVendaTotal = Number(
+              (entry.venda as any).valor_total ??
+                (entry.venda as any).total_liquido ??
+                0
+            );
+
+            entry.parts.forEach((p, partIdx) => {
+              // zebra por linha global: use idx + partIdx
+              if ((idx + partIdx) % 2 === 0) {
+                doc.setFillColor(248, 248, 248);
+                doc.rect(20, yPos - 2, 170, 6.5, "F");
+              }
+
+              // ID (show only on first part to reduce clutter)
+              doc.setFont("helvetica", "bold");
+              doc.setTextColor(100, 100, 100);
+              doc.text(
+                partIdx === 0 ? `#${entry.venda.id}` : ``,
+                23,
+                yPos + 2.5
+              );
+
+              // Data
+              doc.setFont("helvetica", "normal");
+              doc.setTextColor(...textColor);
+              doc.text(dataFormatada, 40, yPos + 2.5);
+
+              // Cliente + tipo/valor desta parte
+              const clienteTexto =
+                partIdx === 0
+                  ? `${cliente} — ${p.label} ${p.amt.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`
+                  : `   ${p.label} ${p.amt.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`;
+              const clienteTruncado =
+                clienteTexto.length > 40
+                  ? clienteTexto.substring(0, 37) + "..."
+                  : clienteTexto;
+              doc.text(clienteTruncado, 80, yPos + 2.5);
+
+              // Status (only on first part)
+              doc.setFont("helvetica", "normal");
+              doc.setFontSize(8);
+              doc.setTextColor(80, 80, 80);
+              doc.text(partIdx === 0 ? statusTexto : "", 140, yPos + 2.5);
+              doc.setTextColor(...textColor);
+
+              // Valor desta parte
+              doc.setFont("helvetica", "bold");
+              doc.setTextColor(...successColor);
+              doc.text(
+                p.amt.toLocaleString("pt-BR", {
+                  style: "currency",
+                  currency: "BRL",
+                }),
+                185,
+                yPos + 2.5,
+                { align: "right" }
+              );
+
+              yPos += 6.5;
+            });
+
+            // após as partes, adicionar um espacinho
+            yPos += 2;
+          } else {
+            // Linha zebrada
+            if (idx % 2 === 0) {
+              doc.setFillColor(248, 248, 248);
+              doc.rect(20, yPos - 2, 170, 6.5, "F");
+            }
+
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(8);
+            doc.setTextColor(...textColor);
+
+            // ID
+            doc.setFont("helvetica", "bold");
+            doc.setTextColor(100, 100, 100);
+            doc.text(`#${entry.venda.id}`, 23, yPos + 2.5);
+
+            // Data
+            doc.setFont("helvetica", "normal");
+            doc.setTextColor(...textColor);
+            const dataFormatada = formatarDataHoraSimples(
+              entry.venda.data_pagamento || entry.venda.data_venda
+            );
+            doc.text(dataFormatada, 40, yPos + 2.5);
+
+            // Cliente
+            const clienteTexto = entry.venda.cliente_nome || "Cliente avulso";
+            const clienteTruncado =
+              clienteTexto.length > 40
+                ? clienteTexto.substring(0, 37) + "..."
+                : clienteTexto;
+            doc.text(clienteTruncado, 80, yPos + 2.5);
+
+            // Status
+            const statusTexto = (
+              entry.venda.status_pagamento || "-"
+            ).toString();
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(8);
+            doc.setTextColor(80, 80, 80);
+            doc.text(statusTexto, 140, yPos + 2.5);
+            doc.setTextColor(...textColor);
+
+            // Valor total da venda
+            doc.setFont("helvetica", "bold");
+            doc.setTextColor(...successColor);
+            const valorVenda = Number(
+              (entry.venda as any).valor_total ??
+                (entry.venda as any).total_liquido ??
+                0
+            );
+            doc.text(
+              valorVenda.toLocaleString("pt-BR", {
+                style: "currency",
+                currency: "BRL",
+              }),
+              185,
+              yPos + 2.5,
+              { align: "right" }
+            );
+
+            yPos += 6.5;
           }
-
-          doc.setFont("helvetica", "normal");
-          doc.setFontSize(8);
-          doc.setTextColor(...textColor);
-
-          // ID da venda
-          doc.setFont("helvetica", "bold");
-          doc.setTextColor(100, 100, 100);
-          doc.text(`#${venda.id}`, 23, yPos + 2.5);
-
-          // Data e hora
-          doc.setFont("helvetica", "normal");
-          doc.setTextColor(...textColor);
-          const dataFormatada = formatarDataHoraSimples(venda.data_venda);
-          doc.text(dataFormatada, 40, yPos + 2.5);
-
-          // Cliente (truncar se muito longo)
-          const cliente = venda.cliente_nome || "Cliente avulso";
-          const clienteTruncado =
-            cliente.length > 40 ? cliente.substring(0, 37) + "..." : cliente;
-          doc.text(clienteTruncado, 80, yPos + 2.5);
-
-          // Valor
-          doc.setFont("helvetica", "bold");
-          doc.setTextColor(...successColor);
-          const valorVenda = Number(
-            (venda as any).valor_total ?? (venda as any).total_liquido ?? 0
-          );
-          doc.text(
-            valorVenda.toLocaleString("pt-BR", {
-              style: "currency",
-              currency: "BRL",
-            }),
-            185,
-            yPos + 2.5,
-            { align: "right" }
-          );
-
-          yPos += 6.5;
         });
 
-        // Espaço entre formas de pagamento
         yPos += 5;
       });
     }

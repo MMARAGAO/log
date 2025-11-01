@@ -15,6 +15,7 @@ export interface PermissoesAcessos {
     ver_clientes: boolean;
     editar_clientes: boolean;
     deletar_clientes: boolean;
+    processar_creditos?: boolean;
   };
   ordens: {
     criar_ordens: boolean;
@@ -120,6 +121,7 @@ function defaultPermissoes(): { acessos: PermissoesAcessos } {
         ver_clientes: false,
         editar_clientes: false,
         deletar_clientes: false,
+        processar_creditos: false,
       },
       ordens: {
         criar_ordens: false,

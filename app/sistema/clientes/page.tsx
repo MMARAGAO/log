@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState, useMemo } from "react";
 import { fetchTable } from "@/lib/fetchTable";
+import { supabase } from "@/lib/supabaseClient";
 import { insertTable } from "@/lib/insertTable";
 import { updateTable } from "@/lib/updateTable";
 import { deleteTable } from "@/lib/deleteTable";
@@ -21,6 +22,13 @@ import {
   TableCell,
   Chip,
   Tooltip,
+  Modal,
+  ModalContent,
+  ModalHeader,
+  ModalBody,
+  ModalFooter,
+  Input,
+  Textarea,
 } from "@heroui/react";
 import {
   ExclamationTriangleIcon,
@@ -28,6 +36,8 @@ import {
   ListBulletIcon,
   PencilIcon,
   TrashIcon,
+  CurrencyDollarIcon,
+  ChartBarIcon,
 } from "@heroicons/react/24/solid";
 import DataHoje from "@/components/data";
 import {
@@ -43,6 +53,15 @@ const ITEMS_PER_PAGE = 12;
 
 export default function ClientesPage() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [creditModalOpen, setCreditModalOpen] = useState(false);
+  const [historyModalOpen, setHistoryModalOpen] = useState(false);
+  const [selectedClienteCredit, setSelectedClienteCredit] =
+    useState<Cliente | null>(null);
+  const [creditAmount, setCreditAmount] = useState<number>(0);
+  const [creditNote, setCreditNote] = useState<string>("");
+  const [creditType, setCreditType] = useState<"add" | "remove">("add");
+  const [creditLoading, setCreditLoading] = useState(false);
+  const [creditHistory, setCreditHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [busca, setBusca] = useState("");
@@ -60,6 +79,7 @@ export default function ClientesPage() {
   const canViewClientes = !!permClientes?.ver_clientes;
   const canCreateClientes = !!permClientes?.criar_clientes;
   const canEditClientes = !!permClientes?.editar_clientes;
+  const canProcessarCreditos = !!permClientes?.processar_creditos;
   const canDeleteClientes = !!permClientes?.deletar_clientes;
 
   useEffect(() => {
@@ -142,6 +162,231 @@ export default function ClientesPage() {
     setEditingCliente(cliente);
     setEditFotos(cliente.fotourl ?? []);
     onOpen();
+  }
+
+  // Abrir modal de gerenciar crédito
+  function handleManageCredit(cliente: Cliente) {
+    if (!canProcessarCreditos) {
+      alert("Você não possui permissão para gerenciar créditos de clientes.");
+      return;
+    }
+
+    setSelectedClienteCredit(cliente);
+    setCreditAmount(0);
+    setCreditNote("");
+    setCreditType("add");
+    setCreditModalOpen(true);
+  }
+
+  // Abrir modal de histórico de crédito
+  async function handleViewCreditHistory(cliente: Cliente) {
+    const tableCandidates = [
+      "clientes_creditos",
+      "clientes_credito",
+      "cliente_creditos",
+      "cliente_credito",
+    ];
+
+    let found: any[] = [];
+    let usedTable: string | null = null;
+
+    for (const t of tableCandidates) {
+      try {
+        const all = await fetchTable(t);
+        // Se a tabela existe e retornou algo (mesmo que vazio), vamos usar
+        if (Array.isArray(all)) {
+          found = all;
+          usedTable = t;
+          break;
+        }
+      } catch (err: any) {
+        // tabela pode não existir — tentar próximo nome
+        console.warn(
+          `Tentativa de buscar tabela ${t} falhou:`,
+          err?.message || err
+        );
+        continue;
+      }
+    }
+
+    if (!usedTable) {
+      console.warn(
+        "Nenhuma das tabelas de histórico de crédito foi encontrada."
+      );
+      setCreditHistory([]);
+      setSelectedClienteCredit(cliente);
+      setHistoryModalOpen(true);
+      return;
+    }
+
+    // Normalizar chave que referencia o cliente
+    const possibleKeys = [
+      "cliente_id",
+      "clienteId",
+      "clienteid",
+      "cliente",
+      "client_id",
+    ];
+    const keyMap: string | undefined =
+      found.length > 0
+        ? possibleKeys.find((k) =>
+            Object.prototype.hasOwnProperty.call(found[0], k)
+          )
+        : undefined;
+
+    // Filtrar registros que pertençam ao cliente (tenta usar a chave encontrada, senão compara qualquer campo)
+    const history = (found || []).filter((h: any) => {
+      if (keyMap && typeof h[keyMap] !== "undefined") {
+        // comparar números e strings
+        return String(h[keyMap]) === String(cliente.id);
+      }
+      // fallback: verificar se algum campo iguala o id
+      return Object.values(h).some((v) => String(v) === String(cliente.id));
+    });
+
+    // Ordenar por data decrescente (createdat, created_at, created)
+    history.sort((a: any, b: any) => {
+      const da = new Date(
+        a.createdat || a.created_at || a.created || 0
+      ).getTime();
+      const db = new Date(
+        b.createdat || b.created_at || b.created || 0
+      ).getTime();
+      return db - da;
+    });
+
+    // Normalizar campos usados na UI
+    // Tentar buscar usuários para mapear created_by -> nome
+    let usuariosMap: Record<string, string> = {};
+    try {
+      const usuarios = await fetchTable("usuarios");
+      if (Array.isArray(usuarios)) {
+        usuarios.forEach((u: any) => {
+          // a tabela usuarios pode usar 'id' ou 'uuid' como chave
+          const key = u.uuid ?? u.id ?? u.user_id ?? null;
+          const name = u.nome || u.name || u.nickname || u.email || null;
+          if (key && name) usuariosMap[String(key)] = name;
+        });
+      }
+    } catch (e) {
+      // não é crítico — apenas não mostraremos nomes
+      console.warn(
+        "Não foi possível buscar usuarios para mapear created_by:",
+        (e as any).message || e
+      );
+    }
+
+    const normalized = history.map((h: any) => ({
+      tipo: h.tipo || h.type || (Number(h.valor || 0) >= 0 ? "add" : "remove"),
+      valor: Number(h.valor || h.amount || 0),
+      observacao: h.observacao || h.observacao_text || h.note || null,
+      saldo_apos:
+        typeof h.saldo_apos !== "undefined"
+          ? Number(h.saldo_apos)
+          : typeof h.saldo !== "undefined"
+            ? Number(h.saldo)
+            : undefined,
+      createdat: h.createdat || h.created_at || h.created || null,
+      created_by: h.created_by ?? h.usuario_id ?? h.user_id ?? null,
+      created_by_name:
+        usuariosMap[String(h.created_by ?? h.usuario_id ?? h.user_id ?? "")] ??
+        null,
+      raw: h,
+    }));
+
+    setCreditHistory(normalized);
+    setSelectedClienteCredit(cliente);
+    setHistoryModalOpen(true);
+  }
+
+  // Submeter alteração de crédito (adicionar ou remover)
+  async function submitCreditChange() {
+    if (!selectedClienteCredit) return;
+    if (!canProcessarCreditos) {
+      alert("Você não possui permissão para alterar crédito do cliente.");
+      return;
+    }
+
+    const valor = Number(creditAmount) || 0;
+    if (valor <= 0) {
+      alert("Valor deve ser maior que zero.");
+      return;
+    }
+
+    try {
+      setCreditLoading(true);
+
+      const atual = Number(selectedClienteCredit.credito) || 0;
+      const novo = creditType === "add" ? atual + valor : atual - valor;
+
+      // Atualizar o cliente
+      await updateTable("clientes", selectedClienteCredit.id, {
+        credito: novo,
+      });
+
+      // Tentar inserir histórico — tentamos diretamente no Supabase para evitar
+      // que insertTable acrescente campos extras (ex: usuario_id) que possam
+      // quebrar inserts em tabelas simples criadas manualmente.
+      const tableCandidates = [
+        "clientes_creditos",
+        "clientes_credito",
+        "cliente_creditos",
+        "cliente_credito",
+      ];
+
+      const currentUserId = useAuthStore.getState().user?.id ?? null;
+
+      const payload = {
+        cliente_id: selectedClienteCredit.id,
+        tipo: creditType,
+        valor: valor,
+        observacao: creditNote || null,
+        saldo_apos: novo,
+        created_by: currentUserId,
+      };
+
+      let inserted = false;
+      for (const t of tableCandidates) {
+        try {
+          const { data: insData, error: insErr } = await supabase
+            .from(t)
+            .insert(payload)
+            .select();
+
+          if (insErr) {
+            console.warn(`Inserção em ${t} falhou:`, insErr.message || insErr);
+            continue;
+          }
+
+          console.log(`Histórico inserido em ${t}:`, insData);
+          inserted = true;
+          break;
+        } catch (e) {
+          console.warn(
+            `Erro ao tentar inserir em ${t}:`,
+            (e as any).message || e
+          );
+          continue;
+        }
+      }
+
+      if (!inserted) {
+        console.warn(
+          "Não foi possível inserir registro de histórico em nenhuma tabela candidata."
+        );
+      }
+
+      // Recarregar clientes para atualizar crédito exibido
+      await buscarClientes();
+
+      setCreditModalOpen(false);
+      setSelectedClienteCredit(null);
+    } catch (err) {
+      console.error("Erro ao atualizar crédito:", err);
+      alert("Erro ao atualizar crédito do cliente.");
+    } finally {
+      setCreditLoading(false);
+    }
   }
 
   // Handler para deletar cliente
@@ -347,8 +592,11 @@ export default function ClientesPage() {
               cliente={cliente}
               onEdit={handleEdit}
               onDelete={handleDelete}
+              onManageCredit={handleManageCredit}
+              onViewHistory={handleViewCreditHistory}
               canEdit={canEditClientes}
               canDelete={canDeleteClientes}
+              canProcessCredit={canProcessarCreditos}
             />
           ))}
 
@@ -439,6 +687,32 @@ export default function ClientesPage() {
                             </Button>
                           </Tooltip>
                         )}
+                        {/* Gerenciar crédito */}
+                        {canProcessarCreditos && (
+                          <Tooltip content="Gerenciar crédito">
+                            <Button
+                              isIconOnly
+                              size="sm"
+                              variant="light"
+                              onPress={() => handleManageCredit(cliente)}
+                            >
+                              <CurrencyDollarIcon className="w-4 h-4 text-amber-500" />
+                            </Button>
+                          </Tooltip>
+                        )}
+                        {/* Histórico de crédito */}
+                        {canProcessarCreditos && (
+                          <Tooltip content="Histórico de crédito">
+                            <Button
+                              isIconOnly
+                              size="sm"
+                              variant="light"
+                              onPress={() => handleViewCreditHistory(cliente)}
+                            >
+                              <ChartBarIcon className="w-4 h-4 text-primary" />
+                            </Button>
+                          </Tooltip>
+                        )}
                         {canDeleteClientes && (
                           <Tooltip content="Excluir" color="danger">
                             <Button
@@ -490,6 +764,171 @@ export default function ClientesPage() {
           editFotos={editFotos}
           onRemoveFoto={handleRemoveFoto}
         />
+      )}
+
+      {/* Modal de Gerenciar Crédito */}
+      {selectedClienteCredit && (
+        <Modal
+          isOpen={creditModalOpen}
+          onClose={() => {
+            setCreditModalOpen(false);
+            setSelectedClienteCredit(null);
+          }}
+          size="sm"
+        >
+          <ModalContent>
+            <ModalHeader>
+              Gerenciar Crédito - {selectedClienteCredit.nome}
+            </ModalHeader>
+            <ModalBody>
+              <div className="space-y-3">
+                <p className="text-sm">
+                  Crédito atual: R${" "}
+                  {Number(selectedClienteCredit.credito || 0).toLocaleString(
+                    "pt-BR",
+                    { minimumFractionDigits: 2 }
+                  )}
+                </p>
+
+                <div className="flex gap-2">
+                  <Button
+                    variant={creditType === "add" ? "solid" : "flat"}
+                    color={creditType === "add" ? "success" : "default"}
+                    onPress={() => setCreditType("add")}
+                  >
+                    Adicionar
+                  </Button>
+                  <Button
+                    variant={creditType === "remove" ? "solid" : "flat"}
+                    color={creditType === "remove" ? "danger" : "default"}
+                    onPress={() => setCreditType("remove")}
+                  >
+                    Remover
+                  </Button>
+                </div>
+
+                <Input
+                  label="Valor"
+                  type="number"
+                  step="0.01"
+                  value={creditAmount.toString()}
+                  onChange={(e) => setCreditAmount(Number(e.target.value) || 0)}
+                />
+
+                <Textarea
+                  label="Observação (opcional)"
+                  value={creditNote}
+                  onChange={(e) => setCreditNote(e.target.value)}
+                />
+              </div>
+            </ModalBody>
+            <ModalFooter>
+              <Button
+                variant="light"
+                onPress={() => {
+                  setCreditModalOpen(false);
+                  setSelectedClienteCredit(null);
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button
+                color="primary"
+                onPress={submitCreditChange}
+                isLoading={creditLoading}
+              >
+                Confirmar
+              </Button>
+            </ModalFooter>
+          </ModalContent>
+        </Modal>
+      )}
+
+      {/* Modal de Histórico de Crédito */}
+      {selectedClienteCredit && (
+        <Modal
+          isOpen={historyModalOpen}
+          onClose={() => {
+            setHistoryModalOpen(false);
+            setSelectedClienteCredit(null);
+            setCreditHistory([]);
+          }}
+          size="lg"
+        >
+          <ModalContent>
+            <ModalHeader>
+              Histórico de Crédito - {selectedClienteCredit.nome}
+            </ModalHeader>
+            <ModalBody>
+              {creditHistory.length === 0 ? (
+                <p className="text-sm text-default-500">
+                  Nenhum histórico encontrado para este cliente. (Se a tabela de
+                  histórico não existir, será necessário criá-la no banco de
+                  dados.)
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {creditHistory.map((h, idx) => (
+                    <div key={idx} className="p-3 border rounded">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="text-sm font-medium">
+                            {h.tipo === "add"
+                              ? "Crédito Adicionado"
+                              : "Crédito Removido"}
+                          </div>
+                          <div className="text-xs text-default-500">
+                            {new Date(
+                              h.createdat || h.created_at || Date.now()
+                            ).toLocaleString()}
+                          </div>
+                          {(h.created_by_name || h.created_by) && (
+                            <div className="text-xs text-default-500">
+                              por {h.created_by_name || h.created_by}
+                            </div>
+                          )}
+                        </div>
+                        <div className="text-right">
+                          <div className="font-semibold">
+                            R${" "}
+                            {Number(h.valor || 0).toLocaleString("pt-BR", {
+                              minimumFractionDigits: 2,
+                            })}
+                          </div>
+                          {typeof h.saldo_apos !== "undefined" && (
+                            <div className="text-xs text-default-500">
+                              Saldo: R${" "}
+                              {Number(h.saldo_apos).toLocaleString("pt-BR", {
+                                minimumFractionDigits: 2,
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      {h.observacao && (
+                        <div className="mt-2 text-sm text-default-500">
+                          {h.observacao}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </ModalBody>
+            <ModalFooter>
+              <Button
+                variant="light"
+                onPress={() => {
+                  setHistoryModalOpen(false);
+                  setSelectedClienteCredit(null);
+                  setCreditHistory([]);
+                }}
+              >
+                Fechar
+              </Button>
+            </ModalFooter>
+          </ModalContent>
+        </Modal>
       )}
     </div>
   );
