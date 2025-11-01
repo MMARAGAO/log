@@ -17,12 +17,12 @@ Garantir que **Caixa** e **Vendas** mostrem os **mesmos valores** quando filtrad
 
 O Caixa mostra **apenas o dinheiro que realmente ficou na loja**:
 
-| Situação | Status | Aparece no Caixa? | Motivo |
-|----------|--------|-------------------|---------|
-| ✅ Venda Paga | `pago` | **SIM** (valor total) | Dinheiro entrou |
-| ❌ Venda Pendente | `pendente` | **NÃO** | Dinheiro não entrou |
-| ✅ Devolução COM crédito | `devolvido` + `credito_aplicado=true` | **SIM** (valor total) | Dinheiro entrou e ficou (cliente pegou crédito) |
-| ❌ Devolução SEM crédito | `devolvido` + `credito_aplicado=false` | **NÃO** (subtrai valor devolvido) | Dinheiro entrou mas foi devolvido ao cliente |
+| Situação                 | Status                                 | Aparece no Caixa?                 | Motivo                                          |
+| ------------------------ | -------------------------------------- | --------------------------------- | ----------------------------------------------- |
+| ✅ Venda Paga            | `pago`                                 | **SIM** (valor total)             | Dinheiro entrou                                 |
+| ❌ Venda Pendente        | `pendente`                             | **NÃO**                           | Dinheiro não entrou                             |
+| ✅ Devolução COM crédito | `devolvido` + `credito_aplicado=true`  | **SIM** (valor total)             | Dinheiro entrou e ficou (cliente pegou crédito) |
+| ❌ Devolução SEM crédito | `devolvido` + `credito_aplicado=false` | **NÃO** (subtrai valor devolvido) | Dinheiro entrou mas foi devolvido ao cliente    |
 
 ---
 
@@ -34,11 +34,13 @@ Valor Total do Caixa = Σ(Vendas Pagas) + Σ(Devoluções COM Crédito) - Σ(Dev
 
 ### Detalhamento:
 
-1. **Vendas Pagas**: 
+1. **Vendas Pagas**:
+
    - Status: `status_pagamento = 'pago'`
    - Soma: `total_liquido` de todas vendas pagas
 
 2. **Devoluções COM Crédito**:
+
    - Status: `status_pagamento = 'devolvido'`
    - Filtro: `devolucoes.credito_aplicado = true`
    - **Soma**: `total_liquido` (valor completo da venda)
@@ -79,6 +81,7 @@ devolucoes.forEach(dev => {
 ### Exemplo 1: Devolução Total COM Crédito
 
 **Venda #149: BUZZ TECH**
+
 - Valor: R$ 90,00
 - Forma: PIX
 - Status: `devolvido` ✓
@@ -87,6 +90,7 @@ devolucoes.forEach(dev => {
 - Data Devolução: 30/10
 
 **No Caixa (29/10):**
+
 ```
 Vendas em PIX: +R$ 90,00 (conta normalmente)
 Devoluções a Subtrair: R$ 0,00 (tem crédito)
@@ -94,6 +98,7 @@ Total em PIX: +R$ 90,00 ✓
 ```
 
 **Cliente:**
+
 - Recebeu: R$ 90,00 em crédito
 - Pode usar em próximas compras
 - **Dinheiro ficou na loja**
@@ -103,12 +108,14 @@ Total em PIX: +R$ 90,00 ✓
 ### Exemplo 2: Devolução Parcial COM Crédito
 
 **Venda #135:**
+
 - Valor: R$ 1.540,00
 - Forma: Dinheiro
 - Status: `pago` ✓
 - Devolução: R$ 80,00 (parcial) com crédito
 
 **No Caixa:**
+
 ```
 Vendas em Dinheiro: R$ 1.540,00
 Devoluções a Subtrair: R$ 0,00 (tem crédito)
@@ -116,6 +123,7 @@ Total em Dinheiro: R$ 1.540,00 ✓
 ```
 
 **Cliente:**
+
 - Recebeu: R$ 80,00 em crédito
 - Pode usar em próximas compras
 
@@ -124,12 +132,14 @@ Total em Dinheiro: R$ 1.540,00 ✓
 ### Exemplo 3: Devolução SEM Crédito
 
 **Venda #237:**
+
 - Valor: R$ 570,00
 - Forma: PIX
 - Status: Pago ✓
 - Devolução: R$ 200,00 sem crédito
 
 **No Caixa:**
+
 ```
 Vendas em PIX: R$ 570,00
 Devoluções a Subtrair: R$ 200,00 (sem crédito)
@@ -137,10 +147,9 @@ Total em PIX: R$ 370,00 ✓
 ```
 
 **Cliente:**
+
 - Recebeu: R$ 200,00 de volta (estorno PIX)
 - Dinheiro saiu do caixa
-
-
 
 ---
 
@@ -149,6 +158,7 @@ Total em PIX: R$ 370,00 ✓
 ### Página de Vendas
 
 Quando ativar **"Filtrar por Data de Pagamento"**:
+
 - Filtra por: `data_pagamento`
 - Mostra: Vendas pagas no período
 - Faturamento: Σ(vendas pagas)
@@ -157,6 +167,7 @@ Quando ativar **"Filtrar por Data de Pagamento"**:
 ### Página de Caixa
 
 Automaticamente filtra por `data_pagamento`:
+
 - Mostra: Vendas pagas no período
 - Total: Σ(vendas pagas) - Σ(devoluções sem crédito)
 - Por forma: Ajustado com devoluções
@@ -170,6 +181,7 @@ Automaticamente filtra por `data_pagamento`:
 ## 🗃️ Tabelas Envolvidas
 
 ### vendas
+
 - `id`: ID da venda
 - `status_pagamento`: 'pendente' | 'pago' | 'devolvido'
 - `total_liquido`: Valor da venda
@@ -177,12 +189,14 @@ Automaticamente filtra por `data_pagamento`:
 - `data_pagamento`: Quando foi paga
 
 ### devolucoes
+
 - `id_venda`: Referência à venda
 - `valor_total_devolvido`: Quanto foi devolvido
 - `credito_aplicado`: true/false
 - `tipo_devolucao`: 'total' | 'parcial'
 
 ### vendas_pagamentos
+
 - `venda_id`: Referência à venda
 - `forma`: Forma de pagamento
 - `valor`: Valor pago
@@ -200,7 +214,9 @@ Automaticamente filtra por `data_pagamento`:
 ```typescript
 // 1. Filtrar vendas por status
 const vendasPagas = vendas.filter((v) => v.status_pagamento === "pago");
-const vendasDevolvidas = vendas.filter((v) => v.status_pagamento === "devolvido");
+const vendasDevolvidas = vendas.filter(
+  (v) => v.status_pagamento === "devolvido"
+);
 
 // 2. Separar devoluções COM e SEM crédito
 let vendasDevolvidasComCredito = [];
@@ -218,8 +234,8 @@ vendasDevolvidas.forEach((venda) => {
 });
 
 // 3. Calcular valor bruto (pagas + devolvidas com crédito)
-let valorBrutoVendas = 
-  soma(vendasPagas.total_liquido) + 
+let valorBrutoVendas =
+  soma(vendasPagas.total_liquido) +
   soma(vendasDevolvidasComCredito.total_liquido);
 
 // 4. Valor real do caixa
@@ -232,6 +248,7 @@ const totalVendas = vendasPagas.length + vendasDevolvidasComCredito.length;
 ## ✅ Validação
 
 ### Teste 1: Conferir Valores
+
 1. Abrir página **Vendas**
 2. Ativar "Filtrar por Data de Pagamento"
 3. Selecionar data: 31/10/2025
@@ -242,12 +259,14 @@ const totalVendas = vendasPagas.length + vendasDevolvidasComCredito.length;
 7. Conferir: **Total Vendas** = R$ X ✓
 
 ### Teste 2: Devolução COM Crédito
+
 1. Fazer venda de R$ 100 em dinheiro
 2. Receber pagamento
 3. Devolver R$ 30 COM crédito ao cliente
 4. **Caixa deve mostrar**: R$ 100 em dinheiro ✓
 
 ### Teste 3: Devolução SEM Crédito
+
 1. Fazer venda de R$ 200 em PIX
 2. Receber pagamento
 3. Devolver R$ 50 SEM crédito (estorno)
@@ -258,10 +277,12 @@ const totalVendas = vendasPagas.length + vendasDevolvidasComCredito.length;
 ## 🚨 Importante
 
 1. **Vendas Devolvidas (status = 'devolvido')**:
+
    - São vendas antigas antes da correção
    - Não aparecem no caixa (correto)
 
 2. **Devoluções Parciais**:
+
    - Venda mantém status "pago"
    - Apenas subtrai se for sem crédito
 
@@ -274,12 +295,14 @@ const totalVendas = vendasPagas.length + vendasDevolvidasComCredito.length;
 ## 📝 Histórico de Mudanças
 
 ### Versão 2.0 - 01/11/2025
+
 - ✅ Alinhamento com página de Vendas
 - ✅ Cálculo baseado em vendas pagas
 - ✅ Subtração correta de devoluções sem crédito
 - ✅ Ajuste das formas de pagamento
 
 ### Versão 1.0 - 01/11/2025
+
 - ❌ Excluía vendas devolvidas completamente (incorreto)
 - ❌ Não considerava devoluções parciais corretamente
 
@@ -288,6 +311,7 @@ const totalVendas = vendasPagas.length + vendasDevolvidasComCredito.length;
 ## 📞 Contato
 
 Para dúvidas sobre esta lógica, consulte:
+
 - `app/sistema/caixa/page.tsx` (linha ~484)
 - `app/sistema/vendas/page.tsx` (filtro de data)
 - Este arquivo: `LOGICA_CAIXA_DEVOLUCOES.md`

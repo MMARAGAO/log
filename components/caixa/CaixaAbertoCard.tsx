@@ -163,11 +163,13 @@ export default function CaixaAbertoCard({
             </p>
             {resumo.totalDevolvidas > 0 && (
               <p className="text-xs text-danger mt-1">
-                ⚠ {resumo.totalDevolvidas} devolvida{resumo.totalDevolvidas > 1 ? 's' : ''} ({" "}
+                ⚠ {resumo.totalDevolvidas} devolvida
+                {resumo.totalDevolvidas > 1 ? "s" : ""} ({" "}
                 {new Intl.NumberFormat("pt-BR", {
                   style: "currency",
                   currency: "BRL",
-                }).format(resumo.valorTotalDevolvido)})
+                }).format(resumo.valorTotalDevolvido)}
+                )
               </p>
             )}
           </div>

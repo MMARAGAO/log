@@ -485,16 +485,20 @@ export default function CaixaPage() {
   function computeResumoFromList(vendas: Venda[]): ResumoVendas {
     // Separar vendas por status
     const vendasPagas = vendas.filter((v) => v.status_pagamento === "pago");
-    const vendasDevolvidas = vendas.filter((v) => v.status_pagamento === "devolvido");
-    
+    const vendasDevolvidas = vendas.filter(
+      (v) => v.status_pagamento === "devolvido"
+    );
+
     // Processar devoluções para determinar quais contam no caixa
     let vendasDevolvidasComCredito: Venda[] = [];
     let vendasDevolvidasSemCredito: Venda[] = [];
     let valorDevolvidoSemCredito = 0;
 
     vendasDevolvidas.forEach((vendaDevolvida) => {
-      const devolucao = devolucoes.find((d: any) => d.id_venda === vendaDevolvida.id);
-      
+      const devolucao = devolucoes.find(
+        (d: any) => d.id_venda === vendaDevolvida.id
+      );
+
       if (devolucao) {
         if (devolucao.credito_aplicado) {
           // COM crédito: dinheiro ficou no caixa, conta normalmente
@@ -502,7 +506,9 @@ export default function CaixaPage() {
         } else {
           // SEM crédito: dinheiro foi devolvido, subtrai do caixa
           vendasDevolvidasSemCredito.push(vendaDevolvida);
-          valorDevolvidoSemCredito += Number(devolucao.valor_total_devolvido || 0);
+          valorDevolvidoSemCredito += Number(
+            devolucao.valor_total_devolvido || 0
+          );
         }
       }
     });
@@ -538,7 +544,7 @@ export default function CaixaPage() {
 
     // Processar formas de pagamento: vendas PAGAS + devolvidas COM crédito
     const vendasParaProcessar = [...vendasPagas, ...vendasDevolvidasComCredito];
-    
+
     vendasParaProcessar.forEach((v: Venda) => {
       const valorVenda = Number(
         (v as any).valor_total ?? (v as any).total_liquido ?? 0
@@ -599,12 +605,14 @@ export default function CaixaPage() {
 
     // Subtrair devoluções SEM crédito das formas de pagamento
     vendasDevolvidasSemCredito.forEach((vendaDevolvida: Venda) => {
-      const devolucao = devolucoes.find((d: any) => d.id_venda === vendaDevolvida.id);
-      
+      const devolucao = devolucoes.find(
+        (d: any) => d.id_venda === vendaDevolvida.id
+      );
+
       if (devolucao) {
         const valorDevolvido = Number(devolucao.valor_total_devolvido || 0);
         const forma = (vendaDevolvida.forma_pagamento || "").toLowerCase();
-        
+
         // Subtrair da forma de pagamento correspondente
         if (forma.includes("dinheiro")) valorDinheiro -= valorDevolvido;
         else if (forma.includes("pix")) valorPix -= valorDevolvido;
@@ -620,7 +628,8 @@ export default function CaixaPage() {
           forma.includes("cartão de crédito")
         )
           valorCartaoCredito -= valorDevolvido;
-        else if (forma.includes("transfer")) valorTransferencia -= valorDevolvido;
+        else if (forma.includes("transfer"))
+          valorTransferencia -= valorDevolvido;
         else if (forma.includes("boleto")) valorBoleto -= valorDevolvido;
         else if (forma.includes("credi")) valorCrediario -= valorDevolvido;
         else if (forma.includes("fiad")) valorFiado -= valorDevolvido;

@@ -251,19 +251,19 @@ export class CaixaPDFGenerator {
     if (resumo.totalDevolvidas > 0) {
       doc.setFillColor(254, 242, 242); // red-50
       doc.rect(20, yPos, 170, 22, "F");
-      
+
       doc.setFontSize(10);
       doc.setFont("helvetica", "bold");
       doc.setTextColor(...dangerColor);
       doc.text("⚠ DEVOLUÇÕES:", 25, yPos + 6);
-      
+
       doc.setFont("helvetica", "normal");
       doc.text(
-        `${resumo.totalDevolvidas} venda${resumo.totalDevolvidas > 1 ? 's' : ''} devolvida${resumo.totalDevolvidas > 1 ? 's' : ''}`,
+        `${resumo.totalDevolvidas} venda${resumo.totalDevolvidas > 1 ? "s" : ""} devolvida${resumo.totalDevolvidas > 1 ? "s" : ""}`,
         25,
         yPos + 12
       );
-      
+
       doc.setFont("helvetica", "bold");
       doc.text("Valor Total:", 110, yPos + 6);
       doc.setFont("helvetica", "normal");

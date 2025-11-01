@@ -1049,7 +1049,7 @@ export default function DevolucoesPagina() {
       // Apenas marca como devolvida se for devolução TOTAL
       const vendaId = targetDevolucao.id_venda;
       const vendaAtual = vendas.find((v) => v.id === vendaId);
-      
+
       if (targetDevolucao.tipo_devolucao === "total") {
         // Devolução total: marca a venda inteira como devolvida
         const { error: vendaError } = await supabase
@@ -1131,7 +1131,7 @@ export default function DevolucoesPagina() {
       // Sem crédito: reduz o valor da venda (desconta o produto devolvido)
       const vendaId = targetDevolucao.id_venda;
       const vendaAtual = vendas.find((v) => v.id === vendaId);
-      
+
       if (vendaAtual) {
         if (targetDevolucao.tipo_devolucao === "total") {
           // Devolução total sem crédito: marca como devolvida
@@ -1146,16 +1146,20 @@ export default function DevolucoesPagina() {
             .eq("id", vendaId);
 
           if (vendaError) {
-            console.error("[DEVOLUCAO] Erro ao atualizar venda total:", vendaError);
+            console.error(
+              "[DEVOLUCAO] Erro ao atualizar venda total:",
+              vendaError
+            );
             throw vendaError;
           }
         } else {
           // Devolução parcial sem crédito: reduz o valor da venda
           const novoValor = Math.max(
             0,
-            Number(vendaAtual.total_liquido || 0) - Number(targetDevolucao.valor_total_devolvido)
+            Number(vendaAtual.total_liquido || 0) -
+              Number(targetDevolucao.valor_total_devolvido)
           );
-          
+
           const marca = `[[devolucao_parcial_sem_credito:id=${targetDevolucao.id};valor_devolvido=${targetDevolucao.valor_total_devolvido};ts=${new Date().toISOString()}]]`;
           const novaObservacao = (vendaAtual.observacoes || "").trim()
             ? `${vendaAtual.observacoes}\n${marca}`
@@ -1171,7 +1175,10 @@ export default function DevolucoesPagina() {
             .eq("id", vendaId);
 
           if (vendaError) {
-            console.error("[DEVOLUCAO] Erro ao reduzir valor da venda:", vendaError);
+            console.error(
+              "[DEVOLUCAO] Erro ao reduzir valor da venda:",
+              vendaError
+            );
             throw vendaError;
           }
         }
@@ -1179,7 +1186,9 @@ export default function DevolucoesPagina() {
 
       await loadAll();
       concluirModal.onClose();
-      toast.success("Devolução concluída sem gerar crédito! Valor da venda ajustado.");
+      toast.success(
+        "Devolução concluída sem gerar crédito! Valor da venda ajustado."
+      );
     } catch (e: any) {
       console.error("Erro ao concluir devolução:", e);
       toast.error(

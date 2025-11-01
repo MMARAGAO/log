@@ -43,6 +43,7 @@ psql -h seu-host -U seu-usuario -d seu-banco -f db/migrations/20251101_backfill_
 ```
 
 **Vantagens:**
+
 - ✅ Mais rápido (executa diretamente no banco)
 - ✅ Cria índices para otimizar performance
 - ✅ Mostra estatísticas ao final
@@ -61,11 +62,11 @@ Execute via console do navegador ou Node.js:
 3. Cole o conteúdo do arquivo `scripts/backfill-data-pagamento.ts`
 4. Execute o dry run primeiro (simulação):
    ```javascript
-   await backfillDataPagamento(true)
+   await backfillDataPagamento(true);
    ```
 5. Se estiver tudo OK, execute de verdade:
    ```javascript
-   await backfillDataPagamento(false)
+   await backfillDataPagamento(false);
    ```
 
 #### Via Node.js
@@ -79,6 +80,7 @@ ts-node scripts/backfill-data-pagamento.ts
 ```
 
 **Vantagens:**
+
 - ✅ Pode simular antes (dry run)
 - ✅ Logs detalhados no console
 - ✅ Pode ser executado sem acesso direto ao banco
@@ -92,9 +94,9 @@ ts-node scripts/backfill-data-pagamento.ts
 
 ```sql
 -- Vendas pagas sem data_pagamento
-SELECT COUNT(*) 
-FROM vendas 
-WHERE status_pagamento = 'pago' 
+SELECT COUNT(*)
+FROM vendas
+WHERE status_pagamento = 'pago'
   AND data_pagamento IS NULL;
 
 -- Exemplo: 1.247 vendas
@@ -104,9 +106,9 @@ WHERE status_pagamento = 'pago'
 
 ```sql
 -- Todas as vendas pagas agora têm data_pagamento
-SELECT COUNT(*) 
-FROM vendas 
-WHERE status_pagamento = 'pago' 
+SELECT COUNT(*)
+FROM vendas
+WHERE status_pagamento = 'pago'
   AND data_pagamento IS NOT NULL;
 
 -- Resultado: 1.247 vendas (todas)
@@ -115,6 +117,7 @@ WHERE status_pagamento = 'pago'
 ### Verificação no Caixa
 
 Após o backfill:
+
 1. Abra a tela do Caixa
 2. Filtre por datas anteriores (ex: último mês)
 3. Verifique que vendas antigas agora aparecem nos relatórios
@@ -135,6 +138,7 @@ A data atribuída é uma **aproximação**:
 ### Impacto no Caixa
 
 Após o backfill:
+
 - Vendas antigas aparecerão no Caixa da data aproximada de pagamento
 - Isso pode causar diferenças em relatórios históricos
 - **Recomendação**: Execute em horário de baixo uso
@@ -147,8 +151,8 @@ Se precisar reverter:
 -- ATENÇÃO: Isso remove TODAS as data_pagamento, inclusive as novas!
 -- Use apenas se tiver backup
 
-UPDATE vendas 
-SET data_pagamento = NULL 
+UPDATE vendas
+SET data_pagamento = NULL
 WHERE status_pagamento = 'pago'
   AND updated_at < '2025-11-01'; -- Ajuste a data conforme necessário
 ```
@@ -175,7 +179,7 @@ psql teste_db -f db/migrations/20251101_backfill_data_pagamento.sql
 
 ```sql
 -- Buscar 10 vendas que serão atualizadas
-SELECT 
+SELECT
   id,
   status_pagamento,
   data_venda,
@@ -192,6 +196,7 @@ LIMIT 10;
 ### 3. Teste o Caixa
 
 Depois do backfill:
+
 1. Escolha uma data aleatória do passado
 2. Verifique o Caixa dessa data
 3. Compare com registros de vendas antigas
@@ -221,7 +226,7 @@ Depois do backfill:
 O campo `data_pagamento` ainda não existe no banco. Adicione primeiro:
 
 ```sql
-ALTER TABLE vendas 
+ALTER TABLE vendas
 ADD COLUMN IF NOT EXISTS data_pagamento TIMESTAMP WITH TIME ZONE;
 ```
 
@@ -230,7 +235,7 @@ ADD COLUMN IF NOT EXISTS data_pagamento TIMESTAMP WITH TIME ZONE;
 Use o script TypeScript que processa em lotes:
 
 ```javascript
-await backfillDataPagamento(false) // Processa em lotes de 100
+await backfillDataPagamento(false); // Processa em lotes de 100
 ```
 
 ### Datas inconsistentes

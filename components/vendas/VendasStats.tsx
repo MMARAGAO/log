@@ -17,7 +17,7 @@ export default function VendasStats({
 }: VendasStatsProps) {
   const hasDevolvidas = stats.devolvidas > 0;
   const gridCols = hasDevolvidas ? "lg:grid-cols-5" : "lg:grid-cols-4";
-  
+
   return (
     <div className={`grid gap-4 md:grid-cols-2 ${gridCols}`}>
       {/* Total de Vendas */}

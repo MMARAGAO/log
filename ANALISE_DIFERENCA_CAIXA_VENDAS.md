@@ -4,11 +4,11 @@
 
 **Período analisado:** 28/10/2025 a 31/10/2025
 
-| Fonte | Valor |
-|-------|-------|
+| Fonte                        | Valor        |
+| ---------------------------- | ------------ |
 | **Caixa** (soma dos valores) | R$ 19.398,25 |
-| **Vendas** (Faturamento) | R$ 18.310,75 |
-| **Diferença** | R$ 1.087,50 |
+| **Vendas** (Faturamento)     | R$ 18.310,75 |
+| **Diferença**                | R$ 1.087,50  |
 
 ---
 
@@ -17,10 +17,12 @@
 ### 1. **Vendas com Status "Devolvido"** ⚠️ (Causa Mais Provável)
 
 **Comportamento atual:**
+
 - ✅ **Caixa**: INCLUI vendas com status `devolvido` (se tiverem `data_pagamento` no período)
 - ❌ **Vendas**: NÃO inclui no faturamento (conta apenas status `pago`)
 
 **Código do Caixa:**
+
 ```typescript
 // app/sistema/caixa/page.tsx linha 298
 if (v.status_pagamento === "cancelado") return false;
@@ -28,6 +30,7 @@ if (v.status_pagamento === "cancelado") return false;
 ```
 
 **Código de Vendas:**
+
 ```typescript
 // app/sistema/vendas/page.tsx linha 977
 const faturamento = filtered
@@ -44,11 +47,13 @@ Se você tiver vendas devolvidas no período (com `data_pagamento` entre 28-31/1
 ### 2. **Vendas Antigas Pagas no Período**
 
 **Comportamento:**
+
 - Vendas criadas ANTES de 28/10 mas pagas DURANTE 28-31/10
 - Aparecem no Caixa (filtro por `data_pagamento`)
 - NÃO aparecem em Vendas (filtro por `data_venda`)
 
 **Exemplo:**
+
 ```
 Venda #123
 ├─ Criada em: 20/10/2025
@@ -70,6 +75,7 @@ Execute o script SQL de diagnóstico que criei:
 ```
 
 Esse script vai mostrar:
+
 1. ✅ Total de vendas em cada categoria
 2. ✅ Vendas antigas pagas no período
 3. ✅ Vendas devolvidas
@@ -99,10 +105,12 @@ const vendasHoje =
 ```
 
 **Vantagens:**
+
 - ✅ Números do Caixa e Vendas vão bater
 - ✅ Vendas devolvidas não inflam o faturamento
 
 **Desvantagens:**
+
 - ⚠️ Caixa não mostrará devoluções (pode ser o correto financeiramente)
 
 ---
@@ -120,10 +128,12 @@ const faturamento = filtered
 ```
 
 **Vantagens:**
+
 - ✅ Números vão bater
 - ✅ Mostra valor total processado (incluindo devoluções)
 
 **Desvantagens:**
+
 - ⚠️ Pode inflar artificialmente o faturamento se devoluções forem frequentes
 
 ---
@@ -131,40 +141,43 @@ const faturamento = filtered
 ### Opção 2: Criar Seção Separada no Faturamento
 
 Mostrar separadamente:
+
 - **Faturamento (pago)**: R$ 18.310,75
 - **Devoluções**: R$ 1.087,50
 - **Total Movimentado**: R$ 19.398,25
 
 **Implementação:**
+
 ```typescript
 const stats = useMemo(() => {
   const count = filtered.length;
   const faturamento = filtered
     .filter((v) => computeStatus(v) === "pago")
     .reduce((acc, v) => acc + (Number(v.total_liquido) || 0), 0);
-  
+
   const devolucoes = filtered
     .filter((v) => computeStatus(v) === "devolvido")
     .reduce((acc, v) => acc + (Number(v.total_liquido) || 0), 0);
-  
+
   const totalMovimentado = faturamento + devolucoes;
-  
+
   // ... resto do código
-  
-  return { 
-    count, 
-    faturamento, 
-    devolucoes, 
-    totalMovimentado, 
-    pagas, 
-    vencidas, 
-    receber, 
-    ticket 
+
+  return {
+    count,
+    faturamento,
+    devolucoes,
+    totalMovimentado,
+    pagas,
+    vencidas,
+    receber,
+    ticket,
   };
 }, [filtered]);
 ```
 
 **Vantagens:**
+
 - ✅ Transparência total
 - ✅ Usuário entende de onde vem cada valor
 - ✅ Caixa e Vendas podem ter valores diferentes mas justificados
@@ -176,11 +189,13 @@ const stats = useMemo(() => {
 **Para seu caso específico:**
 
 1. **Execute o script de diagnóstico** para confirmar:
+
    ```sql
    -- db/diagnostics/comparacao_caixa_vendas.sql
    ```
 
 2. **Se a diferença for de vendas devolvidas:**
+
    - Recomendo **Opção 1A** (excluir devolvidas do Caixa)
    - Ou **Opção 2** (mostrar separadamente)
 
