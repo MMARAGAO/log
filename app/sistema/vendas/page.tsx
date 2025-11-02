@@ -144,6 +144,7 @@ interface Venda {
   credito_usado?: number; // NOVO CAMPO
   total_liquido: number;
   forma_pagamento: string;
+  pagamento_detalhes?: Record<string, number> | null; // NOVO: Detalhamento de pagamentos (único ou múltiplo)
   status_pagamento: StatusPagamento;
   data_pagamento?: string | null; // NOVO: Data/hora em que foi marcado como pago
   fiado: boolean;
@@ -224,6 +225,36 @@ interface FilterState {
 }
 
 const PAGE_SIZE = 15;
+
+// Helper para normalizar forma de pagamento para chave consistente
+function normalizePaymentKey(forma: string): string {
+  const formaLower = forma.toLowerCase().trim();
+
+  if (formaLower === "dinheiro") return "dinheiro";
+  if (formaLower === "pix") return "pix";
+  if (
+    formaLower.includes("crédito") ||
+    formaLower.includes("credito") ||
+    formaLower === "cartão de crédito"
+  )
+    return "credito";
+  if (
+    formaLower.includes("débito") ||
+    formaLower.includes("debito") ||
+    formaLower === "cartão de débito"
+  )
+    return "debito";
+  if (formaLower === "carteira_digital" || formaLower === "carteira digital")
+    return "carteira_digital";
+  if (formaLower === "transferência" || formaLower === "transferencia")
+    return "transferencia";
+  if (formaLower === "boleto") return "boleto";
+  if (formaLower === "crediário" || formaLower === "crediario")
+    return "crediario";
+  if (formaLower === "fiado") return "fiado";
+
+  return formaLower;
+}
 
 // Helper para obter timestamp no horário do Brasil (UTC-3)
 function getISOStringInBrazil(): string {
@@ -1601,6 +1632,11 @@ export default function VendasPage() {
         credito_usado, // NOVO: salva o crédito usado
         total_liquido,
         forma_pagamento: formData.forma_pagamento,
+        pagamento_detalhes: {
+          // NOVO: Popular pagamento_detalhes com forma única de pagamento
+          [normalizePaymentKey(formData.forma_pagamento || "Dinheiro")]:
+            total_liquido,
+        },
         status_pagamento,
         data_pagamento:
           status_pagamento === "pago"
@@ -2246,12 +2282,25 @@ export default function VendasPage() {
         updateData.comprovantes = comprovantesAtualizados;
       }
 
+      // NOVO: Popular pagamento_detalhes baseado nas linhas de pagamento
+      const pagamentoDetalhes: Record<string, number> = {};
+      pagamentoRows.forEach((row) => {
+        const valor = currencyToNumber(row.valorInput);
+        const formaKey = normalizePaymentKey(row.forma || "Dinheiro");
+
+        // Somar se já existir a forma (caso improvável)
+        pagamentoDetalhes[formaKey] =
+          (pagamentoDetalhes[formaKey] || 0) + valor;
+      });
+
+      updateData.pagamento_detalhes = pagamentoDetalhes;
+
       // Se a forma de pagamento foi alterada, atualiza também
       // Atualiza forma_pagamento: se houver apenas uma linha, usa ela, caso contrário marca como 'Múltiplo'
       if (pagamentoRows.length === 1 && pagamentoRows[0].forma) {
         updateData.forma_pagamento = pagamentoRows[0].forma;
       } else if (pagamentoRows.length > 1) {
-        updateData.forma_pagamento = "Múltiplo";
+        updateData.forma_pagamento = "misto"; // Mudado de "Múltiplo" para "misto"
       }
 
       try {

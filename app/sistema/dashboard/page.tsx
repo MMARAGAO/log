@@ -174,6 +174,20 @@ export default function DashboardPage() {
       0
     );
 
+    // Cálculo do Lucro: Receita - Custo dos Produtos Vendidos
+    let custoTotal = 0;
+    vendasValidas.forEach((v) => {
+      v.itens.forEach((item: any) => {
+        // Busca o produto no estoque para obter o preço de compra
+        const produto = estoque.find((e) => e.id === item.id_estoque);
+        const precoCompra = Number(produto?.preco_compra || 0);
+        const quantidade = Number(item.quantidade || 0);
+        custoTotal += precoCompra * quantidade;
+      });
+    });
+    const lucro = receita - custoTotal;
+    const margemLucro = receita > 0 ? (lucro / receita) * 100 : 0;
+
     // A Receber = vendas com saldo pendente (valor_restante > 0)
     const aReceber = vendasValidas
       .filter((v) => Number(v.valor_restante || 0) > 0.01)
@@ -263,6 +277,9 @@ export default function DashboardPage() {
       totalLojas,
       totalFornecedores,
       fornecedoresAtivos,
+      lucro,
+      custoTotal,
+      margemLucro,
     };
   }, [
     vendasFiltradas,
@@ -273,26 +290,34 @@ export default function DashboardPage() {
     lojas,
     fornecedores,
     dateStart,
+    estoque,
   ]);
 
   const chartData = useMemo<ChartDataItem[]>(() => {
     const map = new Map<
       string,
-      { date: string; receita: number; vendas: number }
+      { date: string; receita: number; vendas: number; sortKey: string }
     >();
 
     vendasFiltradas.forEach((v) => {
-      const d = new Date(v.data_venda).toLocaleDateString("pt-BR", {
+      const dateObj = new Date(v.data_venda);
+      const d = dateObj.toLocaleDateString("pt-BR", {
         day: "2-digit",
         month: "2-digit",
       });
-      if (!map.has(d)) map.set(d, { date: d, receita: 0, vendas: 0 });
+      // Usa YYYY-MM-DD como chave de ordenação
+      const sortKey = dateObj.toISOString().slice(0, 10);
+
+      if (!map.has(d)) map.set(d, { date: d, receita: 0, vendas: 0, sortKey });
       const r = map.get(d)!;
       r.receita += Number(v.total_liquido || 0);
       r.vendas += 1;
     });
 
-    return Array.from(map.values());
+    // Ordena por data cronológica e remove a chave de ordenação
+    return Array.from(map.values())
+      .sort((a, b) => a.sortKey.localeCompare(b.sortKey))
+      .map(({ date, receita, vendas }) => ({ date, receita, vendas }));
   }, [vendasFiltradas]);
 
   const produtosVendidos = useMemo<ProdutoVendidoItem[]>(() => {
@@ -581,18 +606,18 @@ export default function DashboardPage() {
           subtitle={`Ticket: ${fmtBRL(kpis.ticket)}`}
         />
         <KPICard
+          title="Lucro no Período"
+          value={fmtBRL(kpis.lucro)}
+          icon={<ArrowTrendingUpIcon className="w-8 h-8" />}
+          color={kpis.lucro >= 0 ? "success" : "danger"}
+          subtitle={`Margem: ${kpis.margemLucro.toFixed(1)}% • Custo: ${fmtBRL(kpis.custoTotal)}`}
+        />
+        <KPICard
           title="A Receber"
           value={fmtBRL(kpis.aReceber)}
           icon={<ClockIcon className="w-8 h-8" />}
           color="warning"
           subtitle={`${kpis.fiadoVencido} fiados vencidos`}
-        />
-        <KPICard
-          title="Clientes Ativos"
-          value={kpis.clientesAtivos}
-          icon={<UsersIcon className="w-8 h-8" />}
-          color="primary"
-          subtitle={`${kpis.clientesNovos} novos no período`}
         />
       </div>
 
@@ -638,6 +663,67 @@ export default function DashboardPage() {
         <FormasPagamentoChart data={formasPagamento} />
         <OrdensStatus ordens={ordensFiltradasPeriodo} />
       </div>
+
+      {/* Card Detalhado de Lucro */}
+      <Card className="mb-6 bg-gradient-to-br from-success-50 to-success-100 border-2 border-success-200">
+        <CardBody>
+          <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-success-700">
+            💰 Análise de Rentabilidade
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="bg-white rounded-lg p-4 border border-success-200">
+              <p className="text-sm text-default-600 mb-1">Receita Líquida</p>
+              <p className="text-2xl font-bold text-success-700">
+                {fmtBRL(kpis.receita)}
+              </p>
+              <p className="text-xs text-default-500 mt-1">
+                {kpis.totalVendas} vendas
+              </p>
+            </div>
+            <div className="bg-white rounded-lg p-4 border border-warning-200">
+              <p className="text-sm text-default-600 mb-1">Custo Total</p>
+              <p className="text-2xl font-bold text-warning-700">
+                {fmtBRL(kpis.custoTotal)}
+              </p>
+              <p className="text-xs text-default-500 mt-1">Produtos vendidos</p>
+            </div>
+            <div className="bg-white rounded-lg p-4 border border-success-300">
+              <p className="text-sm text-default-600 mb-1">Lucro Bruto</p>
+              <p
+                className={`text-2xl font-bold ${kpis.lucro >= 0 ? "text-success-700" : "text-danger-700"}`}
+              >
+                {fmtBRL(kpis.lucro)}
+              </p>
+              <p className="text-xs text-default-500 mt-1">
+                {kpis.lucro >= 0 ? "Positivo" : "Negativo"}
+              </p>
+            </div>
+            <div className="bg-white rounded-lg p-4 border border-primary-200">
+              <p className="text-sm text-default-600 mb-1">Margem de Lucro</p>
+              <p
+                className={`text-2xl font-bold ${kpis.margemLucro >= 0 ? "text-primary-700" : "text-danger-700"}`}
+              >
+                {kpis.margemLucro.toFixed(1)}%
+              </p>
+              <p className="text-xs text-default-500 mt-1">
+                {kpis.margemLucro >= 30
+                  ? "Excelente"
+                  : kpis.margemLucro >= 15
+                    ? "Bom"
+                    : "Atenção"}
+              </p>
+            </div>
+          </div>
+          <div className="mt-4 p-3 bg-white rounded-lg border border-success-200">
+            <p className="text-xs text-default-600">
+              💡 <strong>Dica:</strong> A margem de lucro indica quanto da
+              receita se converte em lucro após descontar os custos dos
+              produtos. Uma margem saudável para o varejo de eletrônicos é
+              geralmente entre 15% e 30%.
+            </p>
+          </div>
+        </CardBody>
+      </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <EstoqueStatus info={estoqueInfo} />

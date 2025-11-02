@@ -277,21 +277,10 @@ export default function CaixaPage() {
   // Carrega todas as vendas do dia
   async function loadAllVendas() {
     try {
-      // Buscar vendas e pagamentos normalizados para agregar ao relatório do caixa
-      const [vendasData, pagamentosData] = await Promise.all([
-        fetchTable("vendas"),
-        fetchTable("vendas_pagamentos"),
-      ]);
+      // Buscar vendas (agora com pagamento_detalhes diretamente na tabela)
+      const vendasData = await fetchTable("vendas");
 
       const hoje = getDateStringInBrazil();
-
-      // Agrupa pagamentos por venda_id
-      const pagamentosPorVenda: Record<number, any[]> = {};
-      (pagamentosData || []).forEach((p: any) => {
-        const vid = Number(p.venda_id);
-        if (!pagamentosPorVenda[vid]) pagamentosPorVenda[vid] = [];
-        pagamentosPorVenda[vid].push(p);
-      });
 
       // Considera vendas que possuem data_pagamento no mesmo dia do caixa.
       // Inclui vendas que foram marcadas como 'devolvido' no dia (data_pagamento definida).
@@ -304,26 +293,13 @@ export default function CaixaPage() {
           return dataPagamento === hoje;
         }) || [];
 
-      // Enriquecer cada venda com pagamento_detalhes (compatível com campo existente em vendas)
+      // Normalizar estrutura de vendas
       const vendasEnriquecidas = vendasHoje.map((v: any) => {
-        const pagamentos = pagamentosPorVenda[Number(v.id)] || [];
-        const detalhes: Record<string, number> = {};
-        pagamentos.forEach((p: any) => {
-          const key = (p.forma || p.forma_pagamento || "Outros").toString();
-          const amt = Number(p.valor || 0);
-          detalhes[key] = (detalhes[key] || 0) + amt;
-        });
-
-        // Se não houver registros normalizados, mantém o campo já existente em vendas
-        const pagamento_detalhes =
-          Object.keys(detalhes).length > 0
-            ? detalhes
-            : v.pagamento_detalhes || null;
-
         return {
           ...v,
           itens: Array.isArray(v.itens) ? v.itens : v.itens || [],
-          pagamento_detalhes,
+          // pagamento_detalhes já vem do banco de dados como JSONB
+          pagamento_detalhes: v.pagamento_detalhes || null,
         } as Venda;
       });
 
@@ -552,34 +528,50 @@ export default function CaixaPage() {
 
       // Se existir detalhe de pagamento (pagamentos mistos), somar por chave
       const detalhes: any = (v as any).pagamento_detalhes;
-      if (detalhes && typeof detalhes === "object") {
-        if (detalhes.dinheiro) valorDinheiro += Number(detalhes.dinheiro);
-        if (detalhes.pix) valorPix += Number(detalhes.pix);
-        if (detalhes.debito) valorCartaoDebito += Number(detalhes.debito);
-        if (detalhes.credito) valorCartaoCredito += Number(detalhes.credito);
-        if (detalhes.carteira_digital)
-          valorCartaoCredito += Number(detalhes.carteira_digital);
+      if (
+        detalhes &&
+        typeof detalhes === "object" &&
+        Object.keys(detalhes).length > 0
+      ) {
+        // Somar cada forma de pagamento dos detalhes
+        Object.entries(detalhes).forEach(([key, val]) => {
+          const valor = Number(val || 0);
+          if (valor <= 0) return;
 
-        // Para tipos não cobertos pelos campos, distribuir o restante proporcionalmente
-        const somaDetalhes =
-          Number(detalhes.dinheiro || 0) +
-          Number(detalhes.pix || 0) +
-          Number(detalhes.debito || 0) +
-          Number(detalhes.credito || 0) +
-          Number(detalhes.carteira_digital || 0);
+          const k = key.toLowerCase();
+          if (k === "dinheiro") valorDinheiro += valor;
+          else if (k === "pix") valorPix += valor;
+          else if (k === "debito" || k === "débito") valorCartaoDebito += valor;
+          else if (k === "credito" || k === "crédito")
+            valorCartaoCredito += valor;
+          else if (k === "carteira_digital") valorCartaoCredito += valor;
+          else if (k === "transferencia" || k === "transferência")
+            valorTransferencia += valor;
+          else if (k === "boleto") valorBoleto += valor;
+          else if (k === "crediario" || k === "crediário")
+            valorCrediario += valor;
+          else if (k === "fiado") valorFiado += valor;
+          else valorDinheiro += valor; // fallback para formas desconhecidas
+        });
 
-        const restante = Math.max(0, valorVenda - somaDetalhes);
-        if (restante > 0) {
-          // Se a forma principal indicar 'Fiado' ou 'Crediário' etc, alocar lá
+        // Verificar se há diferença (tolerância de 1 centavo)
+        const somaDetalhes = Object.values(detalhes).reduce(
+          (acc: number, val) => acc + Number(val || 0),
+          0
+        );
+        const restante = valorVenda - somaDetalhes;
+        if (Math.abs(restante) > 0.01) {
+          // Se há diferença significativa, adicionar/subtrair da forma principal
           const forma = (v.forma_pagamento || "").toLowerCase();
           if (forma.includes("fiad")) valorFiado += restante;
           else if (forma.includes("credi")) valorCrediario += restante;
           else if (forma.includes("boleto")) valorBoleto += restante;
           else if (forma.includes("transfer")) valorTransferencia += restante;
+          else if (forma.includes("pix")) valorPix += restante;
           else valorDinheiro += restante; // fallback
         }
       } else {
-        // Não há detalhes: usar forma_pagamento como fonte
+        // FALLBACK: Não há detalhes, usar forma_pagamento (vendas antigas)
         const forma = (v.forma_pagamento || "").toLowerCase();
         if (forma.includes("dinheiro")) valorDinheiro += valorVenda;
         else if (forma.includes("pix")) valorPix += valorVenda;

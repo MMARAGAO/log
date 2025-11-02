@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState, useMemo } from "react";
 import { fetchTable } from "@/lib/fetchTable";
@@ -240,7 +240,8 @@ export default function RmaPage() {
           )
         `
           )
-          .gt("quantidade", 0)
+          // REMOVIDO: .gt("quantidade", 0) - Buscar TODOS os produtos, mesmo com estoque zerado
+          // O filtro de estoque > 0 será aplicado apenas na exibição (filteredProdutos)
           .range(start, start + pageSize - 1);
 
         if (error) {
@@ -1296,22 +1297,21 @@ export default function RmaPage() {
     console.log("🔍 Filtrando produtos...");
     console.log("📦 Total de produtos disponíveis:", produtos.length);
 
-    // MODIFICADO: Filtrar apenas produtos com estoque disponível
-    const produtosComEstoque = produtos.filter((produto) => {
-      const quantidade = Number(produto.quantidade) || 0;
-      return quantidade > 0;
-    });
-
-    console.log("✅ Produtos com estoque > 0:", produtosComEstoque.length);
-    console.log("📋 Lista de produtos com estoque:", produtosComEstoque);
-
+    // Se NÃO estiver pesquisando, mostrar apenas produtos com estoque
     if (!productSearchTerm) {
+      const produtosComEstoque = produtos.filter((produto) => {
+        const quantidade = Number(produto.quantidade) || 0;
+        return quantidade > 0;
+      });
+      console.log("✅ Produtos com estoque > 0:", produtosComEstoque.length);
       const resultado = produtosComEstoque.slice(0, 16);
       console.log("📌 Retornando primeiros 16 produtos:", resultado.length);
       return resultado;
     }
 
-    const resultado = produtosComEstoque.filter(
+    // Se ESTIVER pesquisando, buscar em TODOS os produtos (incluindo sem estoque)
+    // Isso permite encontrar produtos para RMA mesmo se estoque zerado
+    const resultado = produtos.filter(
       (produto) =>
         produto.descricao
           ?.toLowerCase()
@@ -1330,7 +1330,7 @@ export default function RmaPage() {
     console.log(
       `🔎 Busca por "${productSearchTerm}":`,
       resultado.length,
-      "produtos"
+      "produtos encontrados (incluindo sem estoque)"
     );
     return resultado;
   }, [produtos, productSearchTerm]);

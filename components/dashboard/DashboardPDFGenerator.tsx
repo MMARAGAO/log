@@ -75,17 +75,24 @@ export class DashboardPDFGenerator {
         formatCurrency(kpis.descontos),
       ],
       [
+        "Lucro no Período",
+        formatCurrency(kpis.lucro),
+        "Margem de Lucro",
+        `${kpis.margemLucro.toFixed(1)}%`,
+      ],
+      [
+        "Custo Total",
+        formatCurrency(kpis.custoTotal),
         "Ticket Médio",
         formatCurrency(kpis.ticket),
-        "A Receber",
-        formatCurrency(kpis.aReceber),
       ],
       [
         "Valor Pago",
         formatCurrency(kpis.valorPago),
-        "Fiados Vencidos",
-        kpis.fiadoVencido.toString(),
+        "A Receber",
+        formatCurrency(kpis.aReceber),
       ],
+      ["Fiados Vencidos", kpis.fiadoVencido.toString(), "", ""],
     ];
 
     autoTable(doc, {

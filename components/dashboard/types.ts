@@ -121,6 +121,9 @@ export interface KPIData {
   totalLojas: number;
   totalFornecedores: number;
   fornecedoresAtivos: number;
+  lucro: number;
+  custoTotal: number;
+  margemLucro: number;
 }
 
 export interface ChartDataItem {

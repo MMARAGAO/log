@@ -384,9 +384,9 @@ export class CaixaPDFGenerator {
 
       yPos += 9;
 
-      // Reintroduzimos a listagem agrupada por forma de pagamento. Vendas
-      // com múltiplas formas aparecem apenas sob o tópico "Múltiplo" com um
-      // resumo explícito dos tipos/valores (ex.: "Dinheiro R$150 • PIX R$150").
+      // Listagem agrupada por forma de pagamento. Vendas com múltiplas formas
+      // são divididas e cada parte aparece na sua categoria correspondente
+      // (ex.: uma venda com Dinheiro R$150 + PIX R$150 aparece em ambas seções).
       const mapPaymentKeyToLabel = (key: string): string => {
         const k = (key || "").toLowerCase();
         if (k === "dinheiro") return "Dinheiro";
@@ -406,6 +406,7 @@ export class CaixaPDFGenerator {
         venda: Venda;
         resumo: string; // e.g. "Dinheiro R$150 • PIX R$150" ou "PIX R$300"
         parts: { label: string; amt: number }[];
+        valorParcial: number; // Valor da parte específica desta forma
       };
 
       const vendasPorFormaPagamento: { [key: string]: VendaEntry[] } = {};
@@ -417,22 +418,43 @@ export class CaixaPDFGenerator {
         );
 
         const parts: { label: string; amt: number }[] = [];
-        if (detalhes && typeof detalhes === "object") {
+        let temDetalhes = false;
+
+        // Se tem pagamento_detalhes (vendas novas), usar ele
+        if (
+          detalhes &&
+          typeof detalhes === "object" &&
+          Object.keys(detalhes).length > 0
+        ) {
+          temDetalhes = true;
           Object.entries(detalhes).forEach(([k, val]) => {
             const amt = Number(val || 0);
-            if (amt > 0) parts.push({ label: mapPaymentKeyToLabel(k), amt });
+            if (amt > 0) {
+              const label = mapPaymentKeyToLabel(k);
+              parts.push({ label, amt });
+            }
+          });
+        } else {
+          // FALLBACK: Se não tem pagamento_detalhes (vendas antigas), usar forma_pagamento
+          const formaPrincipal = venda.forma_pagamento || "Outros";
+          parts.push({
+            label: mapPaymentKeyToLabel(formaPrincipal.toLowerCase()),
+            amt: valorTotal,
           });
         }
 
-        // Se há diferença entre valor_total e soma dos detalhes, consideramos
-        // o restante como forma principal (fallback)
-        const soma = parts.reduce((s, p) => s + p.amt, 0);
-        const restante = Math.max(0, valorTotal - soma);
-        if (restante > 0) {
-          parts.push({
-            label: venda.forma_pagamento || "Outros",
-            amt: restante,
-          });
+        // APENAS para vendas SEM pagamento_detalhes (antigas):
+        // Se há diferença entre valor_total e soma dos parts, adicionar restante
+        if (!temDetalhes) {
+          const soma = parts.reduce((s, p) => s + p.amt, 0);
+          const restante = Math.max(0, valorTotal - soma);
+          if (restante > 0.01) {
+            // Tolerância de 1 centavo
+            parts.push({
+              label: venda.forma_pagamento || "Outros",
+              amt: restante,
+            });
+          }
         }
 
         const isMultiple = parts.length > 1;
@@ -444,16 +466,37 @@ export class CaixaPDFGenerator {
           )
           .join(" • ");
 
-        const groupKey = isMultiple
-          ? "Múltiplo"
-          : parts[0]?.label || venda.forma_pagamento || "Não especificado";
-
-        if (!vendasPorFormaPagamento[groupKey])
-          vendasPorFormaPagamento[groupKey] = [];
-        vendasPorFormaPagamento[groupKey].push({ venda, resumo, parts });
+        // MUDANÇA: Ao invés de agrupar múltiplos em "Múltiplo",
+        // adiciona cada parte na sua categoria correspondente
+        if (isMultiple) {
+          // Para vendas com múltiplas formas, adicionar uma entrada para CADA forma
+          parts.forEach((part) => {
+            const groupKey = part.label;
+            if (!vendasPorFormaPagamento[groupKey])
+              vendasPorFormaPagamento[groupKey] = [];
+            vendasPorFormaPagamento[groupKey].push({
+              venda,
+              resumo,
+              parts,
+              valorParcial: part.amt,
+            });
+          });
+        } else {
+          // Venda com forma única
+          const groupKey =
+            parts[0]?.label || venda.forma_pagamento || "Não especificado";
+          if (!vendasPorFormaPagamento[groupKey])
+            vendasPorFormaPagamento[groupKey] = [];
+          vendasPorFormaPagamento[groupKey].push({
+            venda,
+            resumo,
+            parts,
+            valorParcial: valorTotal,
+          });
+        }
       });
 
-      // Ordem fixa das formas (Múltiplo colocado por último)
+      // Ordem fixa das formas de pagamento
       const ordemFormasPagamento = [
         "Dinheiro",
         "PIX",
@@ -467,8 +510,6 @@ export class CaixaPDFGenerator {
 
       const formasOrdenadas = Object.keys(vendasPorFormaPagamento).sort(
         (a, b) => {
-          if (a === "Múltiplo") return 1;
-          if (b === "Múltiplo") return -1;
           const indexA = ordemFormasPagamento.indexOf(a);
           const indexB = ordemFormasPagamento.indexOf(b);
           if (indexA === -1 && indexB === -1) return a.localeCompare(b);
@@ -488,7 +529,6 @@ export class CaixaPDFGenerator {
         Boleto: "=",
         Crediário: "+",
         Fiado: "*",
-        Múltiplo: "≡",
       };
 
       formasOrdenadas.forEach((formaPagamento) => {
@@ -512,17 +552,19 @@ export class CaixaPDFGenerator {
         doc.text(`[${icone}] ${formaPagamento}`, 25, yPos + 3);
 
         // Quantidade e total
+        // Usa valorParcial para somar apenas a parte correspondente a esta forma
         const totalForma = vendasDaForma.reduce((acc, v) => {
-          const valor = Number(
-            (v.venda as any).valor_total ?? (v.venda as any).total_liquido ?? 0
-          );
-          return acc + valor;
+          return acc + v.valorParcial;
         }, 0);
+
+        // Conta vendas únicas (não duplica vendas com múltiplas formas)
+        const vendasUnicas = new Set(vendasDaForma.map((v) => v.venda.id)).size;
+
         doc.setFontSize(9);
         doc.setFont("helvetica", "normal");
         doc.setTextColor(...textColor);
 
-        const infoTexto = `${vendasDaForma.length} venda(s)`;
+        const infoTexto = `${vendasUnicas} venda(s)`;
         doc.text(infoTexto, 25, yPos + 8);
 
         doc.setFont("helvetica", "bold");
@@ -587,140 +629,79 @@ export class CaixaPDFGenerator {
             yPos += 9;
           }
 
-          // Se o grupo é Múltiplo, listar uma linha por parte (tipo de pagamento)
-          if (formaPagamento === "Múltiplo") {
-            const cliente = entry.venda.cliente_nome || "Cliente avulso";
-            const dataFormatada = formatarDataHoraSimples(
-              entry.venda.data_pagamento || entry.venda.data_venda
-            );
-            const statusTexto = (
-              entry.venda.status_pagamento || "-"
-            ).toString();
-            const valorVendaTotal = Number(
-              (entry.venda as any).valor_total ??
-                (entry.venda as any).total_liquido ??
-                0
-            );
+          // Verificar se é pagamento múltiplo
+          const isMultiple = entry.parts.length > 1;
 
-            entry.parts.forEach((p, partIdx) => {
-              // zebra por linha global: use idx + partIdx
-              if ((idx + partIdx) % 2 === 0) {
-                doc.setFillColor(248, 248, 248);
-                doc.rect(20, yPos - 2, 170, 6.5, "F");
-              }
-
-              // ID (show only on first part to reduce clutter)
-              doc.setFont("helvetica", "bold");
-              doc.setTextColor(100, 100, 100);
-              doc.text(
-                partIdx === 0 ? `#${entry.venda.id}` : ``,
-                23,
-                yPos + 2.5
-              );
-
-              // Data
-              doc.setFont("helvetica", "normal");
-              doc.setTextColor(...textColor);
-              doc.text(dataFormatada, 40, yPos + 2.5);
-
-              // Cliente + tipo/valor desta parte
-              const clienteTexto =
-                partIdx === 0
-                  ? `${cliente} — ${p.label} ${p.amt.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`
-                  : `   ${p.label} ${p.amt.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`;
-              const clienteTruncado =
-                clienteTexto.length > 40
-                  ? clienteTexto.substring(0, 37) + "..."
-                  : clienteTexto;
-              doc.text(clienteTruncado, 80, yPos + 2.5);
-
-              // Status (only on first part)
-              doc.setFont("helvetica", "normal");
-              doc.setFontSize(8);
-              doc.setTextColor(80, 80, 80);
-              doc.text(partIdx === 0 ? statusTexto : "", 140, yPos + 2.5);
-              doc.setTextColor(...textColor);
-
-              // Valor desta parte
-              doc.setFont("helvetica", "bold");
-              doc.setTextColor(...successColor);
-              doc.text(
-                p.amt.toLocaleString("pt-BR", {
-                  style: "currency",
-                  currency: "BRL",
-                }),
-                185,
-                yPos + 2.5,
-                { align: "right" }
-              );
-
-              yPos += 6.5;
-            });
-
-            // após as partes, adicionar um espacinho
-            yPos += 2;
-          } else {
-            // Linha zebrada
-            if (idx % 2 === 0) {
-              doc.setFillColor(248, 248, 248);
-              doc.rect(20, yPos - 2, 170, 6.5, "F");
-            }
-
-            doc.setFont("helvetica", "normal");
-            doc.setFontSize(8);
-            doc.setTextColor(...textColor);
-
-            // ID
-            doc.setFont("helvetica", "bold");
-            doc.setTextColor(100, 100, 100);
-            doc.text(`#${entry.venda.id}`, 23, yPos + 2.5);
-
-            // Data
-            doc.setFont("helvetica", "normal");
-            doc.setTextColor(...textColor);
-            const dataFormatada = formatarDataHoraSimples(
-              entry.venda.data_pagamento || entry.venda.data_venda
-            );
-            doc.text(dataFormatada, 40, yPos + 2.5);
-
-            // Cliente
-            const clienteTexto = entry.venda.cliente_nome || "Cliente avulso";
-            const clienteTruncado =
-              clienteTexto.length > 40
-                ? clienteTexto.substring(0, 37) + "..."
-                : clienteTexto;
-            doc.text(clienteTruncado, 80, yPos + 2.5);
-
-            // Status
-            const statusTexto = (
-              entry.venda.status_pagamento || "-"
-            ).toString();
-            doc.setFont("helvetica", "normal");
-            doc.setFontSize(8);
-            doc.setTextColor(80, 80, 80);
-            doc.text(statusTexto, 140, yPos + 2.5);
-            doc.setTextColor(...textColor);
-
-            // Valor total da venda
-            doc.setFont("helvetica", "bold");
-            doc.setTextColor(...successColor);
-            const valorVenda = Number(
-              (entry.venda as any).valor_total ??
-                (entry.venda as any).total_liquido ??
-                0
-            );
-            doc.text(
-              valorVenda.toLocaleString("pt-BR", {
-                style: "currency",
-                currency: "BRL",
-              }),
-              185,
-              yPos + 2.5,
-              { align: "right" }
-            );
-
-            yPos += 6.5;
+          // Linha zebrada
+          if (idx % 2 === 0) {
+            doc.setFillColor(248, 248, 248);
+            doc.rect(20, yPos - 2, 170, 6.5, "F");
           }
+
+          const cliente = entry.venda.cliente_nome || "Cliente avulso";
+          const dataFormatada = formatarDataHoraSimples(
+            entry.venda.data_pagamento || entry.venda.data_venda
+          );
+          const statusTexto = (entry.venda.status_pagamento || "-").toString();
+
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(8);
+          doc.setTextColor(...textColor);
+
+          // ID
+          doc.setFont("helvetica", "bold");
+          doc.setTextColor(100, 100, 100);
+          doc.text(`#${entry.venda.id}`, 23, yPos + 2.5);
+
+          // Data
+          doc.setFont("helvetica", "normal");
+          doc.setTextColor(...textColor);
+          doc.text(dataFormatada, 40, yPos + 2.5);
+
+          // Cliente - Se múltiplo, indicar com sufixo
+          let clienteTexto = cliente;
+          if (isMultiple) {
+            // Criar resumo das outras formas (exceto a atual)
+            const outrasFormas = entry.parts
+              .filter((p) => p.label !== formaPagamento)
+              .map(
+                (p) =>
+                  `${p.label} ${p.amt.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`
+              )
+              .join(" • ");
+
+            if (outrasFormas) {
+              clienteTexto = `${cliente} — Múltiplo (${outrasFormas})`;
+            }
+          }
+
+          const clienteTruncado =
+            clienteTexto.length > 40
+              ? clienteTexto.substring(0, 37) + "..."
+              : clienteTexto;
+          doc.text(clienteTruncado, 80, yPos + 2.5);
+
+          // Status
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(8);
+          doc.setTextColor(80, 80, 80);
+          doc.text(statusTexto, 140, yPos + 2.5);
+          doc.setTextColor(...textColor);
+
+          // Valor - mostra apenas a parte correspondente a esta forma
+          doc.setFont("helvetica", "bold");
+          doc.setTextColor(...successColor);
+          doc.text(
+            entry.valorParcial.toLocaleString("pt-BR", {
+              style: "currency",
+              currency: "BRL",
+            }),
+            185,
+            yPos + 2.5,
+            { align: "right" }
+          );
+
+          yPos += 6.5;
         });
 
         yPos += 5;

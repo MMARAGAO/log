@@ -23,8 +23,10 @@ export interface Venda {
   status_pagamento?: string; // NOVO: Status do pagamento (pago, pendente, etc)
   data_pagamento?: string | null; // NOVO: Data/hora em que foi marcado como pago
   forma_pagamento?: string;
+  pagamento_detalhes?: Record<string, number> | null; // NOVO: Detalhes de pagamentos múltiplos (ex: {"pix": 150, "dinheiro": 100})
   cliente_nome?: string;
   observacoes?: string;
+  itens?: any[]; // Itens da venda
 }
 
 export interface Loja {
