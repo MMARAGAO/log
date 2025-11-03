@@ -28,8 +28,8 @@ Após executar a migration, verifique se a tabela foi criada:
 
 ```sql
 -- Verificar se a tabela existe
-SELECT table_name 
-FROM information_schema.tables 
+SELECT table_name
+FROM information_schema.tables
 WHERE table_name = 'estoque_historico';
 
 -- Verificar estrutura da tabela
@@ -122,7 +122,7 @@ SELECT COUNT(*) as total_registros
 FROM estoque_historico;
 
 -- Registros por tipo de operação
-SELECT 
+SELECT
   tipo_operacao,
   COUNT(*) as total,
   SUM(CASE WHEN quantidade_alterada > 0 THEN quantidade_alterada ELSE 0 END) as total_entradas,
@@ -132,7 +132,7 @@ GROUP BY tipo_operacao
 ORDER BY total DESC;
 
 -- Usuários mais ativos
-SELECT 
+SELECT
   usuario_nome,
   COUNT(*) as total_alteracoes
 FROM estoque_historico
@@ -142,7 +142,7 @@ ORDER BY total_alteracoes DESC
 LIMIT 10;
 
 -- Produtos com mais alterações
-SELECT 
+SELECT
   e.produto_id,
   est.descricao,
   COUNT(*) as total_alteracoes

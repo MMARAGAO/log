@@ -26,19 +26,19 @@ CREATE TABLE public.estoque_historico (
 
 ### Campos
 
-| Campo | Tipo | Descrição |
-|-------|------|-----------|
-| `id` | BIGSERIAL | Identificador único do registro |
-| `produto_id` | BIGINT | ID do produto alterado |
-| `loja_id` | BIGINT | ID da loja onde ocorreu a alteração |
-| `quantidade_anterior` | INT | Quantidade antes da alteração |
-| `quantidade_nova` | INT | Quantidade após a alteração |
-| `quantidade_alterada` | INT | Diferença (positivo = entrada, negativo = saída) |
-| `tipo_operacao` | VARCHAR(50) | Tipo da operação realizada |
-| `usuario_id` | UUID | ID do usuário que fez a alteração |
-| `usuario_nome` | VARCHAR(255) | Nome do usuário (desnormalizado para histórico) |
-| `observacao` | TEXT | Motivo ou detalhes da alteração |
-| `created_at` | TIMESTAMPTZ | Data e hora da alteração |
+| Campo                 | Tipo         | Descrição                                        |
+| --------------------- | ------------ | ------------------------------------------------ |
+| `id`                  | BIGSERIAL    | Identificador único do registro                  |
+| `produto_id`          | BIGINT       | ID do produto alterado                           |
+| `loja_id`             | BIGINT       | ID da loja onde ocorreu a alteração              |
+| `quantidade_anterior` | INT          | Quantidade antes da alteração                    |
+| `quantidade_nova`     | INT          | Quantidade após a alteração                      |
+| `quantidade_alterada` | INT          | Diferença (positivo = entrada, negativo = saída) |
+| `tipo_operacao`       | VARCHAR(50)  | Tipo da operação realizada                       |
+| `usuario_id`          | UUID         | ID do usuário que fez a alteração                |
+| `usuario_nome`        | VARCHAR(255) | Nome do usuário (desnormalizado para histórico)  |
+| `observacao`          | TEXT         | Motivo ou detalhes da alteração                  |
+| `created_at`          | TIMESTAMPTZ  | Data e hora da alteração                         |
 
 ### Tipos de Operação
 
@@ -114,6 +114,7 @@ Disponível em dois locais:
 ### Modal de Histórico
 
 Exibe:
+
 - **Cabeçalho**: Nome e modelo do produto
 - **Lista de alterações**: Ordenada da mais recente para a mais antiga
 - **Cada registro mostra**:
@@ -184,14 +185,17 @@ idx_estoque_historico_tipo_operacao -- Filtro por tipo
 O sistema está preparado para registrar histórico em:
 
 1. **Vendas** (`tipo_operacao: "venda"`)
+
    - Quando um produto é vendido
    - Registrar saída automática do estoque
 
 2. **Devoluções** (`tipo_operacao: "devolucao"`)
+
    - Quando um item é devolvido
    - Registrar entrada de volta ao estoque
 
 3. **Transferências** (`tipo_operacao: "transferencia"`)
+
    - Quando mover produtos entre lojas
    - Registrar saída de uma loja e entrada em outra
 
@@ -204,7 +208,7 @@ O sistema está preparado para registrar histórico em:
 // Em app/sistema/vendas/page.tsx
 async function finalizarVenda(venda: Venda) {
   // Finalizar venda...
-  
+
   // Registrar histórico para cada item vendido
   for (const item of venda.itens) {
     await registrarHistoricoEstoque(
@@ -265,7 +269,7 @@ ORDER BY created_at DESC;
 ### Resumo de movimentação por tipo
 
 ```sql
-SELECT 
+SELECT
   tipo_operacao,
   COUNT(*) as total_operacoes,
   SUM(quantidade_alterada) as total_alterado

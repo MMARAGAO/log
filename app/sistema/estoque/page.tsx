@@ -415,12 +415,16 @@ export default function EstoquePage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [showFilters, setShowFilters] = useState(false);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
-  
+
   // Estados para o modal de histórico
-  const [historicoEstoque, setHistoricoEstoque] = useState<EstoqueHistorico[]>([]);
+  const [historicoEstoque, setHistoricoEstoque] = useState<EstoqueHistorico[]>(
+    []
+  );
   const [showHistoricoModal, setShowHistoricoModal] = useState(false);
   const [historicoLoading, setHistoricoLoading] = useState(false);
-  const [produtoHistorico, setProdutoHistorico] = useState<EstoqueItem | null>(null);
+  const [produtoHistorico, setProdutoHistorico] = useState<EstoqueItem | null>(
+    null
+  );
 
   // Estado dos filtros
   const [filters, setFilters] = useState<FilterState>({
@@ -1046,7 +1050,9 @@ export default function EstoquePage() {
 
         // Verificar se houve mudança real na quantidade
         if (quantidadeAnterior === quantidade) {
-          console.log("⏭️ Quantidade não mudou, pulando atualização e histórico");
+          console.log(
+            "⏭️ Quantidade não mudou, pulando atualização e histórico"
+          );
           return; // Não fazer nada se a quantidade não mudou
         }
 
@@ -1098,7 +1104,9 @@ export default function EstoquePage() {
             "entrada_estoque",
             "Primeiro registro de estoque para esta loja"
           );
-          console.log("📝 Histórico registrado para entrada inicial de estoque");
+          console.log(
+            "📝 Histórico registrado para entrada inicial de estoque"
+          );
         } else {
           console.log("⏭️ Quantidade inicial é 0, não registrando histórico");
         }
@@ -1157,16 +1165,21 @@ export default function EstoquePage() {
 
     try {
       const historico = await fetchTable("estoque_historico");
-      
+
       // Filtrar histórico por produto e ordenar por data (mais recente primeiro)
       const historicoFiltrado = (historico || [])
         .filter((h: EstoqueHistorico) => h.produto_id === produto.id)
-        .sort((a: EstoqueHistorico, b: EstoqueHistorico) => 
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        .sort(
+          (a: EstoqueHistorico, b: EstoqueHistorico) =>
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         );
 
       setHistoricoEstoque(historicoFiltrado);
-      console.log("📜 Histórico carregado:", historicoFiltrado.length, "registros");
+      console.log(
+        "📜 Histórico carregado:",
+        historicoFiltrado.length,
+        "registros"
+      );
     } catch (error) {
       console.error("❌ Erro ao carregar histórico:", error);
       alert("Erro ao carregar histórico de alterações!");
@@ -2256,7 +2269,9 @@ export default function EstoquePage() {
                 {historicoEstoque.map((hist) => {
                   const loja = lojas.find((l) => l.id === hist.loja_id);
                   const isPositive = hist.quantidade_alterada > 0;
-                  const dataFormatada = new Date(hist.created_at).toLocaleString("pt-BR", {
+                  const dataFormatada = new Date(
+                    hist.created_at
+                  ).toLocaleString("pt-BR", {
                     day: "2-digit",
                     month: "2-digit",
                     year: "numeric",
@@ -2287,7 +2302,8 @@ export default function EstoquePage() {
                               {hist.quantidade_alterada}
                             </Chip>
                             <Chip size="sm" variant="flat" color="primary">
-                              {tipoOperacaoLabel[hist.tipo_operacao] || hist.tipo_operacao}
+                              {tipoOperacaoLabel[hist.tipo_operacao] ||
+                                hist.tipo_operacao}
                             </Chip>
                             {loja && (
                               <Chip size="sm" variant="flat">
@@ -2299,7 +2315,8 @@ export default function EstoquePage() {
                           <div className="text-sm">
                             <p className="text-default-600">
                               <span className="font-medium">Quantidade:</span>{" "}
-                              {hist.quantidade_anterior} → {hist.quantidade_nova}
+                              {hist.quantidade_anterior} →{" "}
+                              {hist.quantidade_nova}
                             </p>
                             <p className="text-default-600">
                               <span className="font-medium">Por:</span>{" "}
