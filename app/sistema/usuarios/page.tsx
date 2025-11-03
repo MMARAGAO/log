@@ -147,12 +147,14 @@ export default function UsuariosPage() {
         vendas: {
           criar_vendas: false,
           ver_vendas: false,
+          ver_todas_vendas: false, // NOVO: Permite ver vendas de todos os usuários
           editar_vendas: false,
           editar_vendas_pagas: false, // NOVO: Permite editar vendas mesmo depois de pagas
           deletar_vendas: false,
           processar_pagamentos: false,
           aplicar_desconto: false,
           desconto_maximo: 0,
+          ver_estatisticas_faturamento: false, // NOVO: Permite ver cards de estatísticas e faturamento
         },
         logs: {
           ver_logs: false,

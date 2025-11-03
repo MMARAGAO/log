@@ -848,13 +848,34 @@ export default function DevolucoesPagina() {
       const lojaId =
         lojaDevolucao || (vendaSelecionada.loja_id as number) || null;
 
+      console.log("[DEVOLUCAO] Devolver itens ao estoque:", {
+        lojaId,
+        lojaDevolucao,
+        vendaLojaId: vendaSelecionada.loja_id,
+        itensComDevolucao: itensComDevolucao.map((i) => ({
+          id_estoque: i.id_estoque,
+          descricao: i.descricao,
+          quantidade: i.quantidade_devolver,
+        })),
+      });
+
       if (!lojaId) {
-        console.warn(
-          "[DEVOLUCAO] Loja não informada; pular atualização de estoque."
+        console.error(
+          "[DEVOLUCAO] ❌ Loja não informada! Impossível atualizar estoque."
         );
+        toast.error("⚠️ Loja não identificada! Estoque não foi atualizado.", {
+          duration: 5000,
+        });
       } else {
+        let sucessos = 0;
+        let erros = 0;
+
         for (const item of itensComDevolucao) {
           try {
+            console.log(
+              `[DEVOLUCAO] Buscando estoque: produto_id=${item.id_estoque}, loja_id=${lojaId}`
+            );
+
             const { data: estoqueAtual, error: estoqueError } = await supabase
               .from("estoque_lojas")
               .select("quantidade")
@@ -863,27 +884,50 @@ export default function DevolucoesPagina() {
               .single();
 
             if (estoqueError && estoqueError.code !== "PGRST116") {
-              console.warn(
-                `[DEVOLUCAO] Erro ao buscar estoque (produto ${item.id_estoque}):`,
-                estoqueError.message || estoqueError
+              console.error(
+                `[DEVOLUCAO] ❌ Erro ao buscar estoque (produto ${item.id_estoque}):`,
+                estoqueError
               );
+              erros++;
+              continue;
             }
 
             if (!estoqueAtual) {
-              await supabase.from("estoque_lojas").insert({
-                produto_id: item.id_estoque,
-                loja_id: lojaId,
-                quantidade: item.quantidade_devolver,
-                updatedat: new Date().toISOString(),
-              });
               console.log(
-                `[DEVOLUCAO] Inserido estoque para produto ${item.id_estoque}: +${item.quantidade_devolver}`
+                `[DEVOLUCAO] Produto ${item.id_estoque} não existe em estoque_lojas. Criando...`
               );
+
+              const { error: insertError } = await supabase
+                .from("estoque_lojas")
+                .insert({
+                  produto_id: item.id_estoque,
+                  loja_id: lojaId,
+                  quantidade: item.quantidade_devolver,
+                  updatedat: new Date().toISOString(),
+                });
+
+              if (insertError) {
+                console.error(
+                  `[DEVOLUCAO] ❌ Erro ao inserir estoque:`,
+                  insertError
+                );
+                erros++;
+              } else {
+                console.log(
+                  `[DEVOLUCAO] ✅ Inserido estoque para produto ${item.id_estoque}: +${item.quantidade_devolver}`
+                );
+                sucessos++;
+              }
             } else {
+              const quantidadeAnterior = Number(estoqueAtual.quantidade) || 0;
               const novaQuantidade =
-                (Number(estoqueAtual.quantidade) || 0) +
-                item.quantidade_devolver;
-              await supabase
+                quantidadeAnterior + item.quantidade_devolver;
+
+              console.log(
+                `[DEVOLUCAO] Atualizando estoque: ${quantidadeAnterior} → ${novaQuantidade}`
+              );
+
+              const { error: updateError } = await supabase
                 .from("estoque_lojas")
                 .update({
                   quantidade: novaQuantidade,
@@ -891,16 +935,44 @@ export default function DevolucoesPagina() {
                 })
                 .eq("produto_id", item.id_estoque)
                 .eq("loja_id", lojaId);
-              console.log(
-                `[DEVOLUCAO] Atualizado estoque produto ${item.id_estoque}: ${estoqueAtual.quantidade} -> ${novaQuantidade}`
-              );
+
+              if (updateError) {
+                console.error(
+                  `[DEVOLUCAO] ❌ Erro ao atualizar estoque:`,
+                  updateError
+                );
+                erros++;
+              } else {
+                console.log(
+                  `[DEVOLUCAO] ✅ Atualizado estoque produto ${item.id_estoque}: ${quantidadeAnterior} → ${novaQuantidade}`
+                );
+                sucessos++;
+              }
             }
           } catch (err) {
             console.error(
-              `[DEVOLUCAO] Falha ao devolver produto ${item.id_estoque} ao estoque:`,
+              `[DEVOLUCAO] ❌ Exceção ao devolver produto ${item.id_estoque} ao estoque:`,
               err
             );
+            erros++;
           }
+        }
+
+        console.log(
+          `[DEVOLUCAO] Resultado: ${sucessos} sucessos, ${erros} erros`
+        );
+
+        if (erros > 0) {
+          toast.error(
+            `⚠️ ${erros} item(ns) não foi(ram) devolvido(s) ao estoque. Verifique o console.`,
+            {
+              duration: 5000,
+            }
+          );
+        } else if (sucessos > 0) {
+          toast.success(
+            `✅ ${sucessos} item(ns) devolvido(s) ao estoque com sucesso!`
+          );
         }
       }
 

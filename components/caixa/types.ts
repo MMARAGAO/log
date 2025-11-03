@@ -18,6 +18,7 @@ export interface Venda {
   loja_id: number;
   valor_total?: number; // Pode vir como valor_total
   total_liquido?: number; // Ou como total_liquido (dependendo da origem)
+  credito_usado?: number; // NOVO: Valor de crédito do cliente usado na compra
   data_venda: string;
   status: string;
   status_pagamento?: string; // NOVO: Status do pagamento (pago, pendente, etc)

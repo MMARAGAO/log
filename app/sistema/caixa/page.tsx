@@ -493,14 +493,21 @@ export default function CaixaPage() {
     const totalVendas = vendasPagas.length + vendasDevolvidasComCredito.length;
 
     // Calcular valor bruto: vendas pagas + devolvidas com crédito
+    // IMPORTANTE: Descontar o crédito usado, pois só entra no caixa o valor efetivamente pago
     let valorBrutoVendas = vendasPagas.reduce((acc, v) => {
-      const val = (v as any).valor_total ?? (v as any).total_liquido ?? 0;
-      return acc + Number(val || 0);
+      const totalVenda =
+        (v as any).valor_total ?? (v as any).total_liquido ?? 0;
+      const creditoUsado = Number((v as any).credito_usado || 0);
+      const valorPago = totalVenda - creditoUsado; // Valor que realmente entrou no caixa
+      return acc + Number(valorPago || 0);
     }, 0);
 
     valorBrutoVendas += vendasDevolvidasComCredito.reduce((acc, v) => {
-      const val = (v as any).valor_total ?? (v as any).total_liquido ?? 0;
-      return acc + Number(val || 0);
+      const totalVenda =
+        (v as any).valor_total ?? (v as any).total_liquido ?? 0;
+      const creditoUsado = Number((v as any).credito_usado || 0);
+      const valorPago = totalVenda - creditoUsado; // Valor que realmente entrou no caixa
+      return acc + Number(valorPago || 0);
     }, 0);
 
     // Valor real do caixa = Vendas (pagas + devolvidas com crédito) - Devoluções sem Crédito
@@ -522,9 +529,11 @@ export default function CaixaPage() {
     const vendasParaProcessar = [...vendasPagas, ...vendasDevolvidasComCredito];
 
     vendasParaProcessar.forEach((v: Venda) => {
-      const valorVenda = Number(
+      const totalVenda = Number(
         (v as any).valor_total ?? (v as any).total_liquido ?? 0
       );
+      const creditoUsado = Number((v as any).credito_usado || 0);
+      const valorVenda = totalVenda - creditoUsado; // Valor efetivamente pago (desconta crédito)
 
       // Se existir detalhe de pagamento (pagamentos mistos), somar por chave
       const detalhes: any = (v as any).pagamento_detalhes;

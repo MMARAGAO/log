@@ -89,6 +89,20 @@ interface EstoqueLoja {
   updatedat: string;
 }
 
+interface EstoqueHistorico {
+  id: number;
+  produto_id: number;
+  loja_id: number;
+  quantidade_anterior: number;
+  quantidade_nova: number;
+  quantidade_alterada: number;
+  tipo_operacao: string;
+  usuario_id?: string;
+  usuario_nome?: string;
+  observacao?: string;
+  created_at: string;
+}
+
 interface Loja {
   id: number;
   nome: string;
@@ -401,6 +415,12 @@ export default function EstoquePage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [showFilters, setShowFilters] = useState(false);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  
+  // Estados para o modal de histórico
+  const [historicoEstoque, setHistoricoEstoque] = useState<EstoqueHistorico[]>([]);
+  const [showHistoricoModal, setShowHistoricoModal] = useState(false);
+  const [historicoLoading, setHistoricoLoading] = useState(false);
+  const [produtoHistorico, setProdutoHistorico] = useState<EstoqueItem | null>(null);
 
   // Estado dos filtros
   const [filters, setFilters] = useState<FilterState>({
@@ -1022,6 +1042,14 @@ export default function EstoquePage() {
           estoqueExistente[0].id
         );
 
+        const quantidadeAnterior = estoqueExistente[0].quantidade;
+
+        // Verificar se houve mudança real na quantidade
+        if (quantidadeAnterior === quantidade) {
+          console.log("⏭️ Quantidade não mudou, pulando atualização e histórico");
+          return; // Não fazer nada se a quantidade não mudou
+        }
+
         const updateData = {
           quantidade: quantidade,
           updatedat: new Date().toISOString(),
@@ -1035,6 +1063,17 @@ export default function EstoquePage() {
           updateData
         );
         console.log("✅ Resultado da atualização:", result);
+
+        // Registrar no histórico APENAS se houve mudança
+        await registrarHistoricoEstoque(
+          produtoId,
+          lojaId,
+          quantidadeAnterior,
+          quantidade,
+          "ajuste_manual",
+          "Alteração manual de estoque"
+        );
+        console.log("📝 Histórico registrado para mudança de quantidade");
       } else {
         console.log("➕ Criando novo registro de estoque");
 
@@ -1048,6 +1087,21 @@ export default function EstoquePage() {
         // Criar novo registro
         const result = await insertTable("estoque_lojas", insertData);
         console.log("✅ Resultado da inserção:", result);
+
+        // Registrar no histórico APENAS se a quantidade inicial for maior que 0
+        if (quantidade > 0) {
+          await registrarHistoricoEstoque(
+            produtoId,
+            lojaId,
+            0,
+            quantidade,
+            "entrada_estoque",
+            "Primeiro registro de estoque para esta loja"
+          );
+          console.log("📝 Histórico registrado para entrada inicial de estoque");
+        } else {
+          console.log("⏭️ Quantidade inicial é 0, não registrando histórico");
+        }
       }
     } catch (error) {
       console.error("❌ Erro detalhado ao atualizar estoque da loja:", {
@@ -1057,6 +1111,67 @@ export default function EstoquePage() {
         error,
       });
       throw error;
+    }
+  }
+
+  // Função para registrar alteração no histórico de estoque
+  async function registrarHistoricoEstoque(
+    produtoId: number,
+    lojaId: number,
+    quantidadeAnterior: number,
+    quantidadeNova: number,
+    tipoOperacao: string,
+    observacao?: string
+  ) {
+    try {
+      const quantidadeAlterada = quantidadeNova - quantidadeAnterior;
+
+      const historicoData = {
+        produto_id: produtoId,
+        loja_id: lojaId,
+        quantidade_anterior: quantidadeAnterior,
+        quantidade_nova: quantidadeNova,
+        quantidade_alterada: quantidadeAlterada,
+        tipo_operacao: tipoOperacao,
+        usuario_id: user?.id,
+        usuario_nome: user?.nome || user?.email || "Sistema",
+        observacao: observacao || null,
+      };
+
+      console.log("📝 Registrando histórico de estoque:", historicoData);
+
+      await insertTable("estoque_historico", historicoData);
+
+      console.log("✅ Histórico de estoque registrado com sucesso");
+    } catch (error) {
+      console.error("❌ Erro ao registrar histórico de estoque:", error);
+      // Não bloqueia a operação principal, apenas loga o erro
+    }
+  }
+
+  // Função para carregar histórico de um produto
+  async function carregarHistorico(produto: EstoqueItem) {
+    setHistoricoLoading(true);
+    setProdutoHistorico(produto);
+    setShowHistoricoModal(true);
+
+    try {
+      const historico = await fetchTable("estoque_historico");
+      
+      // Filtrar histórico por produto e ordenar por data (mais recente primeiro)
+      const historicoFiltrado = (historico || [])
+        .filter((h: EstoqueHistorico) => h.produto_id === produto.id)
+        .sort((a: EstoqueHistorico, b: EstoqueHistorico) => 
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+
+      setHistoricoEstoque(historicoFiltrado);
+      console.log("📜 Histórico carregado:", historicoFiltrado.length, "registros");
+    } catch (error) {
+      console.error("❌ Erro ao carregar histórico:", error);
+      alert("Erro ao carregar histórico de alterações!");
+    } finally {
+      setHistoricoLoading(false);
     }
   }
 
@@ -1675,6 +1790,7 @@ export default function EstoquePage() {
                   lojas={lojas}
                   onEdit={safeHandleEdit}
                   onDelete={safeHandleDelete}
+                  onViewHistory={carregarHistorico}
                   canEdit={canEditEstoque}
                   canDelete={canDeleteEstoque}
                 />
@@ -1776,6 +1892,14 @@ export default function EstoquePage() {
                         </td>
                         <td className="py-2 pr-3">
                           <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              variant="flat"
+                              color="default"
+                              onPress={() => carregarHistorico(item)}
+                            >
+                              Histórico
+                            </Button>
                             <Button
                               size="sm"
                               variant="flat"
@@ -2098,6 +2222,118 @@ export default function EstoquePage() {
           </ModalContent>
         </Modal>
       )}
+
+      {/* Modal de Histórico */}
+      <Modal
+        isOpen={showHistoricoModal}
+        onClose={() => setShowHistoricoModal(false)}
+        size="3xl"
+        scrollBehavior="inside"
+      >
+        <ModalContent>
+          <ModalHeader>
+            <div className="flex flex-col">
+              <h2 className="text-xl font-bold">Histórico de Alterações</h2>
+              {produtoHistorico && (
+                <p className="text-sm text-default-500 font-normal mt-1">
+                  {produtoHistorico.descricao}
+                  {produtoHistorico.modelo && ` - ${produtoHistorico.modelo}`}
+                </p>
+              )}
+            </div>
+          </ModalHeader>
+          <ModalBody>
+            {historicoLoading ? (
+              <div className="flex justify-center items-center py-8">
+                <Spinner size="lg" />
+              </div>
+            ) : historicoEstoque.length === 0 ? (
+              <div className="text-center py-8 text-default-500">
+                <p>Nenhuma alteração registrada para este produto</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {historicoEstoque.map((hist) => {
+                  const loja = lojas.find((l) => l.id === hist.loja_id);
+                  const isPositive = hist.quantidade_alterada > 0;
+                  const dataFormatada = new Date(hist.created_at).toLocaleString("pt-BR", {
+                    day: "2-digit",
+                    month: "2-digit",
+                    year: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  });
+
+                  // Mapear tipos de operação para labels em português
+                  const tipoOperacaoLabel: Record<string, string> = {
+                    ajuste_manual: "Ajuste Manual",
+                    venda: "Venda",
+                    devolucao: "Devolução",
+                    transferencia: "Transferência",
+                    entrada_estoque: "Entrada de Estoque",
+                  };
+
+                  return (
+                    <Card key={hist.id} className="p-4">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1 space-y-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <Chip
+                              size="sm"
+                              color={isPositive ? "success" : "danger"}
+                              variant="flat"
+                            >
+                              {isPositive ? "+" : ""}
+                              {hist.quantidade_alterada}
+                            </Chip>
+                            <Chip size="sm" variant="flat" color="primary">
+                              {tipoOperacaoLabel[hist.tipo_operacao] || hist.tipo_operacao}
+                            </Chip>
+                            {loja && (
+                              <Chip size="sm" variant="flat">
+                                {loja.nome}
+                              </Chip>
+                            )}
+                          </div>
+
+                          <div className="text-sm">
+                            <p className="text-default-600">
+                              <span className="font-medium">Quantidade:</span>{" "}
+                              {hist.quantidade_anterior} → {hist.quantidade_nova}
+                            </p>
+                            <p className="text-default-600">
+                              <span className="font-medium">Por:</span>{" "}
+                              {hist.usuario_nome || "Sistema"}
+                            </p>
+                            <p className="text-default-400 text-xs mt-1">
+                              {dataFormatada}
+                            </p>
+                          </div>
+
+                          {hist.observacao && (
+                            <p className="text-sm text-default-500 italic mt-2">
+                              {hist.observacao}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+          </ModalBody>
+          <ModalFooter>
+            <Button
+              color="default"
+              variant="light"
+              onPress={() => setShowHistoricoModal(false)}
+            >
+              Fechar
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
     </div>
   );
 }

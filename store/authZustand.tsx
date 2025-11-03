@@ -45,12 +45,14 @@ export interface PermissoesAcessos {
   vendas: {
     criar_vendas: boolean;
     ver_vendas: boolean;
+    ver_todas_vendas: boolean; // NOVO: Permite ver vendas de todos os usuários (não apenas as próprias)
     editar_vendas: boolean;
     editar_vendas_pagas: boolean; // NOVO: Permite editar vendas mesmo depois de pagas
     deletar_vendas: boolean;
     processar_pagamentos: boolean;
     aplicar_desconto: boolean;
     desconto_maximo: number;
+    ver_estatisticas_faturamento: boolean; // NOVO: Permite ver cards de estatísticas e faturamento
   };
   logs: {
     ver_logs: boolean;
@@ -151,12 +153,14 @@ function defaultPermissoes(): { acessos: PermissoesAcessos } {
       vendas: {
         criar_vendas: false,
         ver_vendas: false,
+        ver_todas_vendas: false, // NOVO: Permite ver vendas de todos os usuários
         editar_vendas: false,
         editar_vendas_pagas: false, // NOVO: Permite editar vendas mesmo depois de pagas
         deletar_vendas: false,
         processar_pagamentos: false,
         aplicar_desconto: false,
         desconto_maximo: 0,
+        ver_estatisticas_faturamento: false, // NOVO: Permite ver cards de estatísticas e faturamento
       },
       logs: {
         ver_logs: false,

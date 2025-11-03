@@ -21,6 +21,7 @@ import {
   TrashIcon,
   ExclamationTriangleIcon,
   CheckCircleIcon,
+  ClockIcon,
 } from "@heroicons/react/24/solid";
 import {
   EllipsisVerticalIcon,
@@ -34,6 +35,7 @@ interface EstoqueCardProps {
   lojas: Loja[];
   onEdit: (produto: EstoqueItem) => void;
   onDelete: (id: number) => void;
+  onViewHistory?: (produto: EstoqueItem) => void;
   canEdit: boolean;
   canDelete: boolean;
 }
@@ -43,6 +45,7 @@ export default function EstoqueCard({
   lojas,
   onEdit,
   onDelete,
+  onViewHistory,
   canEdit,
   canDelete,
 }: EstoqueCardProps) {
@@ -123,7 +126,7 @@ export default function EstoqueCard({
               </div>
             </div>
 
-            {(canEdit || canDelete) && (
+            {(canEdit || canDelete || onViewHistory) && (
               <Dropdown>
                 <DropdownTrigger>
                   <Button
@@ -136,6 +139,15 @@ export default function EstoqueCard({
                   </Button>
                 </DropdownTrigger>
                 <DropdownMenu>
+                  {onViewHistory ? (
+                    <DropdownItem
+                      key="history"
+                      onPress={() => onViewHistory(produto)}
+                      startContent={<ClockIcon className="w-4 h-4" />}
+                    >
+                      Ver Histórico
+                    </DropdownItem>
+                  ) : null}
                   {canEdit ? (
                     <DropdownItem
                       key="edit"

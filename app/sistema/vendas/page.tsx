@@ -287,6 +287,7 @@ export default function VendasPage() {
   const acessos = user?.permissoes?.acessos;
   const permVendas = acessos?.vendas;
   const canViewVendas = !!permVendas?.ver_vendas;
+  const canViewTodasVendas = !!permVendas?.ver_todas_vendas; // NOVO: Permite ver vendas de todos
   const canCreateVendas = !!permVendas?.criar_vendas;
   const canEditVendas = !!permVendas?.editar_vendas;
   const canEditVendasPagas = !!permVendas?.editar_vendas_pagas; // NOVO: Permite editar vendas pagas
@@ -295,6 +296,9 @@ export default function VendasPage() {
   // NOVAS PERMISSÕES DE DESCONTO
   const canAplicarDesconto = !!permVendas?.aplicar_desconto;
   const descontoMaximo = Number(permVendas?.desconto_maximo) || 0;
+  // NOVA PERMISSÃO: Ver estatísticas de faturamento
+  const canVerEstatisticasFaturamento =
+    !!permVendas?.ver_estatisticas_faturamento;
 
   // Dados
   const [vendas, setVendas] = useState<Venda[]>([]);
@@ -954,6 +958,11 @@ export default function VendasPage() {
         if (filters.cliente && v.cliente_nome !== filters.cliente) return false;
         if (filters.loja && v.loja_id?.toString() !== filters.loja)
           return false;
+
+        // Filtro de permissão: se não tiver permissão ver_todas_vendas, mostrar apenas vendas próprias
+        if (!canViewTodasVendas && v.id_usuario !== user?.id) {
+          return false;
+        }
 
         // Filtro de data: por data_venda (padrão) ou data_pagamento (modo Caixa)
         if (filters.filtrarPorDataPagamento) {
@@ -2883,8 +2892,10 @@ export default function VendasPage() {
         </div>
       </div>
 
-      {/* Estatísticas */}
-      <VendasStats stats={stats} formatCurrency={fmt} />
+      {/* Estatísticas - Condicional baseado em permissão */}
+      {canVerEstatisticasFaturamento && (
+        <VendasStats stats={stats} formatCurrency={fmt} />
+      )}
 
       {/* Aviso sobre diferença de datas */}
       {(filters.inicio || filters.fim) && (

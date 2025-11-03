@@ -413,9 +413,11 @@ export class CaixaPDFGenerator {
 
       vendas.forEach((venda) => {
         const detalhes: any = (venda as any).pagamento_detalhes;
-        const valorTotal = Number(
+        const totalVenda = Number(
           (venda as any).valor_total ?? (venda as any).total_liquido ?? 0
         );
+        const creditoUsado = Number((venda as any).credito_usado || 0);
+        const valorTotal = totalVenda - creditoUsado; // Valor efetivamente pago (desconta crédito)
 
         const parts: { label: string; amt: number }[] = [];
         let temDetalhes = false;
