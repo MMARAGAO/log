@@ -254,14 +254,24 @@ export default function CaixaPage() {
     try {
       const data = await fetchTable("caixa");
       const hoje = getDateStringInBrazil();
+      const lojaIdUsuario = user?.permissoes?.loja_id;
+
+      // Filtrar caixas por loja se o usuário tiver loja específica
+      let caixasFiltrados = data || [];
+      if (lojaIdUsuario !== null && lojaIdUsuario !== undefined) {
+        caixasFiltrados = caixasFiltrados.filter(
+          (c: CaixaAberto) => c.loja_id === lojaIdUsuario
+        );
+      }
 
       const abertos =
-        data?.filter((c: CaixaAberto) => c.status === "aberto") || [];
+        caixasFiltrados?.filter((c: CaixaAberto) => c.status === "aberto") ||
+        [];
       setCaixasAbertos(abertos);
 
       // Identifica lojas com caixa fechado hoje
       const fechadosHoje = new Set<number>();
-      data?.forEach((c: CaixaAberto) => {
+      caixasFiltrados?.forEach((c: CaixaAberto) => {
         const dataAberturaCaixa = getDateStringInBrazil(c.data_abertura);
         if (c.status === "fechado" && dataAberturaCaixa === hoje) {
           fechadosHoje.add(c.loja_id);
@@ -385,12 +395,21 @@ export default function CaixaPage() {
     try {
       const data = await fetchTable("caixa");
       const hoje = getDateStringInBrazil();
+      const lojaIdUsuario = user?.permissoes?.loja_id;
 
       // Busca caixas abertos de dias anteriores
       const caixasParaFechar =
         data?.filter((c: CaixaAberto) => {
           const dataAberturaCaixa = getDateStringInBrazil(c.data_abertura);
-          return c.status === "aberto" && dataAberturaCaixa < hoje;
+          const isCaixaAntigo =
+            c.status === "aberto" && dataAberturaCaixa < hoje;
+
+          // Se usuário tem loja específica, só fecha caixas dessa loja
+          if (lojaIdUsuario !== null && lojaIdUsuario !== undefined) {
+            return isCaixaAntigo && c.loja_id === lojaIdUsuario;
+          }
+
+          return isCaixaAntigo;
         }) || [];
 
       if (caixasParaFechar.length === 0) {

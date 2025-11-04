@@ -135,6 +135,7 @@ interface Devolucao {
   data_devolucao: string;
   id_cliente?: number;
   cliente_nome?: string;
+  loja_id?: number;
   id_usuario: string;
   itens_devolvidos: ItemDevolucao[];
   valor_total_devolvido: number;
@@ -514,7 +515,17 @@ export default function DevolucoesPagina() {
 
   // Filtros / ordenação
   const filtered = useMemo(() => {
-    return devolucoes
+    // Filtrar por loja primeiro
+    const lojaIdUsuario = user?.permissoes?.loja_id;
+    let devolucoesFiltradasPorLoja = devolucoes;
+
+    if (lojaIdUsuario !== null && lojaIdUsuario !== undefined) {
+      devolucoesFiltradasPorLoja = devolucoes.filter(
+        (d) => d.loja_id === lojaIdUsuario
+      );
+    }
+
+    return devolucoesFiltradasPorLoja
       .filter((d) => {
         if (
           filters.search &&
@@ -577,7 +588,7 @@ export default function DevolucoesPagina() {
         if (av > bv) return 1 * dir;
         return 0;
       });
-  }, [devolucoes, filters]);
+  }, [devolucoes, filters, user?.permissoes?.loja_id]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageItems = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -813,10 +824,14 @@ export default function DevolucoesPagina() {
         ? "total"
         : "parcial";
 
+    const lojaId =
+      lojaDevolucao || (vendaSelecionada.loja_id as number) || null;
+
     const dadosDevolucao = {
       id_venda: vendaSelecionada.id,
       id_cliente: vendaSelecionada.id_cliente,
       cliente_nome: vendaSelecionada.cliente_nome,
+      loja_id: lojaId,
       id_usuario: user?.id || "",
       itens_devolvidos: itensComDevolucao,
       valor_total_devolvido: valorTotalDevolvido,
@@ -844,9 +859,6 @@ export default function DevolucoesPagina() {
           console.warn("[DEVOLUCAO] ID da devolução não retornado:", resultado);
         }
       }
-
-      const lojaId =
-        lojaDevolucao || (vendaSelecionada.loja_id as number) || null;
 
       console.log("[DEVOLUCAO] Devolver itens ao estoque:", {
         lojaId,

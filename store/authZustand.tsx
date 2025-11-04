@@ -29,6 +29,7 @@ export interface PermissoesAcessos {
     ver_estoque: boolean;
     editar_estoque: boolean;
     deletar_estoque: boolean;
+    ver_estatisticas_estoque: boolean; // NOVO: Permite ver cards de estatísticas na tela de estoque
   };
   fornecedores: {
     criar_fornecedores: boolean;
@@ -137,6 +138,7 @@ function defaultPermissoes(): { acessos: PermissoesAcessos } {
         ver_estoque: false,
         editar_estoque: false,
         deletar_estoque: false,
+        ver_estatisticas_estoque: false, // NOVO: Permite ver cards de estatísticas na tela de estoque
       },
       fornecedores: {
         criar_fornecedores: false,

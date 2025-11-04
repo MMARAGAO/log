@@ -1249,7 +1249,17 @@ export default function RmaPage() {
 
   // Filtros e paginação
   const filteredRma = useMemo(() => {
-    return rma.filter((item) => {
+    // Filtrar por loja primeiro
+    const lojaIdUsuario = user?.permissoes?.loja_id;
+    let rmaFiltradosPorLoja = rma;
+
+    if (lojaIdUsuario !== null && lojaIdUsuario !== undefined) {
+      rmaFiltradosPorLoja = rma.filter(
+        (item) => item.loja_id === lojaIdUsuario
+      );
+    }
+
+    return rmaFiltradosPorLoja.filter((item) => {
       const produto = produtos.find((p) => p.id === item.produto_id);
       const loja = lojas.find((l) => l.id === item.loja_id);
       const cliente = clientes.find((c) => c.id === item.cliente_id);
@@ -1278,6 +1288,7 @@ export default function RmaPage() {
     clientes,
     searchTerm,
     statusFilter,
+    user?.permissoes?.loja_id,
     tipoOrigemFilter,
   ]);
 

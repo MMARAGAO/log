@@ -451,6 +451,7 @@ export default function EstoquePage() {
   const canCreateEstoque = !!permEstoque?.criar_estoque;
   const canEditEstoque = !!permEstoque?.editar_estoque;
   const canDeleteEstoque = !!permEstoque?.deletar_estoque;
+  const canVerEstatisticasEstoque = !!permEstoque?.ver_estatisticas_estoque;
 
   // Carregar lojas
   async function loadLojas() {
@@ -1383,31 +1384,11 @@ export default function EstoquePage() {
   const endIndex = startIndex + ITEMS_PER_PAGE;
   const currentItems = filteredAndSortedEstoque.slice(startIndex, endIndex);
 
-  // Verificação de loading - mostrar skeleton ou spinner mais específico
-  // Verificação de loading - mostrar skeleton ou spinner mais específico
+  // Verificação de loading - mostrar apenas spinner
   if (loading && estoque.length === 0) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold">Controle de Estoque</h1>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          {[1, 2, 3, 4].map((i) => (
-            <Card key={i}>
-              <CardBody className="p-4">
-                <div className="animate-pulse">
-                  <div className="h-4 bg-gray-200 rounded mb-2"></div>
-                  <div className="h-6 bg-gray-200 rounded"></div>
-                </div>
-              </CardBody>
-            </Card>
-          ))}
-        </div>
-
-        <div className="flex justify-center items-center min-h-[400px]">
-          <Spinner size="lg" label="Carregando dados do estoque..." />
-        </div>
+      <div className="flex justify-center items-center min-h-screen">
+        <Spinner size="lg" label="Carregando dados do estoque..." />
       </div>
     );
   }
@@ -1489,7 +1470,9 @@ export default function EstoquePage() {
       </div>
 
       {/* Estatísticas */}
-      <EstoqueStats produtos={filteredAndSortedEstoque} />
+      {canVerEstatisticasEstoque && (
+        <EstoqueStats produtos={filteredAndSortedEstoque} />
+      )}
 
       {/* Busca e Filtros */}
       <div className="mb-6 space-y-4">
