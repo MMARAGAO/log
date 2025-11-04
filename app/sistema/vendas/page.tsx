@@ -3228,11 +3228,13 @@ export default function VendasPage() {
                         {v.cliente_nome || "-"}
                       </TableCell>
                       <TableCell>
-                        <Chip 
-                          size="sm" 
-                          variant="flat" 
+                        <Chip
+                          size="sm"
+                          variant="flat"
                           color="primary"
-                          startContent={<BuildingStorefrontIcon className="w-3 h-3" />}
+                          startContent={
+                            <BuildingStorefrontIcon className="w-3 h-3" />
+                          }
                         >
                           {lojas.find((l) => l.id === v.loja_id)?.nome || "N/A"}
                         </Chip>
