@@ -312,6 +312,7 @@ export default function VendasPage() {
   const [estoque, setEstoque] = useState<EstoqueItem[]>([]);
   const [lojas, setLojas] = useState<Loja[]>([]);
   const [caixaAberto, setCaixaAberto] = useState<any>(null);
+  const [todosCaixasAbertos, setTodosCaixasAbertos] = useState<any[]>([]); // Armazena TODOS os caixas abertos
   const [devolucoes, setDevolucoes] = useState<any[]>([]); // Para identificar itens devolvidos
 
   // Filtrar lojas com base nas permissões do usuário
@@ -749,10 +750,25 @@ export default function VendasPage() {
       setLojas(lojasData || []);
       setDevolucoes(devolucoesData || []);
 
-      // Verificar se há caixa aberto
-      const caixaAbertoAtual = caixaData?.find(
-        (c: any) => c.status === "aberto"
-      );
+      // Armazenar TODOS os caixas abertos para referência
+      const todosCaixas =
+        caixaData?.filter((c: any) => c.status === "aberto") || [];
+      setTodosCaixasAbertos(todosCaixas);
+
+      // Verificar se há caixa aberto considerando a loja do usuário
+      const lojaIdUsuario = user?.permissoes?.loja_id;
+      let caixaAbertoAtual;
+
+      if (lojaIdUsuario !== null && lojaIdUsuario !== undefined) {
+        // Usuário com loja específica - buscar caixa aberto da sua loja
+        caixaAbertoAtual = todosCaixas.find(
+          (c: any) => c.loja_id === lojaIdUsuario
+        );
+      } else {
+        // Usuário sem loja específica (admin) - buscar qualquer caixa aberto
+        caixaAbertoAtual = todosCaixas[0] || null;
+      }
+
       setCaixaAberto(caixaAbertoAtual || null);
 
       console.log("[VENDAS] Dados carregados:", {
@@ -760,7 +776,14 @@ export default function VendasPage() {
         clientes: clientesData?.length || 0,
         usuarios: usuariosData?.length || 0,
         lojas: lojasData?.length || 0,
+        lojaUsuario: lojaIdUsuario,
+        totalCaixasAbertos: todosCaixas.length,
+        caixasAbertos: todosCaixas.map((c: any) => ({
+          loja_id: c.loja_id,
+          id: c.id,
+        })),
         caixaAberto: !!caixaAbertoAtual,
+        caixaLojaId: caixaAbertoAtual?.loja_id,
       });
     } catch (e) {
       console.error("[VENDAS] Erro ao carregar dados:", e);
@@ -860,10 +883,24 @@ export default function VendasPage() {
   useEffect(() => {
     if (selectedLoja?.id) {
       loadEstoquePorLoja(selectedLoja.id);
+
+      // Verificar se o caixa desta loja específica está aberto
+      const caixaDestaLoja = todosCaixasAbertos.find(
+        (c: any) => c.loja_id === selectedLoja.id
+      );
+      setCaixaLojaAberto(!!caixaDestaLoja);
+
+      console.log("[VENDAS] Verificando caixa para loja:", {
+        lojaId: selectedLoja.id,
+        lojaNome: selectedLoja.nome,
+        caixaEncontrado: !!caixaDestaLoja,
+        caixasDisponiveis: todosCaixasAbertos.map((c: any) => c.loja_id),
+      });
     } else {
       setEstoque([]);
+      setCaixaLojaAberto(false);
     }
-  }, [selectedLoja?.id]);
+  }, [selectedLoja?.id, todosCaixasAbertos]);
 
   // NOVO USEEFFECT: Buscar crédito quando cliente for selecionado
   useEffect(() => {
@@ -1149,10 +1186,12 @@ export default function VendasPage() {
     const lojaVenda = lojas.find((l) => l.id === v.loja_id) || null;
     setSelectedLoja(lojaVenda);
 
-    // Verificar se o caixa da loja desta venda está aberto
-    if (lojaVenda && caixaAberto) {
-      const caixaDestaLoja = caixaAberto.loja_id === lojaVenda.id;
-      setCaixaLojaAberto(caixaDestaLoja);
+    // Verificar se o caixa da loja desta venda está aberto usando todosCaixasAbertos
+    if (lojaVenda) {
+      const caixaDestaLoja = todosCaixasAbertos.find(
+        (c: any) => c.loja_id === lojaVenda.id
+      );
+      setCaixaLojaAberto(!!caixaDestaLoja);
     } else {
       setCaixaLojaAberto(false);
     }
@@ -3576,10 +3615,12 @@ export default function VendasPage() {
                       setEstoque([]);
                     }
 
-                    // Verificar se o caixa dessa loja está aberto
-                    if (loja && caixaAberto) {
-                      const caixaDestaLoja = caixaAberto.loja_id === loja.id;
-                      setCaixaLojaAberto(caixaDestaLoja);
+                    // Verificar se o caixa dessa loja está aberto usando todosCaixasAbertos
+                    if (loja) {
+                      const caixaDestaLoja = todosCaixasAbertos.find(
+                        (c: any) => c.loja_id === loja.id
+                      );
+                      setCaixaLojaAberto(!!caixaDestaLoja);
 
                       if (!caixaDestaLoja) {
                         toast.error(
