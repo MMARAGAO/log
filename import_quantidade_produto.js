@@ -11,15 +11,65 @@ const supabase = createClient(
 );
 
 // Configurações padrão — você pode alterar via CLI
-const DEFAULT_FILE = "CONTAGEM_DE_FLEX.xls";
-const LOJA_NOME = "atacado"; // nome da loja que será atualizada
+const DEFAULT_FILE = "CONTAGEM _LOJA _FEIRA.xls";
+const LOJA_NOME = "Loja Feira"; // nome da loja que será atualizada
+const LOJA_ID = 1; // ID da Loja Feira
 const USUARIO_ID = "09bd7a75-a3d0-4bfd-ae03-a3db30a721be";
+const USUARIO_NOME = "Sistema de Importação";
 
 function limparPreco(valor) {
   if (valor === null || valor === undefined || valor === "") return 0;
-  const str = String(valor).trim().replace(/\s+/g, "").replace(",", ".");
+
+  // Remove espaços, R$, e converte vírgula para ponto
+  const str = String(valor)
+    .trim()
+    .replace(/R\$/g, "")
+    .replace(/\s+/g, "")
+    .replace(",", ".");
+
   const num = parseFloat(str);
   return isNaN(num) ? 0 : num;
+}
+
+// Função para registrar no histórico de estoque
+async function registrarHistorico(
+  produtoId,
+  lojaId,
+  qtdAnterior,
+  qtdNova,
+  tipoOperacao,
+  observacao
+) {
+  try {
+    const qtdAlterada = qtdNova - qtdAnterior;
+
+    // Não registrar se não houve mudança
+    if (qtdAlterada === 0) {
+      return;
+    }
+
+    const { error } = await supabase.from("estoque_historico").insert([
+      {
+        produto_id: produtoId,
+        loja_id: lojaId,
+        quantidade_anterior: qtdAnterior,
+        quantidade_nova: qtdNova,
+        quantidade_alterada: qtdAlterada,
+        tipo_operacao: tipoOperacao,
+        usuario_id: USUARIO_ID,
+        usuario_nome: USUARIO_NOME,
+        observacao: observacao,
+      },
+    ]);
+
+    if (error) {
+      console.error(`⚠️ Erro ao registrar histórico:`, error.message);
+    } else {
+      console.log(`📝 Histórico registrado: ${qtdAnterior} → ${qtdNova}`);
+    }
+  } catch (err) {
+    console.error(`⚠️ Erro ao registrar histórico:`, err.message);
+  }
 }
 
 async function importarEstoque({ file = DEFAULT_FILE, increment = false }) {
@@ -34,14 +84,22 @@ async function importarEstoque({ file = DEFAULT_FILE, increment = false }) {
   // Interface de prompt (reutilizada durante todo o processo)
   const rl = readline.createInterface({ input: stdin, output: stdout });
 
-  const askYesNo = async (question) => {
-    const answer = await rl.question(`${question} [s/N]: `);
+  // estado interativo que permite aplicar a mesma escolha para todos
+  let globalUpdateMode = null; // null | 'replaceAll' | 'incrementAll'
+  let globalCreateMode = false; // false | true (criar todos os produtos automaticamente)
+  let globalInsertMode = false; // false | true (inserir todos automaticamente)
+  let globalPriceUpdateMode = false; // false | true (atualizar todos os preços automaticamente)
+
+  const askYesNo = async (question, allowAll = false) => {
+    const suffix = allowAll ? " [s/N/T (Todos)]: " : " [s/N]: ";
+    const answer = await rl.question(`${question}${suffix}`);
     if (!answer) return false;
     const a = answer.trim().toLowerCase();
+    if (a === "t" || a === "todos" || a === "all") return "all";
     return a === "s" || a === "y" || a === "sim" || a === "yes";
   };
   // estado interativo que permite aplicar a mesma escolha para todos
-  let globalUpdateMode = null; // null | 'replaceAll' | 'incrementAll'
+  // let globalUpdateMode = null; // null | 'replaceAll' | 'incrementAll'
 
   const askUpdateAction = async (descricao, currentQtd, proposedQtd) => {
     // se o usuário já escolheu aplicar a mesma ação para todos
@@ -57,7 +115,7 @@ async function importarEstoque({ file = DEFAULT_FILE, increment = false }) {
     if (!ans) return false;
     const a = ans.trim();
     if (a === "r") return "replace";
-    i;
+    if (a === "i") return "increment";
     if (a === "R") {
       globalUpdateMode = "replaceAll";
       return "replace";
@@ -70,40 +128,39 @@ async function importarEstoque({ file = DEFAULT_FILE, increment = false }) {
     const al = a.toLowerCase();
     if (al === "s" || al === "sim" || al === "y" || al === "yes")
       return "replace";
-    if (al === "i" || al === "inc" || al === "increment" || al === "+")
-      return "increment";
+    if (al === "inc" || al === "increment" || al === "+") return "increment";
     return false;
   };
-  // Buscar loja pelo nome
-  const { data: lojas, error: lojaErr } = await supabase
-    .from("lojas")
-    .select("id,nome")
-    .ilike("nome", LOJA_NOME)
-    .limit(1);
 
-  if (lojaErr || !lojas || lojas.length === 0) {
-    console.error(
-      `❌ Não foi possível localizar a loja '${LOJA_NOME}':`,
-      lojaErr?.message || "não encontrada"
-    );
-    rl.close();
-    return;
-  }
-
-  const LOJA_ID = lojas[0].id;
+  console.log(`🏪 Importando para a loja: ${LOJA_NOME} (ID: ${LOJA_ID})\n`);
 
   for (const item of data) {
     const descricao = (item["DESCRIÇÃO"] || item["DESCRICAO"] || "")
       .toString()
       .trim();
     const qtd_total = Number(
-      item["QTD TOTAL"] || item["QTD"] || item["QTD_TOTAL"] || 0
+      item["QTD TOTAL"] ||
+        item["QTD"] ||
+        item["QTD_TOTAL"] ||
+        item["QNT TOTAL"] ||
+        0
+    );
+    const preco_compra = limparPreco(
+      item["PREÇO COMPRA"] || item["PRECO COMPRA"] || item["PREÇO COMRA"] || 0
+    );
+    const preco_venda = limparPreco(
+      item["PREÇO VENDA"] || item["PRECO VENDA"] || 0
     );
 
     if (!descricao) {
       console.warn(`⚠️ Linha ignorada (sem descrição):`, item);
       continue;
     }
+
+    console.log(`\n📦 Processando: ${descricao}`);
+    console.log(
+      `   Quantidade: ${qtd_total} | Compra: R$ ${preco_compra} | Venda: R$ ${preco_venda}`
+    );
 
     // Buscar produto existente pelo campo descricao (primeiro tenta igualdade exata, depois ilike)
     let produto = null;
@@ -144,24 +201,37 @@ async function importarEstoque({ file = DEFAULT_FILE, increment = false }) {
     if (!produto) {
       // Produto não encontrado — perguntar se deve criar
       console.warn(`⚠️ Produto não encontrado no estoque: '${descricao}'`);
-      const criar = await askYesNo(
-        `Deseja criar o produto '${descricao}' no estoque e vinculá-lo à loja ${LOJA_NOME} com quantidade ${qtd_total}?`
-      );
+
+      let criar = globalCreateMode;
+      if (!globalCreateMode) {
+        criar = await askYesNo(
+          `Deseja criar o produto '${descricao}' no estoque e vinculá-lo à loja ${LOJA_NOME} com quantidade ${qtd_total}?`,
+          true
+        );
+
+        if (criar === "all") {
+          globalCreateMode = true;
+          criar = true;
+          console.log(
+            "✅ Modo: CRIAR TODOS os produtos automaticamente ativado!"
+          );
+        }
+      }
 
       if (!criar) {
         console.log(`⏭ Pulando '${descricao}' (não criado).`);
         continue;
       }
 
-      // Criar produto mínimo (sem preços) antes de vincular
+      // Criar produto COM os preços da planilha
       const { data: novoProd, error: errInsertProd } = await supabase
         .from("estoque")
         .insert([
           {
             descricao,
             marca: null,
-            preco_compra: 0,
-            preco_venda: 0,
+            preco_compra: preco_compra,
+            preco_venda: preco_venda,
             minimo: 0,
             usuario_id: USUARIO_ID,
           },
@@ -179,6 +249,71 @@ async function importarEstoque({ file = DEFAULT_FILE, increment = false }) {
 
       produto = { id: novoProd.id };
       console.log(`✅ Produto criado: '${descricao}' (id=${produto.id})`);
+      console.log(
+        `   💰 Preços: Compra R$ ${preco_compra} | Venda R$ ${preco_venda}`
+      );
+    } else {
+      // Produto já existe - atualizar preços se necessário
+      const { data: produtoAtual, error: errProduto } = await supabase
+        .from("estoque")
+        .select("preco_compra, preco_venda")
+        .eq("id", produto.id)
+        .single();
+
+      if (!errProduto && produtoAtual) {
+        const precosAtuais = {
+          compra: Number(produtoAtual.preco_compra || 0),
+          venda: Number(produtoAtual.preco_venda || 0),
+        };
+
+        const precosNovos = {
+          compra: preco_compra,
+          venda: preco_venda,
+        };
+
+        // Verificar se os preços são diferentes
+        if (
+          precosAtuais.compra !== precosNovos.compra ||
+          precosAtuais.venda !== precosNovos.venda
+        ) {
+          let atualizarPrecos = globalPriceUpdateMode;
+
+          if (!globalPriceUpdateMode) {
+            atualizarPrecos = await askYesNo(
+              `Produto '${descricao}' tem preços diferentes:\n` +
+                `  Atual: Compra R$ ${precosAtuais.compra} | Venda R$ ${precosAtuais.venda}\n` +
+                `  Novo:  Compra R$ ${precosNovos.compra} | Venda R$ ${precosNovos.venda}\n` +
+                `Deseja atualizar os preços?`,
+              true
+            );
+
+            if (atualizarPrecos === "all") {
+              globalPriceUpdateMode = true;
+              atualizarPrecos = true;
+              console.log(
+                "✅ Modo: ATUALIZAR TODOS os preços automaticamente ativado!"
+              );
+            }
+          }
+
+          if (atualizarPrecos) {
+            const { error: errUpdate } = await supabase
+              .from("estoque")
+              .update({
+                preco_compra: precosNovos.compra,
+                preco_venda: precosNovos.venda,
+                updatedat: new Date().toISOString(),
+              })
+              .eq("id", produto.id);
+
+            if (errUpdate) {
+              console.error(`❌ Erro ao atualizar preços:`, errUpdate.message);
+            } else {
+              console.log(`✅ Preços atualizados para '${descricao}'`);
+            }
+          }
+        }
+      }
     }
 
     const produto_id = produto.id;
@@ -221,7 +356,11 @@ async function importarEstoque({ file = DEFAULT_FILE, increment = false }) {
 
       const { error: updErr } = await supabase
         .from("estoque_lojas")
-        .update({ quantidade: newQtd, usuario_id: USUARIO_ID })
+        .update({
+          quantidade: newQtd,
+          usuario_id: USUARIO_ID,
+          updatedat: new Date().toISOString(),
+        })
         .eq("id", lojaRegistro[0].id);
 
       if (updErr) {
@@ -235,11 +374,39 @@ async function importarEstoque({ file = DEFAULT_FILE, increment = false }) {
       console.log(
         `🔁 Atualizado '${descricao}' (produto_id=${produto_id}) — ${currentQtd} -> ${newQtd}`
       );
+
+      // Registrar no histórico
+      const tipoOp =
+        action === "increment" ? "entrada_estoque" : "ajuste_manual";
+      const obs =
+        action === "increment"
+          ? `Importação de planilha - Incremento de ${qtd_total} unidades`
+          : `Importação de planilha - Substituição de quantidade`;
+
+      await registrarHistorico(
+        produto_id,
+        LOJA_ID,
+        currentQtd,
+        newQtd,
+        tipoOp,
+        obs
+      );
     } else {
       // criar registro na loja — pedir confirmação antes de inserir
-      const confirmarIns = await askYesNo(
-        `Produto: '${descricao}' não tem registro nesta loja. Inserir quantidade ${qtd_total} para a loja ${LOJA_NOME}?`
-      );
+      let confirmarIns = globalInsertMode;
+
+      if (!globalInsertMode) {
+        confirmarIns = await askYesNo(
+          `Produto: '${descricao}' não tem registro nesta loja. Inserir quantidade ${qtd_total} para a loja ${LOJA_NOME}?`,
+          true
+        );
+
+        if (confirmarIns === "all") {
+          globalInsertMode = true;
+          confirmarIns = true;
+          console.log("✅ Modo: INSERIR TODOS automaticamente ativado!");
+        }
+      }
 
       if (!confirmarIns) {
         console.log(`⏭ Inserção cancelada para '${descricao}'.`);
@@ -266,6 +433,18 @@ async function importarEstoque({ file = DEFAULT_FILE, increment = false }) {
       console.log(
         `➕ Inserido '${descricao}' na loja ${LOJA_NOME} — Qtd: ${qtd_total}`
       );
+
+      // Registrar no histórico (apenas se quantidade > 0)
+      if (qtd_total > 0) {
+        await registrarHistorico(
+          produto_id,
+          LOJA_ID,
+          0,
+          qtd_total,
+          "entrada_estoque",
+          "Importação de planilha - Primeira entrada"
+        );
+      }
     }
   }
 

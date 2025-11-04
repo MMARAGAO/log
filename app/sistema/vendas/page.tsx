@@ -41,6 +41,10 @@ import {
   Tooltip,
   Divider,
   Spinner,
+  Dropdown,
+  DropdownTrigger,
+  DropdownMenu,
+  DropdownItem,
 } from "@heroui/react";
 import {
   PlusIcon,
@@ -76,6 +80,7 @@ import {
   PaperClipIcon,
   CloudArrowUpIcon,
   PhotoIcon,
+  EllipsisVerticalIcon,
 } from "@heroicons/react/24/outline";
 import { supabase } from "@/lib/supabaseClient";
 import toast, { Toaster } from "react-hot-toast";
@@ -959,7 +964,16 @@ export default function VendasPage() {
         if (filters.loja && v.loja_id?.toString() !== filters.loja)
           return false;
 
-        // Filtro de permissão: se não tiver permissão ver_todas_vendas, mostrar apenas vendas próprias
+        // Filtro de permissão por loja: usuário só vê vendas da sua loja de operação
+        const lojaIdUsuario = user?.permissoes?.loja_id;
+        if (lojaIdUsuario !== null && lojaIdUsuario !== undefined) {
+          // Usuário tem loja específica - só pode ver vendas dessa loja
+          if (v.loja_id !== lojaIdUsuario) {
+            return false;
+          }
+        }
+
+        // Filtro de permissão por usuário: se não tiver permissão ver_todas_vendas, mostrar apenas vendas próprias
         if (!canViewTodasVendas && v.id_usuario !== user?.id) {
           return false;
         }
@@ -3188,6 +3202,7 @@ export default function VendasPage() {
                 <TableColumn>Hora</TableColumn>
                 <TableColumn>Funcionário</TableColumn>
                 <TableColumn>Cliente</TableColumn>
+                <TableColumn>Loja</TableColumn>
                 <TableColumn>Pagamento</TableColumn>
                 <TableColumn>Total</TableColumn>
                 <TableColumn>Restante</TableColumn>
@@ -3211,6 +3226,16 @@ export default function VendasPage() {
                       </TableCell>
                       <TableCell className="max-w-[160px] truncate">
                         {v.cliente_nome || "-"}
+                      </TableCell>
+                      <TableCell>
+                        <Chip 
+                          size="sm" 
+                          variant="flat" 
+                          color="primary"
+                          startContent={<BuildingStorefrontIcon className="w-3 h-3" />}
+                        >
+                          {lojas.find((l) => l.id === v.loja_id)?.nome || "N/A"}
+                        </Chip>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
@@ -3259,75 +3284,84 @@ export default function VendasPage() {
                           : "-"}
                       </TableCell>
                       <TableCell>
-                        <div className="flex gap-1">
-                          <Tooltip content="Ver">
-                            <Button
-                              isIconOnly
-                              size="sm"
-                              variant="light"
+                        <Dropdown>
+                          <DropdownTrigger>
+                            <Button isIconOnly size="sm" variant="light">
+                              <EllipsisVerticalIcon className="w-5 h-5" />
+                            </Button>
+                          </DropdownTrigger>
+                          <DropdownMenu aria-label="Ações da venda">
+                            <DropdownItem
+                              key="ver"
+                              startContent={<EyeIcon className="w-4 h-4" />}
                               onPress={() => openView(v)}
                             >
-                              <EyeIcon className="w-4 h-4" />
-                            </Button>
-                          </Tooltip>
-                          {canEditVendas && (
-                            <Tooltip
-                              content={
-                                computeStatus(v) === "pago" &&
-                                !canEditVendasPagas
-                                  ? "Venda paga - Sem permissão para editar"
-                                  : "Editar"
-                              }
-                            >
-                              <Button
-                                isIconOnly
-                                size="sm"
-                                variant="light"
+                              Ver Detalhes
+                            </DropdownItem>
+
+                            {canEditVendas ? (
+                              <DropdownItem
+                                key="editar"
+                                startContent={
+                                  computeStatus(v) === "pago" &&
+                                  !canEditVendasPagas ? (
+                                    <LockClosedIcon className="w-4 h-4" />
+                                  ) : (
+                                    <PencilIcon className="w-4 h-4" />
+                                  )
+                                }
                                 onPress={() => safeOpenEditVenda(v)}
                                 isDisabled={
                                   computeStatus(v) === "pago" &&
                                   !canEditVendasPagas
                                 }
+                                description={
+                                  computeStatus(v) === "pago" &&
+                                  !canEditVendasPagas
+                                    ? "Sem permissão para editar venda paga"
+                                    : undefined
+                                }
                               >
-                                {computeStatus(v) === "pago" &&
-                                !canEditVendasPagas ? (
-                                  <LockClosedIcon className="w-4 h-4" />
-                                ) : (
-                                  <PencilIcon className="w-4 h-4" />
-                                )}
-                              </Button>
-                            </Tooltip>
-                          )}
-                          {canProcessarPagamentos && (
-                            <Tooltip content="Pagamento">
-                              <Button
-                                isIconOnly
-                                size="sm"
-                                variant="light"
+                                Editar
+                              </DropdownItem>
+                            ) : null}
+
+                            {canProcessarPagamentos ? (
+                              <DropdownItem
+                                key="pagamento"
+                                startContent={
+                                  <CurrencyDollarIcon className="w-4 h-4" />
+                                }
                                 onPress={() => safeOpenPagamento(v)}
                                 isDisabled={
                                   computeStatus(v) === "pago" ||
                                   computeStatus(v) === "cancelado"
                                 }
+                                description={
+                                  computeStatus(v) === "pago"
+                                    ? "Venda já paga"
+                                    : computeStatus(v) === "cancelado"
+                                      ? "Venda cancelada"
+                                      : undefined
+                                }
                               >
-                                <CurrencyDollarIcon className="w-4 h-4" />
-                              </Button>
-                            </Tooltip>
-                          )}
-                          {canDeleteVendas && (
-                            <Tooltip content="Excluir" color="danger">
-                              <Button
-                                isIconOnly
-                                size="sm"
-                                variant="light"
+                                Processar Pagamento
+                              </DropdownItem>
+                            ) : null}
+
+                            {canDeleteVendas ? (
+                              <DropdownItem
+                                key="deletar"
+                                className="text-danger"
                                 color="danger"
+                                startContent={<TrashIcon className="w-4 h-4" />}
                                 onPress={() => safeOpenDelete(v)}
                               >
-                                <TrashIcon className="w-4 h-4" />
-                              </Button>
-                            </Tooltip>
-                          )}
-                        </div>
+                                Excluir
+                              </DropdownItem>
+                            ) : null}
+                          </DropdownMenu>
+                        </Dropdown>
                       </TableCell>
                     </TableRow>
                   );
