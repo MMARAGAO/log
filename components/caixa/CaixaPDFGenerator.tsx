@@ -474,12 +474,12 @@ export class CaixaPDFGenerator {
           // FALLBACK: Se não tem pagamento_detalhes (vendas antigas), usar forma_pagamento
           // Aqui SIM desconta crédito usado
           valorTotal = totalVenda - creditoUsado;
-          
+
           // Se é devolução sem crédito, inverte o sinal
           if (isDevolucaoSemCredito) {
             valorTotal = -valorTotal;
           }
-          
+
           const formaPrincipal = venda.forma_pagamento || "Outros";
           parts.push({
             label: mapPaymentKeyToLabel(formaPrincipal.toLowerCase()),

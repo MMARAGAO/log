@@ -519,16 +519,20 @@ export default function CaixaPage() {
         (v as any).valor_total ?? (v as any).total_liquido ?? 0;
       const creditoUsado = Number((v as any).credito_usado || 0);
       const detalhes = (v as any).pagamento_detalhes;
-      
+
       // Se TEM pagamento_detalhes: soma os valores detalhados (já estão corretos)
-      if (detalhes && typeof detalhes === "object" && Object.keys(detalhes).length > 0) {
+      if (
+        detalhes &&
+        typeof detalhes === "object" &&
+        Object.keys(detalhes).length > 0
+      ) {
         const somaDetalhes = Object.values(detalhes).reduce(
           (sum: number, val) => sum + Number(val || 0),
           0
         );
         return acc + somaDetalhes;
       }
-      
+
       // Se NÃO TEM: desconta crédito do total (vendas antigas)
       const valorEfetivamentePago = totalVenda - creditoUsado;
       return acc + Number(valorEfetivamentePago || 0);
