@@ -336,27 +336,27 @@ export default function DevolucoesPagina() {
     null
   );
 
-  // Sugestões de vendas filtradas
+  // Sugestões de vendas filtradas (com busca multi-termos)
   const vendasSugeridas = useMemo(() => {
     if (!buscarVendaId.trim() || buscarVendaId.length < 1) return [];
 
-    const termo = buscarVendaId.toLowerCase();
+    // Busca multi-termos: cada termo precisa existir (parcial) em algum campo
+    const tokens = normalizeText(buscarVendaId).split(" ").filter(Boolean);
 
     return vendas
       .filter((venda) => {
-        // Buscar por ID da venda
-        if (venda.id.toString().includes(termo)) return true;
-
-        // Buscar por nome do cliente
-        if (venda.cliente_nome?.toLowerCase().includes(termo)) return true;
-
-        // Buscar por data (formato dd/mm/yyyy)
+        // Criar texto composto com todos os campos pesquisáveis
         const dataFormatada = new Date(venda.data_venda).toLocaleDateString(
           "pt-BR"
         );
-        if (dataFormatada.includes(termo)) return true;
+        const composite = normalizeText(
+          [venda.id.toString(), venda.cliente_nome, dataFormatada].join(" ")
+        );
 
-        return false;
+        // Todos os termos precisam estar presentes
+        const searchMatch = tokens.every((token) => composite.includes(token));
+
+        return searchMatch;
       })
       .filter(
         (venda) =>
@@ -365,6 +365,7 @@ export default function DevolucoesPagina() {
       )
       .sort((a, b) => {
         // Priorizar correspondência exata do ID
+        const termo = buscarVendaId.toLowerCase();
         const aIdMatch = a.id.toString() === termo;
         const bIdMatch = b.id.toString() === termo;
 

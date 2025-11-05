@@ -365,6 +365,16 @@ export default function TransferenciasPage() {
     setProductSearchTerms({});
   }, [formData.loja_origem_id, estoque]);
 
+  // Normalização de texto para busca (case/acentos/pontuação)
+  function normalizeText(text?: string): string {
+    return (text || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "") // remove acentos
+      .replace(/[^a-z0-9]+/g, " ") // mantém letras/números e espaços
+      .trim();
+  }
+
   // Função para atualizar termo de busca de produto por item
   function updateProductSearchTerm(itemIndex: number, searchTerm: string) {
     setProductSearchTerms((prev) => ({
@@ -373,23 +383,30 @@ export default function TransferenciasPage() {
     }));
   }
 
-  // Função para filtrar produtos baseado na busca
+  // Função para filtrar produtos baseado na busca (multi-termos)
   function getFilteredProducts(itemIndex: number): EstoqueItem[] {
     const searchTerm = productSearchTerms[itemIndex] || "";
     if (!searchTerm.trim()) {
       return produtosOrigem;
     }
 
-    return produtosOrigem.filter(
-      (produto) =>
-        produto.descricao.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (produto.marca &&
-          produto.marca.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (produto.modelo &&
-          produto.modelo.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (produto.compativel &&
-          produto.compativel.toLowerCase().includes(searchTerm.toLowerCase()))
-    );
+    // Busca multi-termos: cada termo precisa existir (parcial) em algum campo
+    const tokens = normalizeText(searchTerm).split(" ").filter(Boolean);
+
+    return produtosOrigem.filter((produto) => {
+      const composite = normalizeText(
+        [
+          produto.id.toString(),
+          produto.descricao,
+          produto.modelo,
+          produto.marca,
+          produto.compativel,
+        ].join(" ")
+      );
+
+      // Todos os termos precisam estar presentes
+      return tokens.every((token) => composite.includes(token));
+    });
   }
 
   // Função para adicionar item à transferência
