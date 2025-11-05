@@ -792,25 +792,6 @@ export default function VendasPage() {
     }
   }
 
-  // 🐛 DEBUG: Monitorar vendas e filtros
-  useEffect(() => {
-    if (vendas.length > 0) {
-      const devolvidas = vendas.filter(v => v.status_pagamento === "devolvido");
-      console.log("📊 [DEBUG VENDAS]", {
-        totalVendas: vendas.length,
-        vendasDevolvidas: devolvidas.length,
-        idsDevolvidas: devolvidas.map(v => ({ id: v.id, data: v.data_venda, cliente: v.cliente_nome })),
-        filtradas: filtered.length,
-        filtrosAtivos: filters,
-        usuarioPermissoes: {
-          canViewTodasVendas,
-          lojaId: user?.permissoes?.loja_id,
-          userId: user?.id,
-        }
-      });
-    }
-  }, [vendas, filtered, filters, canViewTodasVendas, user]);
-
   // Carregar estoque da loja selecionada
   async function loadEstoquePorLoja(lojaId: number) {
     if (!lojaId) {
@@ -1149,6 +1130,31 @@ export default function VendasPage() {
       ticket,
     };
   }, [filtered, filters.filtrarPorDataPagamento]);
+
+  // 🐛 DEBUG: Monitorar vendas e filtros
+  useEffect(() => {
+    if (vendas.length > 0) {
+      const devolvidas = vendas.filter(
+        (v) => v.status_pagamento === "devolvido"
+      );
+      console.log("📊 [DEBUG VENDAS]", {
+        totalVendas: vendas.length,
+        vendasDevolvidas: devolvidas.length,
+        idsDevolvidas: devolvidas.map((v) => ({
+          id: v.id,
+          data: v.data_venda,
+          cliente: v.cliente_nome,
+        })),
+        filtradas: filtered.length,
+        filtrosAtivos: filters,
+        usuarioPermissoes: {
+          canViewTodasVendas,
+          lojaId: user?.permissoes?.loja_id,
+          userId: user?.id,
+        },
+      });
+    }
+  }, [vendas, filtered, filters, canViewTodasVendas, user]);
 
   function openNewVenda() {
     // Verificar se há caixa aberto

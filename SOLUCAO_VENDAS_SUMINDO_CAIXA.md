@@ -13,7 +13,7 @@ No arquivo `components/caixa/CaixaPDFGenerator.tsx` (linhas 447-451):
 const isDevolucaoComCredito =
   venda.status_pagamento === "devolvido" && !isDevolucaoSemCredito;
 
-// Pular devoluções COM crédito (não entraram dinheiro no caixa)  
+// Pular devoluções COM crédito (não entraram dinheiro no caixa)
 if (isDevolucaoComCredito) {
   return; // ❌ VENDAS DEVOLVIDAS COM CRÉDITO SÃO OCULTADAS
 }
@@ -27,7 +27,6 @@ if (isDevolucaoComCredito) {
    - Dinheiro **fica no caixa** (vira crédito para o cliente)
    - Venda **NÃO aparece** no PDF do caixa
    - Motivo: "não entrou dinheiro novo no caixa"
-   
 2. **Devolução SEM crédito** (`credito_aplicado: false`):
    - Dinheiro **sai do caixa** (é devolvido ao cliente)
    - Venda **APARECE** no PDF como valor negativo
@@ -38,16 +37,19 @@ if (isDevolucaoComCredito) {
 A lógica atual está **ERRADA** por estes motivos:
 
 ### 1. Quebra a Auditoria
+
 - Vendas desaparecem do relatório
 - Impossível rastrear o que aconteceu
 - Falta transparência
 
 ### 2. Confusão para o Usuário
+
 - "Onde foi parar minha venda de R$ 100?"
 - "O caixa está errado!"
 - "Sumiu dinheiro!"
 
 ### 3. Contabilidade Incorreta
+
 - O **valor ENTROU** no caixa no dia 01
 - O fato de virar crédito depois não muda isso
 - O caixa do dia 01 deve mostrar a entrada original
@@ -103,17 +105,16 @@ if (venda.status_pagamento === "devolvido") {
 
 ```typescript
 // Vendas devolvidas com crédito: cor diferente mas não riscada
-const itensPDF = vendas.map(venda => {
-  const isDevolvidaComCredito = 
-    venda.status_pagamento === "devolvido" && 
-    !venda._isDevolucaoSemCredito;
-  
+const itensPDF = vendas.map((venda) => {
+  const isDevolvidaComCredito =
+    venda.status_pagamento === "devolvido" && !venda._isDevolucaoSemCredito;
+
   return {
     cliente: venda.cliente_nome || "Avulso",
     valor: formatCurrency(venda.total_liquido),
     status: venda.status_pagamento,
     // Estilo diferenciado
-    fillColor: isDevolvidaComCredito ? '#FEF3C7' : undefined, // Fundo amarelo claro
+    fillColor: isDevolvidaComCredito ? "#FEF3C7" : undefined, // Fundo amarelo claro
     fontSize: isDevolvidaComCredito ? 9 : 10,
   };
 });
@@ -155,7 +156,8 @@ entries.push({
   valorTotal,
   temDetalhes,
   // ✅ Adicionar flag para indicação visual
-  isDevolvidaComCredito: venda.status_pagamento === "devolvido" && !isDevolucaoSemCredito,
+  isDevolvidaComCredito:
+    venda.status_pagamento === "devolvido" && !isDevolucaoSemCredito,
   isDevolvidaSemCredito: isDevolucaoSemCredito,
 });
 ```
@@ -165,7 +167,7 @@ E ao renderizar no PDF (procure onde renderiza a tabela de vendas):
 ```typescript
 body: entries.map((entry) => {
   const venda = entry.venda;
-  
+
   // Indicador de status
   let statusIndicador = "";
   if (entry.isDevolvidaComCredito) {
@@ -173,13 +175,13 @@ body: entries.map((entry) => {
   } else if (entry.isDevolvidaSemCredito) {
     statusIndicador = " ❌ [DEVOLVIDA - VALOR DEVOLVIDO]";
   }
-  
+
   return [
     venda.id.toString(),
     (venda.cliente_nome || "Avulso") + statusIndicador,
     // ... resto dos campos
   ];
-})
+});
 ```
 
 ## 📝 Exemplo de Como Deve Ficar
@@ -222,6 +224,7 @@ TOTAL FINAL NO CAIXA:      R$ 450,00
 ## 🔍 Como Testar
 
 1. **Antes da correção**:
+
    - Faça uma venda dia 01
    - Gere o PDF do caixa → venda aparece
    - Faça devolução com crédito dia 03
@@ -239,11 +242,11 @@ Se preferir manter a lógica atual mas melhorar a visualização:
 
 ```typescript
 // Separar vendas normais de devolvidas
-const vendasNormais = entries.filter(e => 
-  e.venda.status_pagamento !== "devolvido"
+const vendasNormais = entries.filter(
+  (e) => e.venda.status_pagamento !== "devolvido"
 );
-const vendasDevolvidas = entries.filter(e => 
-  e.venda.status_pagamento === "devolvido"
+const vendasDevolvidas = entries.filter(
+  (e) => e.venda.status_pagamento === "devolvido"
 );
 
 // No PDF, criar duas seções:

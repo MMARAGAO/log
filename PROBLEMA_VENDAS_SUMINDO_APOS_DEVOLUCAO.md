@@ -3,6 +3,7 @@
 ## 📝 Problema Relatado
 
 **Cenário:**
+
 - Dia 01: Fez uma venda de R$ 100,00
 - Dia 05: Fez uma devolução que gerou crédito
 - **Resultado**: A venda do dia 01 desapareceu/sumiu
@@ -54,30 +55,38 @@ const filtered = useMemo(() => {
 ## 🐛 Possíveis Causas do Problema
 
 ### 1. **Filtro de Status Ativo** ⚠️
+
 Se você aplicou um filtro de status na tela de vendas (ex: "Pago", "Pendente"), as vendas com status "Devolvido" não aparecem.
 
 **Como verificar:**
+
 - Na tela de Vendas, procure por um dropdown ou campo de filtro "Status"
 - Se estiver selecionado algo diferente de "Todos" ou vazio, limpe o filtro
 
 ### 2. **Filtro de Data** 📅
+
 Se você tem um filtro de data ativo mostrando apenas vendas de um período específico, vendas antigas não aparecem.
 
 **Como verificar:**
+
 - Verifique se há filtros de "Data Início" e "Data Fim"
 - Limpe esses filtros para ver todas as vendas
 
 ### 3. **Filtro de Loja** 🏪
+
 Se o usuário tem permissão apenas para uma loja específica, só vê vendas daquela loja.
 
 **Como verificar:**
+
 - Verifique se o usuário tem `permissoes.loja_id` definido
 - Admin vê todas as vendas, usuários normais veem apenas da sua loja
 
 ### 4. **Problema de Permissão** 🔒
+
 Se o usuário não tem permissão `ver_todas_vendas`, só vê suas próprias vendas.
 
 **Como verificar:**
+
 ```typescript
 if (!canViewTodasVendas && v.id_usuario !== user?.id) {
   return false;
@@ -85,11 +94,13 @@ if (!canViewTodasVendas && v.id_usuario !== user?.id) {
 ```
 
 ### 5. **Filtro "Ver Apenas Minhas Vendas"** 👤
+
 Pode haver um toggle ou checkbox ativo que filtra apenas vendas do usuário logado.
 
 ## ✅ Como Verificar se a Venda Ainda Existe
 
 ### Opção 1: Verificar no Supabase
+
 1. Acesse o Supabase Dashboard
 2. Vá em **Table Editor**
 3. Abra a tabela `vendas`
@@ -97,18 +108,21 @@ Pode haver um toggle ou checkbox ativo que filtra apenas vendas do usuário loga
 5. Verifique o campo `status_pagamento` - deve estar como `"devolvido"`
 
 ### Opção 2: Verificar no Console do Navegador
+
 1. Abra o console (F12)
 2. Vá para a aba de Vendas
 3. Digite no console:
+
 ```javascript
 // Ver todas as vendas carregadas
-console.table(JSON.parse(localStorage.getItem('vendas') || '[]'));
+console.table(JSON.parse(localStorage.getItem("vendas") || "[]"));
 
 // Ou inspecione o estado
 // (se estiver usando React DevTools)
 ```
 
 ### Opção 3: Limpar TODOS os Filtros
+
 1. Na tela de Vendas, procure por um botão "Limpar Filtros" ou similar
 2. Limpe todos os campos de busca e filtros
 3. Verifique se a venda aparece
@@ -121,11 +135,13 @@ As vendas devolvidas devem ser VISÍVEIS mas com indicação clara:
 
 ```tsx
 // Em vez de esconder, mostrar com badge "DEVOLVIDA"
-{status === "devolvido" && (
-  <Chip color="danger" variant="flat" size="sm">
-    DEVOLVIDA
-  </Chip>
-)}
+{
+  status === "devolvido" && (
+    <Chip color="danger" variant="flat" size="sm">
+      DEVOLVIDA
+    </Chip>
+  );
+}
 ```
 
 ### 2. **Adicionar Filtro Específico para Ver/Ocultar Devoluções**
@@ -153,16 +169,19 @@ const [filters, setFilters] = useState<FilterState>({
 ```tsx
 <Card
   className={`
-    ${venda.status_pagamento === "devolvido" 
-      ? "opacity-60 border-2 border-danger" 
-      : ""
+    ${
+      venda.status_pagamento === "devolvido"
+        ? "opacity-60 border-2 border-danger"
+        : ""
     }
   `}
 >
   {/* Conteúdo do card */}
   {venda.status_pagamento === "devolvido" && (
     <div className="absolute top-2 right-2">
-      <Chip color="danger" size="sm">DEVOLVIDA</Chip>
+      <Chip color="danger" size="sm">
+        DEVOLVIDA
+      </Chip>
     </div>
   )}
 </Card>
@@ -173,25 +192,27 @@ const [filters, setFilters] = useState<FilterState>({
 Na visualização da venda, mostrar link para a devolução correspondente:
 
 ```tsx
-{venda.status_pagamento === "devolvido" && (
-  <div className="mt-4 p-4 bg-danger-50 rounded-lg">
-    <p className="text-sm font-semibold text-danger">
-      ⚠️ Esta venda foi devolvida
-    </p>
-    <Button
-      size="sm"
-      color="danger"
-      variant="light"
-      onPress={() => {
-        // Navegar para a tela de devoluções
-        // Filtrar pela venda
-        router.push(`/sistema/devolucoes?venda_id=${venda.id}`);
-      }}
-    >
-      Ver Devolução
-    </Button>
-  </div>
-)}
+{
+  venda.status_pagamento === "devolvido" && (
+    <div className="mt-4 p-4 bg-danger-50 rounded-lg">
+      <p className="text-sm font-semibold text-danger">
+        ⚠️ Esta venda foi devolvida
+      </p>
+      <Button
+        size="sm"
+        color="danger"
+        variant="light"
+        onPress={() => {
+          // Navegar para a tela de devoluções
+          // Filtrar pela venda
+          router.push(`/sistema/devolucoes?venda_id=${venda.id}`);
+        }}
+      >
+        Ver Devolução
+      </Button>
+    </div>
+  );
+}
 ```
 
 ## 📊 Estatísticas Recomendadas
@@ -211,7 +232,7 @@ Na tela de vendas, adicionar cards de resumo:
     <CardBody>
       <p className="text-sm text-default-500">Vendas Devolvidas</p>
       <p className="text-2xl font-bold text-danger">
-        {vendas.filter(v => v.status_pagamento === "devolvido").length}
+        {vendas.filter((v) => v.status_pagamento === "devolvido").length}
       </p>
     </CardBody>
   </Card>
@@ -235,7 +256,7 @@ Adicione isso temporariamente no `app/sistema/vendas/page.tsx` após carregar as
 useEffect(() => {
   console.log("📊 VENDAS DEBUG:", {
     total: vendas.length,
-    devolvidas: vendas.filter(v => v.status_pagamento === "devolvido").length,
+    devolvidas: vendas.filter((v) => v.status_pagamento === "devolvido").length,
     filtradas: filtered.length,
     filtros: filters,
   });

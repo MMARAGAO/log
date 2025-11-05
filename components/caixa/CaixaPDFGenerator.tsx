@@ -693,12 +693,14 @@ export class CaixaPDFGenerator {
             entry.venda.data_pagamento || entry.venda.data_venda
           );
           let statusTexto = (entry.venda.status_pagamento || "-").toString();
-          
+
           // ✅ Adicionar indicação para vendas devolvidas
-          const isDevolvidaComCredito = entry.venda.status_pagamento === "devolvido" && 
+          const isDevolvidaComCredito =
+            entry.venda.status_pagamento === "devolvido" &&
             !(entry.venda as any)._isDevolucaoSemCredito;
-          const isDevolvidaSemCredito = (entry.venda as any)._isDevolucaoSemCredito === true;
-          
+          const isDevolvidaSemCredito =
+            (entry.venda as any)._isDevolucaoSemCredito === true;
+
           if (isDevolvidaComCredito) {
             statusTexto = "DEVOLVIDA (CRÉDITO)";
             cliente = `🔄 ${cliente}`;

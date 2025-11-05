@@ -3,6 +3,7 @@
 ## 📝 Problema Relatado
 
 **Cenário Exato:**
+
 - **Dia 01**: Fez uma venda de R$ 100,00 → Venda entra no **Caixa do dia 01**
 - **Dia 03**: Fez devolução da venda → A venda **desaparece do Caixa do dia 01**
 
@@ -14,15 +15,17 @@ O caixa identifica quais vendas pertencem a ele pela **data de pagamento**:
 
 ```typescript
 // app/sistema/caixa/page.tsx - linha 737
-const vendasDoCaixa = dataVendas?.filter((v: Venda) => {
-  if (!v.data_pagamento) return false;
-  if (v.status_pagamento === "cancelado") return false;
-  const dataPagamento = getDateStringInBrazil(v.data_pagamento);
-  return v.loja_id === caixa.loja_id && dataPagamento === dataCaixa;
-}) || [];
+const vendasDoCaixa =
+  dataVendas?.filter((v: Venda) => {
+    if (!v.data_pagamento) return false;
+    if (v.status_pagamento === "cancelado") return false;
+    const dataPagamento = getDateStringInBrazil(v.data_pagamento);
+    return v.loja_id === caixa.loja_id && dataPagamento === dataCaixa;
+  }) || [];
 ```
 
 **Critérios:**
+
 1. ✅ Venda tem `data_pagamento` preenchida
 2. ✅ `status_pagamento` não é "cancelado"
 3. ✅ `data_pagamento` é do mesmo dia do caixa
@@ -40,6 +43,7 @@ const vendasDevolvidas = vendas.filter(
 **O sistema trata devoluções em 2 tipos:**
 
 1. **COM crédito** (`credito_aplicado: true`):
+
    - Dinheiro **ficou no caixa** (virou crédito)
    - Conta como venda normal
    - Não subtrai do caixa
@@ -62,6 +66,7 @@ await updateTable("vendas", vendaSelecionada.id, {
 ```
 
 ### O que NÃO está acontecendo:
+
 ❌ A `data_pagamento` da venda original **NÃO é modificada**
 ❌ A venda **NÃO some** do banco de dados
 ❌ A venda **NÃO é excluída** do caixa
@@ -86,8 +91,10 @@ useEffect(() => {
   if (vendas.length > 0) {
     console.log("🔍 [DEBUG CAIXA] Análise de vendas:", {
       totalVendas: vendas.length,
-      vendasDevolvidas: vendas.filter(v => v.status_pagamento === "devolvido"),
-      vendasDia01: vendas.filter(v => {
+      vendasDevolvidas: vendas.filter(
+        (v) => v.status_pagamento === "devolvido"
+      ),
+      vendasDia01: vendas.filter((v) => {
         const data = getDateStringInBrazil(v.data_pagamento);
         return data === "2025-11-01"; // Ajustar para a data real
       }),
@@ -102,7 +109,7 @@ Execute esta query no SQL Editor do Supabase:
 
 ```sql
 -- Buscar a venda específica
-SELECT 
+SELECT
   id,
   data_venda,
   data_pagamento,
@@ -110,12 +117,12 @@ SELECT
   cliente_nome,
   total_liquido,
   loja_id
-FROM vendas 
+FROM vendas
 WHERE data_venda::date = '2025-11-01'  -- Ajustar para data real
 ORDER BY id;
 
 -- Verificar devoluções
-SELECT 
+SELECT
   d.id as devolucao_id,
   d.id_venda,
   d.data_devolucao,
@@ -139,11 +146,11 @@ As vendas devolvidas **DEVEM aparecer** no relatório do caixa, mas com indicaç
 ```typescript
 // No componente que renderiza as vendas do caixa
 {vendas.map(venda => (
-  <div 
+  <div
     key={venda.id}
     className={`
-      ${venda.status_pagamento === "devolvido" 
-        ? "bg-danger-50 opacity-75 border-l-4 border-danger" 
+      ${venda.status_pagamento === "devolvido"
+        ? "bg-danger-50 opacity-75 border-l-4 border-danger"
         : ""
       }
     `}
@@ -237,7 +244,7 @@ const resumo = {
           + {formatCurrency(resumo.valorBrutoVendas)}
         </span>
       </div>
-      
+
       {resumo.valorDevolvido !== 0 && (
         <div className="flex justify-between text-danger">
           <span>Devoluções (dinheiro devolvido):</span>
@@ -246,9 +253,9 @@ const resumo = {
           </span>
         </div>
       )}
-      
+
       <Divider />
-      
+
       <div className="flex justify-between text-lg font-bold">
         <span>Total Líquido:</span>
         <span>{formatCurrency(resumo.valorLiquido)}</span>
@@ -264,14 +271,15 @@ const resumo = {
 
 ```typescript
 // app/sistema/caixa/page.tsx
-const vendasDoCaixa = dataVendas?.filter((v: Venda) => {
-  if (!v.data_pagamento) return false;
-  if (v.status_pagamento === "cancelado") return false;
-  // NÃO filtrar devolvidas - elas devem aparecer!
-  
-  const dataPagamento = getDateStringInBrazil(v.data_pagamento);
-  return v.loja_id === caixa.loja_id && dataPagamento === dataCaixa;
-}) || [];
+const vendasDoCaixa =
+  dataVendas?.filter((v: Venda) => {
+    if (!v.data_pagamento) return false;
+    if (v.status_pagamento === "cancelado") return false;
+    // NÃO filtrar devolvidas - elas devem aparecer!
+
+    const dataPagamento = getDateStringInBrazil(v.data_pagamento);
+    return v.loja_id === caixa.loja_id && dataPagamento === dataCaixa;
+  }) || [];
 ```
 
 ### Passo 2: Adicionar indicadores visuais
@@ -294,7 +302,8 @@ const resumo = {
   valorVendasPagas: calcularTotal(vendasPagas),
   vendasDevolvidas: vendasDevolvidas.length,
   valorDevolvido: calcularTotalDevolvido(vendasDevolvidas),
-  valorFinal: calcularTotal(vendasPagas) - calcularTotalDevolvido(vendasDevolvidas),
+  valorFinal:
+    calcularTotal(vendasPagas) - calcularTotalDevolvido(vendasDevolvidas),
 };
 ```
 
@@ -307,8 +316,10 @@ console.log("🔍 [CAIXA DEBUG]", {
   dataCaixa,
   totalVendasCarregadas: dataVendas.length,
   vendasFiltradas: vendasDoCaixa.length,
-  vendasDevolvidas: vendasDoCaixa.filter(v => v.status_pagamento === "devolvido").length,
-  datasVendas: vendasDoCaixa.map(v => ({
+  vendasDevolvidas: vendasDoCaixa.filter(
+    (v) => v.status_pagamento === "devolvido"
+  ).length,
+  datasVendas: vendasDoCaixa.map((v) => ({
     id: v.id,
     data_venda: v.data_venda,
     data_pagamento: v.data_pagamento,
@@ -345,6 +356,7 @@ OBSERVAÇÃO: A venda #125 foi devolvida no dia 03/11/2025
 O problema **NÃO é** que a venda está sendo deletada. O problema é que ela está sendo **escondida visualmente** do relatório do caixa quando marcada como "devolvida".
 
 A solução é garantir que:
+
 1. ✅ Vendas devolvidas **APAREÇAM** no relatório
 2. ✅ Com **indicação visual clara** (badge, cor diferente, etc)
 3. ✅ O **cálculo financeiro** desconte o valor quando aplicável
