@@ -442,14 +442,13 @@ export class CaixaPDFGenerator {
         const isDevolucaoSemCredito =
           (venda as any)._isDevolucaoSemCredito === true;
 
-        // Identificar se é devolução COM crédito (não deve aparecer no PDF)
+        // Identificar se é devolução COM crédito
         const isDevolucaoComCredito =
           venda.status_pagamento === "devolvido" && !isDevolucaoSemCredito;
 
-        // Pular devoluções COM crédito (não entraram dinheiro no caixa)
-        if (isDevolucaoComCredito) {
-          return;
-        }
+        // ✅ CORREÇÃO: Não pular devoluções COM crédito
+        // Elas devem aparecer no PDF com indicação visual
+        // O dinheiro ENTROU no caixa naquele dia, mesmo que tenha virado crédito depois
 
         const parts: { label: string; amt: number }[] = [];
         let temDetalhes = false;
@@ -689,11 +688,24 @@ export class CaixaPDFGenerator {
             doc.rect(20, yPos - 2, 170, 6.5, "F");
           }
 
-          const cliente = entry.venda.cliente_nome || "Cliente avulso";
+          let cliente = entry.venda.cliente_nome || "Cliente avulso";
           const dataFormatada = formatarDataHoraSimples(
             entry.venda.data_pagamento || entry.venda.data_venda
           );
-          const statusTexto = (entry.venda.status_pagamento || "-").toString();
+          let statusTexto = (entry.venda.status_pagamento || "-").toString();
+          
+          // ✅ Adicionar indicação para vendas devolvidas
+          const isDevolvidaComCredito = entry.venda.status_pagamento === "devolvido" && 
+            !(entry.venda as any)._isDevolucaoSemCredito;
+          const isDevolvidaSemCredito = (entry.venda as any)._isDevolucaoSemCredito === true;
+          
+          if (isDevolvidaComCredito) {
+            statusTexto = "DEVOLVIDA (CRÉDITO)";
+            cliente = `🔄 ${cliente}`;
+          } else if (isDevolvidaSemCredito) {
+            statusTexto = "DEVOLVIDA (VALOR)";
+            cliente = `❌ ${cliente}`;
+          }
 
           doc.setFont("helvetica", "normal");
           doc.setFontSize(8);
