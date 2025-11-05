@@ -437,7 +437,18 @@ export class CaixaPDFGenerator {
           (venda as any).valor_total ?? (venda as any).total_liquido ?? 0
         );
         const creditoUsado = Number((venda as any).credito_usado || 0);
-        const valorTotal = totalVenda - creditoUsado; // Valor efetivamente pago (desconta crédito)
+
+        // Identificar se é devolução SEM crédito (flag vem do page.tsx)
+        const isDevolucaoSemCredito =
+          (venda as any)._isDevolucaoSemCredito === true;
+
+        // Valor total da venda
+        let valorTotal = totalVenda;
+
+        // Se é devolução sem crédito, inverte o sinal para aparecer negativo
+        if (isDevolucaoSemCredito) {
+          valorTotal = -valorTotal;
+        }
 
         const parts: { label: string; amt: number }[] = [];
         let temDetalhes = false;

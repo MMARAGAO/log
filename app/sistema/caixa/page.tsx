@@ -752,11 +752,23 @@ export default function CaixaPage() {
       // Calcular resumo das vendas (suporta pagamentos mistos via pagamento_detalhes)
       const resumo = computeResumoFromList(vendasDoCaixa);
 
+      // Marcar vendas devolvidas SEM crédito para aparecerem como negativas no PDF
+      const vendasComFlag = vendasDoCaixa.map((v) => {
+        if (v.status_pagamento === "devolvido") {
+          const devolucao = devolucoes.find((d: any) => d.id_venda === v.id);
+          if (devolucao && !devolucao.credito_aplicado) {
+            // Devolução SEM crédito - adicionar flag
+            return { ...v, _isDevolucaoSemCredito: true };
+          }
+        }
+        return v;
+      });
+
       CaixaPDFGenerator.gerar({
         caixa,
         loja,
         resumo,
-        vendas: vendasDoCaixa,
+        vendas: vendasComFlag,
         sangrias: sangriasDoCaixa,
       });
       toast.success("PDF gerado com sucesso!");
