@@ -6,6 +6,7 @@ import { insertTable } from "@/lib/insertTable";
 import { updateTable } from "@/lib/updateTable";
 import { deleteTable } from "@/lib/deleteTable";
 import { useAuthStore } from "@/store/authZustand";
+import { supabase } from "@/lib/supabaseClient";
 import {
   Card,
   CardBody,
@@ -51,6 +52,8 @@ import {
   PencilIcon,
   TrashIcon,
   ChevronDownIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
 } from "@heroicons/react/24/solid";
 import {
   BuildingStorefrontIcon,
@@ -174,6 +177,13 @@ export default function TransferenciasPage() {
     [key: number]: string;
   }>({});
 
+  // Estado para paginação de produtos na busca
+  const [productPages, setProductPages] = useState<{
+    [key: number]: number;
+  }>({});
+
+  const PRODUCTS_PER_PAGE = 10;
+
   // Estado dos filtros avançados
   const [advancedFilters, setAdvancedFilters] = useState({
     status: "",
@@ -185,6 +195,77 @@ export default function TransferenciasPage() {
   });
 
   const { isOpen, onOpen, onClose } = useDisclosure();
+
+  // Sistema de alertas e confirmações personalizados
+  const [alertDialog, setAlertDialog] = useState<{
+    isOpen: boolean;
+    type: "success" | "error" | "warning" | "info";
+    title: string;
+    message: string;
+  }>({
+    isOpen: false,
+    type: "info",
+    title: "",
+    message: "",
+  });
+
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    confirmText?: string;
+    cancelText?: string;
+    type?: "danger" | "warning" | "primary";
+  }>({
+    isOpen: false,
+    title: "",
+    message: "",
+    onConfirm: () => {},
+  });
+
+  const showAlert = (
+    type: "success" | "error" | "warning" | "info",
+    title: string,
+    message: string
+  ) => {
+    setAlertDialog({ isOpen: true, type, title, message });
+  };
+
+  const closeAlert = () => {
+    setAlertDialog({ ...alertDialog, isOpen: false });
+  };
+
+  const showConfirm = (
+    title: string,
+    message: string,
+    onConfirm: () => void,
+    options?: {
+      confirmText?: string;
+      cancelText?: string;
+      type?: "danger" | "warning" | "primary";
+    }
+  ) => {
+    setConfirmDialog({
+      isOpen: true,
+      title,
+      message,
+      onConfirm,
+      confirmText: options?.confirmText || "Confirmar",
+      cancelText: options?.cancelText || "Cancelar",
+      type: options?.type || "primary",
+    });
+  };
+
+  const closeConfirm = () => {
+    setConfirmDialog({ ...confirmDialog, isOpen: false });
+  };
+
+  const handleConfirm = () => {
+    confirmDialog.onConfirm();
+    closeConfirm();
+  };
+
   const { user } = useAuthStore();
 
   // Controle de permissões atualizado
@@ -381,6 +462,19 @@ export default function TransferenciasPage() {
       ...prev,
       [itemIndex]: searchTerm,
     }));
+    // Resetar para primeira página quando buscar
+    setProductPages((prev) => ({
+      ...prev,
+      [itemIndex]: 1,
+    }));
+  }
+
+  // Função para atualizar página de produtos
+  function updateProductPage(itemIndex: number, page: number) {
+    setProductPages((prev) => ({
+      ...prev,
+      [itemIndex]: page,
+    }));
   }
 
   // Função para filtrar produtos baseado na busca (multi-termos)
@@ -407,6 +501,26 @@ export default function TransferenciasPage() {
       // Todos os termos precisam estar presentes
       return tokens.every((token) => composite.includes(token));
     });
+  }
+
+  // Função para pegar produtos paginados
+  function getPaginatedProducts(itemIndex: number): {
+    products: EstoqueItem[];
+    totalPages: number;
+    currentPage: number;
+  } {
+    const filtered = getFilteredProducts(itemIndex);
+    const currentPage = productPages[itemIndex] || 1;
+    const totalPages = Math.ceil(filtered.length / PRODUCTS_PER_PAGE);
+    const startIndex = (currentPage - 1) * PRODUCTS_PER_PAGE;
+    const endIndex = startIndex + PRODUCTS_PER_PAGE;
+    const products = filtered.slice(startIndex, endIndex);
+
+    return {
+      products,
+      totalPages,
+      currentPage,
+    };
   }
 
   // Função para adicionar item à transferência
@@ -453,24 +567,40 @@ export default function TransferenciasPage() {
   // Salvar transferência
   async function handleSave() {
     if (!formData.loja_origem_id || !formData.loja_destino_id) {
-      alert("Selecione as lojas de origem e destino!");
+      showAlert(
+        "warning",
+        "Atenção",
+        "Selecione as lojas de origem e destino!"
+      );
       return;
     }
 
     if (formData.loja_origem_id === formData.loja_destino_id) {
-      alert("A loja de origem deve ser diferente da loja de destino!");
+      showAlert(
+        "warning",
+        "Atenção",
+        "A loja de origem deve ser diferente da loja de destino!"
+      );
       return;
     }
 
     if (!formData.itens || formData.itens.length === 0) {
-      alert("Adicione pelo menos um item à transferência!");
+      showAlert(
+        "warning",
+        "Atenção",
+        "Adicione pelo menos um item à transferência!"
+      );
       return;
     }
 
     // Validar quantidades
     for (const item of formData.itens) {
       if (!item.produto_id || item.quantidade <= 0) {
-        alert("Todos os itens devem ter produto e quantidade válidos!");
+        showAlert(
+          "warning",
+          "Atenção",
+          "Todos os itens devem ter produto e quantidade válidos!"
+        );
         return;
       }
 
@@ -480,8 +610,10 @@ export default function TransferenciasPage() {
       );
       if (item.quantidade > quantidadeDisponivel) {
         const produto = estoque.find((p) => p.id === item.produto_id);
-        alert(
-          `Quantidade insuficiente para ${produto?.descricao}. Disponível: ${quantidadeDisponivel}`
+        showAlert(
+          "error",
+          "Quantidade Insuficiente",
+          `Não há estoque suficiente para ${produto?.descricao}. Disponível: ${quantidadeDisponivel} unidades`
         );
         return;
       }
@@ -489,6 +621,22 @@ export default function TransferenciasPage() {
 
     setLoading(true);
     try {
+      console.log("🔄 Iniciando criação de transferência...");
+      console.log("📋 Dados do formulário:", formData);
+
+      // Registrar quantidade ANTES de criar a transferência
+      console.log("\n📊 QUANTIDADE ANTES DA CRIAÇÃO:");
+      for (const item of formData.itens || []) {
+        const quantidadeAtual = getQuantidadeLoja(
+          item.produto_id,
+          formData.loja_origem_id!
+        );
+        const produto = estoque.find((p) => p.id === item.produto_id);
+        console.log(
+          `   ${produto?.descricao}: ${quantidadeAtual} (será transferido: ${item.quantidade})`
+        );
+      }
+
       // Criar transferência
       const transferenciaData = {
         loja_origem_id: formData.loja_origem_id,
@@ -498,10 +646,19 @@ export default function TransferenciasPage() {
         status: "pendente",
       };
 
-      console.log("Criando transferência:", transferenciaData);
+      console.log(
+        "\n➕ Criando transferência com status PENDENTE:",
+        transferenciaData
+      );
+      console.log(
+        "⚠️ IMPORTANTE: O estoque NÃO deve ser alterado nesta etapa!"
+      );
+
       await insertTable("transferencias", transferenciaData);
+      console.log("✅ Transferência criada!");
 
       // Buscar a transferência recém-criada
+      console.log("\n🔍 Buscando transferência recém-criada...");
       await new Promise((resolve) => setTimeout(resolve, 1000));
       const transferenciasAtualizadas = await fetchTable("transferencias");
       const novaTransferencia = transferenciasAtualizadas
@@ -517,18 +674,45 @@ export default function TransferenciasPage() {
         )[0];
 
       if (novaTransferencia) {
+        console.log(
+          "✅ Transferência encontrada (ID:",
+          novaTransferencia.id,
+          ")"
+        );
+
         // Criar itens da transferência
+        console.log("\n📦 Criando itens da transferência...");
         for (const item of formData.itens) {
           const itemData = {
             transferencia_id: novaTransferencia.id,
             produto_id: item.produto_id,
             quantidade: item.quantidade,
           };
-          console.log("Criando item:", itemData);
+          console.log("   Criando item:", itemData);
           await insertTable("transferencia_itens", itemData);
         }
+        console.log("✅ Todos os itens criados!");
 
-        alert("Transferência criada com sucesso!");
+        console.log("\n🔄 Recarregando estoque...");
+        await loadEstoque();
+
+        // Verificar quantidade DEPOIS de recarregar
+        console.log("\n📊 QUANTIDADE DEPOIS DE RECARREGAR:");
+        for (const item of formData.itens || []) {
+          const quantidadeDepois = getQuantidadeLoja(
+            item.produto_id,
+            formData.loja_origem_id!
+          );
+          const produto = estoque.find((p) => p.id === item.produto_id);
+          console.log(`   ${produto?.descricao}: ${quantidadeDepois}`);
+        }
+
+        console.log("\n✅ Transferência criada com sucesso!");
+        showAlert(
+          "success",
+          "Transferência Criada!",
+          "Transferência criada com sucesso! Status: PENDENTE (o estoque não foi alterado ainda)"
+        );
         await loadTransferencias();
         setViewMode("list");
         clearForm();
@@ -537,118 +721,380 @@ export default function TransferenciasPage() {
       }
     } catch (error) {
       console.error("Erro ao salvar transferência:", error);
-      alert(`Erro ao salvar transferência: ${getErrorMessage(error)}`);
+      showAlert(
+        "error",
+        "Erro ao Salvar",
+        `Erro ao salvar transferência: ${getErrorMessage(error)}`
+      );
     } finally {
       setLoading(false);
     }
   }
 
   // Confirmar transferência (executar a movimentação de estoque)
-  async function confirmarTransferencia(transferencia: Transferencia) {
-    if (
-      !confirm(
-        "Tem certeza que deseja confirmar esta transferência? Esta ação não pode ser desfeita."
-      )
-    ) {
-      return;
-    }
+  async function confirmarTransferenciaWrapper(transferencia: Transferencia) {
+    showConfirm(
+      "Confirmar Transferência",
+      "Tem certeza que deseja confirmar esta transferência? O estoque será movimentado da loja de origem para a loja de destino. Esta ação não pode ser desfeita.",
+      () => confirmarTransferencia(transferencia),
+      {
+        confirmText: "Sim, Confirmar",
+        cancelText: "Cancelar",
+        type: "primary",
+      }
+    );
+  }
 
+  async function confirmarTransferencia(transferencia: Transferencia) {
     setLoading(true);
     try {
+      console.log(
+        "🔄 Iniciando confirmação da transferência:",
+        transferencia.id
+      );
+      console.log("📦 Total de itens:", transferencia.itens?.length || 0);
+
+      // Validar itens antes de processar
+      if (!transferencia.itens || transferencia.itens.length === 0) {
+        throw new Error("Transferência não possui itens para processar");
+      }
+
       // Para cada item, atualizar o estoque das lojas
-      for (const item of transferencia.itens || []) {
+      for (let i = 0; i < transferencia.itens.length; i++) {
+        const item = transferencia.itens[i];
         const produto = item.produto;
-        if (!produto) continue;
+
+        console.log(
+          `\n📦 Processando item ${i + 1}/${transferencia.itens.length}`
+        );
+
+        if (!produto) {
+          console.warn(`⚠️ Item ${i + 1} sem produto, pulando...`);
+          continue;
+        }
+
+        console.log(`   Produto: ${produto.descricao} (ID: ${produto.id})`);
+        console.log(`   Quantidade a transferir: ${item.quantidade}`);
 
         // Diminuir quantidade da loja origem
         const quantidadeOrigem = getQuantidadeLoja(
           produto.id,
           transferencia.loja_origem_id
         );
+        console.log(`   Quantidade na origem: ${quantidadeOrigem}`);
+
+        if (quantidadeOrigem < item.quantidade) {
+          throw new Error(
+            `Quantidade insuficiente de ${produto.descricao} na loja origem. Disponível: ${quantidadeOrigem}, Necessário: ${item.quantidade}`
+          );
+        }
+
+        const novaQuantidadeOrigem = quantidadeOrigem - item.quantidade;
+        console.log(`   Nova quantidade origem: ${novaQuantidadeOrigem}`);
+
         await updateEstoqueLoja(
           produto.id,
           transferencia.loja_origem_id,
-          quantidadeOrigem - item.quantidade
+          novaQuantidadeOrigem
         );
+
+        // Recarregar estoque para obter valores atualizados
+        console.log("🔄 Recarregando estoque após atualizar origem...");
+        await loadEstoque();
 
         // Aumentar quantidade da loja destino
         const quantidadeDestino = getQuantidadeLoja(
           produto.id,
           transferencia.loja_destino_id
         );
+        console.log(`   Quantidade no destino: ${quantidadeDestino}`);
+
+        const novaQuantidadeDestino = quantidadeDestino + item.quantidade;
+        console.log(`   Nova quantidade destino: ${novaQuantidadeDestino}`);
+
         await updateEstoqueLoja(
           produto.id,
           transferencia.loja_destino_id,
-          quantidadeDestino + item.quantidade
+          novaQuantidadeDestino
         );
+
+        // Recarregar estoque após atualizar destino
+        console.log("🔄 Recarregando estoque após atualizar destino...");
+        await loadEstoque();
+
+        console.log(`✅ Item ${i + 1} processado com sucesso!`);
       }
 
       // Atualizar status da transferência
-      await updateTable("transferencias", transferencia.id, {
-        status: "concluida",
-        updatedat: new Date().toISOString(),
-      });
+      console.log("\n🔄 Atualizando status da transferência...");
+      const { error: updateError } = await supabase
+        .from("transferencias")
+        .update({
+          status: "concluida",
+          updatedat: new Date().toISOString(),
+        })
+        .eq("id", transferencia.id);
 
-      alert("Transferência confirmada com sucesso!");
+      if (updateError) {
+        console.error("❌ Erro ao atualizar status:", updateError);
+        throw updateError;
+      }
+
+      console.log("✅ Transferência confirmada com sucesso!");
+      showAlert(
+        "success",
+        "Sucesso!",
+        "Transferência confirmada e estoque atualizado com sucesso!"
+      );
+
+      // Recarregar dados
+      console.log("🔄 Recarregando dados...");
       await loadTransferencias();
       await loadEstoque();
+      console.log("✅ Dados recarregados!");
     } catch (error) {
-      console.error("Erro ao confirmar transferência:", error);
-      alert(`Erro ao confirmar transferência: ${getErrorMessage(error)}`);
+      console.error("❌ Erro ao confirmar transferência:", error);
+      showAlert(
+        "error",
+        "Erro ao Confirmar",
+        `Erro ao confirmar transferência: ${getErrorMessage(error)}`
+      );
     } finally {
       setLoading(false);
     }
   }
 
   // Cancelar transferência
+  async function cancelarTransferenciaWrapper(transferencia: Transferencia) {
+    // Verificar se a transferência foi concluída
+    const foiConcluida = transferencia.status === "concluida";
+
+    const title = foiConcluida
+      ? "ATENÇÃO: Reverter Transferência"
+      : "Cancelar Transferência";
+    const message = foiConcluida
+      ? `Esta transferência já foi CONCLUÍDA!\n\nAo cancelar, o estoque será REVERTIDO:\n• ${transferencia.loja_destino?.nome}: -${transferencia.itens?.reduce((sum, item) => sum + item.quantidade, 0) || 0} unidades\n• ${transferencia.loja_origem?.nome}: +${transferencia.itens?.reduce((sum, item) => sum + item.quantidade, 0) || 0} unidades\n\nDeseja continuar?`
+      : "Tem certeza que deseja cancelar esta transferência?";
+
+    showConfirm(title, message, () => cancelarTransferencia(transferencia), {
+      confirmText: foiConcluida ? "Sim, Reverter" : "Sim, Cancelar",
+      cancelText: "Não",
+      type: "danger",
+    });
+  }
+
   async function cancelarTransferencia(transferencia: Transferencia) {
-    if (!confirm("Tem certeza que deseja cancelar esta transferência?")) {
-      return;
-    }
+    // Verificar se a transferência foi concluída
+    const foiConcluida = transferencia.status === "concluida";
 
     setLoading(true);
     try {
-      await updateTable("transferencias", transferencia.id, {
-        status: "cancelada",
-        updatedat: new Date().toISOString(),
-      });
+      console.log("🔄 Cancelando transferência:", transferencia.id);
+      console.log("📊 Status atual:", transferencia.status);
 
-      alert("Transferência cancelada!");
+      // Se a transferência foi concluída, reverter o estoque primeiro
+      if (foiConcluida) {
+        console.log("\n⚠️ Transferência CONCLUÍDA detectada!");
+        console.log("🔄 Revertendo movimentação de estoque...");
+
+        // Validar itens antes de processar
+        if (!transferencia.itens || transferencia.itens.length === 0) {
+          throw new Error("Transferência não possui itens para reverter");
+        }
+
+        // Para cada item, reverter a movimentação
+        for (let i = 0; i < transferencia.itens.length; i++) {
+          const item = transferencia.itens[i];
+          const produto = item.produto;
+
+          console.log(
+            `\n📦 Revertendo item ${i + 1}/${transferencia.itens.length}`
+          );
+
+          if (!produto) {
+            console.warn(`⚠️ Item ${i + 1} sem produto, pulando...`);
+            continue;
+          }
+
+          console.log(`   Produto: ${produto.descricao} (ID: ${produto.id})`);
+          console.log(`   Quantidade a reverter: ${item.quantidade}`);
+
+          // Devolver quantidade para a loja ORIGEM
+          const quantidadeOrigem = getQuantidadeLoja(
+            produto.id,
+            transferencia.loja_origem_id
+          );
+          console.log(`   Quantidade atual na origem: ${quantidadeOrigem}`);
+
+          const novaQuantidadeOrigem = quantidadeOrigem + item.quantidade;
+          console.log(`   Nova quantidade origem: ${novaQuantidadeOrigem}`);
+
+          await updateEstoqueLoja(
+            produto.id,
+            transferencia.loja_origem_id,
+            novaQuantidadeOrigem
+          );
+
+          // Recarregar estoque para obter valores atualizados
+          console.log("🔄 Recarregando estoque após devolver para origem...");
+          await loadEstoque();
+
+          // Retirar quantidade da loja DESTINO
+          const quantidadeDestino = getQuantidadeLoja(
+            produto.id,
+            transferencia.loja_destino_id
+          );
+          console.log(`   Quantidade atual no destino: ${quantidadeDestino}`);
+
+          if (quantidadeDestino < item.quantidade) {
+            console.warn(
+              `⚠️ AVISO: Quantidade no destino (${quantidadeDestino}) é menor que a quantidade transferida (${item.quantidade})`
+            );
+            console.warn("   Continuando mesmo assim...");
+          }
+
+          const novaQuantidadeDestino = quantidadeDestino - item.quantidade;
+          console.log(`   Nova quantidade destino: ${novaQuantidadeDestino}`);
+
+          await updateEstoqueLoja(
+            produto.id,
+            transferencia.loja_destino_id,
+            novaQuantidadeDestino
+          );
+
+          // Recarregar estoque após retirar do destino
+          console.log("🔄 Recarregando estoque após retirar do destino...");
+          await loadEstoque();
+
+          console.log(`✅ Item ${i + 1} revertido com sucesso!`);
+        }
+
+        console.log("\n✅ Estoque revertido com sucesso!");
+      } else {
+        console.log("ℹ️ Transferência PENDENTE - não há estoque para reverter");
+      }
+
+      // Atualizar status da transferência para cancelada
+      console.log("\n🔄 Atualizando status para CANCELADA...");
+      const { error: updateError } = await supabase
+        .from("transferencias")
+        .update({
+          status: "cancelada",
+          updatedat: new Date().toISOString(),
+        })
+        .eq("id", transferencia.id);
+
+      if (updateError) {
+        console.error("❌ Erro ao cancelar:", updateError);
+        throw updateError;
+      }
+
+      console.log("✅ Transferência cancelada!");
+      showAlert(
+        "success",
+        "Transferência Cancelada!",
+        foiConcluida
+          ? "Transferência cancelada e estoque revertido com sucesso!"
+          : "Transferência cancelada!"
+      );
+
+      // Recarregar dados
+      console.log("🔄 Recarregando dados...");
       await loadTransferencias();
+      await loadEstoque();
+      console.log("✅ Dados recarregados!");
     } catch (error) {
-      console.error("Erro ao cancelar transferência:", error);
-      alert(`Erro ao cancelar transferência: ${getErrorMessage(error)}`);
+      console.error("❌ Erro ao cancelar transferência:", error);
+      showAlert(
+        "error",
+        "Erro ao Cancelar",
+        `Erro ao cancelar transferência: ${getErrorMessage(error)}`
+      );
     } finally {
       setLoading(false);
     }
   }
 
-  // Função auxiliar para atualizar estoque de loja
+  // Função auxiliar para atualizar estoque de loja (otimizada)
   async function updateEstoqueLoja(
     produtoId: number,
     lojaId: number,
     quantidade: number
   ) {
     try {
-      const todosEstoqueLojas = await fetchTable("estoque_lojas");
-      const estoqueExistente = todosEstoqueLojas?.filter(
-        (item) => item.produto_id === produtoId && item.loja_id === lojaId
+      console.log(
+        `🔄 Atualizando estoque - Produto: ${produtoId}, Loja: ${lojaId}, Quantidade: ${quantidade}`
       );
 
-      if (estoqueExistente && estoqueExistente.length > 0) {
-        await updateTable("estoque_lojas", estoqueExistente[0].id, {
-          quantidade: quantidade,
-          updatedat: new Date().toISOString(),
-        });
+      // VALIDAÇÃO: Quantidade não pode ser negativa
+      if (quantidade < 0) {
+        const produto = estoque.find((p) => p.id === produtoId);
+        const loja = lojas.find((l) => l.id === lojaId);
+        throw new Error(
+          `⛔ ERRO CRÍTICO: Tentativa de definir quantidade NEGATIVA!\n` +
+            `Produto: ${produto?.descricao || produtoId}\n` +
+            `Loja: ${loja?.nome || lojaId}\n` +
+            `Quantidade tentada: ${quantidade}\n\n` +
+            `Esta operação foi BLOQUEADA para evitar inconsistência no estoque.`
+        );
+      }
+
+      // Buscar registro específico com query otimizada
+      const { data: estoqueExistente, error: fetchError } = await supabase
+        .from("estoque_lojas")
+        .select("*")
+        .eq("produto_id", produtoId)
+        .eq("loja_id", lojaId)
+        .maybeSingle();
+
+      if (fetchError) {
+        console.error("❌ Erro ao buscar estoque:", fetchError);
+        throw fetchError;
+      }
+
+      if (estoqueExistente) {
+        // Atualizar registro existente
+        console.log(
+          `✏️ Atualizando registro existente (ID: ${estoqueExistente.id})`
+        );
+
+        const { error: updateError } = await supabase
+          .from("estoque_lojas")
+          .update({
+            quantidade: quantidade,
+            updatedat: new Date().toISOString(),
+          })
+          .eq("id", estoqueExistente.id);
+
+        if (updateError) {
+          console.error("❌ Erro ao atualizar:", updateError);
+          throw updateError;
+        }
+
+        console.log("✅ Estoque atualizado com sucesso!");
       } else if (quantidade > 0) {
-        await insertTable("estoque_lojas", {
-          produto_id: produtoId,
-          loja_id: lojaId,
-          quantidade: quantidade,
-        });
+        // Criar novo registro
+        console.log("➕ Criando novo registro de estoque");
+
+        const { error: insertError } = await supabase
+          .from("estoque_lojas")
+          .insert({
+            produto_id: produtoId,
+            loja_id: lojaId,
+            quantidade: quantidade,
+          });
+
+        if (insertError) {
+          console.error("❌ Erro ao inserir:", insertError);
+          throw insertError;
+        }
+
+        console.log("✅ Novo registro criado com sucesso!");
+      } else {
+        console.log("⚠️ Quantidade zero e registro não existe - nada a fazer");
       }
     } catch (error) {
-      console.error("Erro ao atualizar estoque da loja:", error);
+      console.error("❌ Erro ao atualizar estoque da loja:", error);
       throw error;
     }
   }
@@ -1076,7 +1522,9 @@ export default function TransferenciasPage() {
                                     size="sm"
                                     variant="flat"
                                     onPress={() =>
-                                      confirmarTransferencia(transferencia)
+                                      confirmarTransferenciaWrapper(
+                                        transferencia
+                                      )
                                     }
                                     className="bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-900 dark:hover:bg-emerald-800"
                                     title="Confirmar transferência"
@@ -1092,7 +1540,9 @@ export default function TransferenciasPage() {
                                     size="sm"
                                     variant="flat"
                                     onPress={() =>
-                                      cancelarTransferencia(transferencia)
+                                      cancelarTransferenciaWrapper(
+                                        transferencia
+                                      )
                                     }
                                     className="bg-red-100 hover:bg-red-200 dark:bg-red-900 dark:hover:bg-red-800"
                                     title="Cancelar transferência"
@@ -1522,25 +1972,13 @@ export default function TransferenciasPage() {
               {/* Itens da Transferência - SEÇÃO COMPLETAMENTE RENOVADA */}
               {formData.loja_origem_id && (
                 <div className="space-y-6">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-default rounded-lg flex items-center justify-center">
-                        <span className="text-white font-bold text-sm">3</span>
-                      </div>
-                      <h3 className="text-lg font-semibold text-slate-800 dark:text-white">
-                        Produtos para Transferir
-                      </h3>
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-default rounded-lg flex items-center justify-center">
+                      <span className="text-white font-bold text-sm">3</span>
                     </div>
-                    <Button
-                      color="primary"
-                      variant="solid"
-                      size="sm"
-                      startContent={<PlusIcon className="w-4 h-4" />}
-                      onPress={adicionarItem}
-                      isDisabled={produtosOrigem.length === 0}
-                    >
-                      Adicionar Produto
-                    </Button>
+                    <h3 className="text-lg font-semibold text-slate-800 dark:text-white">
+                      Produtos para Transferir
+                    </h3>
                   </div>
 
                   {produtosOrigem.length === 0 ? (
@@ -1592,7 +2030,7 @@ export default function TransferenciasPage() {
                                   {/* Grid de Produtos */}
                                   <div className="space-y-3">
                                     {!item.produto_id ? (
-                                      <div className="max-h-60 overflow-y-auto border border-slate-200 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-700/30">
+                                      <div className="max-h-96 overflow-y-auto border border-slate-200 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-700/30">
                                         <div className="p-3 border-b border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 sticky top-0 z-10">
                                           <Input
                                             placeholder="Buscar produto por nome, marca, modelo..."
@@ -1618,130 +2056,195 @@ export default function TransferenciasPage() {
                                               updateProductSearchTerm(index, "")
                                             }
                                           />
-                                          {productSearchTerms[index] && (
-                                            <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                                              Mostrando{" "}
-                                              {
-                                                getFilteredProducts(index)
-                                                  .length
-                                              }{" "}
-                                              de {produtosOrigem.length}{" "}
-                                              produtos
-                                            </div>
-                                          )}
+                                          {(() => {
+                                            const filtered =
+                                              getFilteredProducts(index);
+                                            const paginated =
+                                              getPaginatedProducts(index);
+                                            const startIndex =
+                                              (paginated.currentPage - 1) *
+                                                PRODUCTS_PER_PAGE +
+                                              1;
+                                            const endIndex = Math.min(
+                                              startIndex +
+                                                paginated.products.length -
+                                                1,
+                                              filtered.length
+                                            );
+
+                                            return (
+                                              <div className="mt-2 flex items-center justify-between text-xs">
+                                                <div className="text-slate-500 dark:text-slate-400">
+                                                  Mostrando {startIndex}-
+                                                  {endIndex} de{" "}
+                                                  {filtered.length} produtos
+                                                </div>
+                                                {paginated.totalPages > 1 && (
+                                                  <div className="flex items-center gap-2">
+                                                    <Button
+                                                      size="sm"
+                                                      isIconOnly
+                                                      variant="flat"
+                                                      isDisabled={
+                                                        paginated.currentPage ===
+                                                        1
+                                                      }
+                                                      onPress={() =>
+                                                        updateProductPage(
+                                                          index,
+                                                          paginated.currentPage -
+                                                            1
+                                                        )
+                                                      }
+                                                      className="min-w-unit-8 w-8 h-8"
+                                                    >
+                                                      <ChevronLeftIcon className="w-4 h-4" />
+                                                    </Button>
+                                                    <span className="text-slate-600 dark:text-slate-300 font-medium">
+                                                      {paginated.currentPage}/
+                                                      {paginated.totalPages}
+                                                    </span>
+                                                    <Button
+                                                      size="sm"
+                                                      isIconOnly
+                                                      variant="flat"
+                                                      isDisabled={
+                                                        paginated.currentPage ===
+                                                        paginated.totalPages
+                                                      }
+                                                      onPress={() =>
+                                                        updateProductPage(
+                                                          index,
+                                                          paginated.currentPage +
+                                                            1
+                                                        )
+                                                      }
+                                                      className="min-w-unit-8 w-8 h-8"
+                                                    >
+                                                      <ChevronRightIcon className="w-4 h-4" />
+                                                    </Button>
+                                                  </div>
+                                                )}
+                                              </div>
+                                            );
+                                          })()}
                                         </div>
                                         <div className="grid grid-cols-1 gap-2 p-3">
-                                          {getFilteredProducts(index).length >
-                                          0 ? (
-                                            getFilteredProducts(index).map(
-                                              (produto) => {
-                                                const quantidade =
-                                                  getQuantidadeLoja(
-                                                    produto.id,
-                                                    formData.loja_origem_id!
+                                          {(() => {
+                                            const paginated =
+                                              getPaginatedProducts(index);
+                                            return paginated.products.length >
+                                              0 ? (
+                                              paginated.products.map(
+                                                (produto) => {
+                                                  const quantidade =
+                                                    getQuantidadeLoja(
+                                                      produto.id,
+                                                      formData.loja_origem_id!
+                                                    );
+                                                  return (
+                                                    <div
+                                                      key={produto.id}
+                                                      onClick={() => {
+                                                        atualizarItem(
+                                                          index,
+                                                          "produto_id",
+                                                          produto.id
+                                                        );
+                                                        // Limpar busca após seleção
+                                                        updateProductSearchTerm(
+                                                          index,
+                                                          ""
+                                                        );
+                                                      }}
+                                                      className="cursor-pointer p-3 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-600 hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-md transition-all duration-200"
+                                                    >
+                                                      <div className="flex justify-between items-start mb-2">
+                                                        <h4 className="font-semibold text-slate-800 dark:text-white text-sm">
+                                                          {produto.descricao}
+                                                        </h4>
+                                                        <Chip
+                                                          size="sm"
+                                                          variant="flat"
+                                                          color={
+                                                            quantidade > 10
+                                                              ? "success"
+                                                              : quantidade > 5
+                                                                ? "warning"
+                                                                : "danger"
+                                                          }
+                                                          className="ml-2 flex-shrink-0"
+                                                        >
+                                                          {quantidade} un.
+                                                        </Chip>
+                                                      </div>
+
+                                                      <div className="flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-400 mb-2">
+                                                        {produto.marca && (
+                                                          <span className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">
+                                                            {produto.marca}
+                                                          </span>
+                                                        )}
+                                                        {produto.modelo && (
+                                                          <span className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">
+                                                            {produto.modelo}
+                                                          </span>
+                                                        )}
+                                                        {produto.compativel && (
+                                                          <span className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">
+                                                            {produto.compativel}
+                                                          </span>
+                                                        )}
+                                                      </div>
+
+                                                      {produto.preco_venda && (
+                                                        <div className="flex justify-between items-center">
+                                                          <span className="text-emerald-600 dark:text-emerald-400 font-semibold text-sm">
+                                                            R${" "}
+                                                            {produto.preco_venda.toFixed(
+                                                              2
+                                                            )}
+                                                          </span>
+                                                          <Button
+                                                            size="sm"
+                                                            color="primary"
+                                                            variant="flat"
+                                                            className="text-xs"
+                                                          >
+                                                            Selecionar
+                                                          </Button>
+                                                        </div>
+                                                      )}
+                                                    </div>
                                                   );
-                                                return (
-                                                  <div
-                                                    key={produto.id}
-                                                    onClick={() => {
-                                                      atualizarItem(
-                                                        index,
-                                                        "produto_id",
-                                                        produto.id
-                                                      );
-                                                      // Limpar busca após seleção
+                                                }
+                                              )
+                                            ) : (
+                                              <div className="text-center py-8 text-slate-500 dark:text-slate-400">
+                                                <MagnifyingGlassIcon className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                                                <p className="text-sm">
+                                                  {productSearchTerms[index]
+                                                    ? `Nenhum produto encontrado para "${productSearchTerms[index]}"`
+                                                    : "Nenhum produto disponível"}
+                                                </p>
+                                                {productSearchTerms[index] && (
+                                                  <Button
+                                                    size="sm"
+                                                    variant="flat"
+                                                    onPress={() =>
                                                       updateProductSearchTerm(
                                                         index,
                                                         ""
-                                                      );
-                                                    }}
-                                                    className="cursor-pointer p-3 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-600 hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-md transition-all duration-200"
+                                                      )
+                                                    }
+                                                    className="mt-2"
                                                   >
-                                                    <div className="flex justify-between items-start mb-2">
-                                                      <h4 className="font-semibold text-slate-800 dark:text-white text-sm">
-                                                        {produto.descricao}
-                                                      </h4>
-                                                      <Chip
-                                                        size="sm"
-                                                        variant="flat"
-                                                        color={
-                                                          quantidade > 10
-                                                            ? "success"
-                                                            : quantidade > 5
-                                                              ? "warning"
-                                                              : "danger"
-                                                        }
-                                                        className="ml-2 flex-shrink-0"
-                                                      >
-                                                        {quantidade} un.
-                                                      </Chip>
-                                                    </div>
-
-                                                    <div className="flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-400 mb-2">
-                                                      {produto.marca && (
-                                                        <span className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">
-                                                          {produto.marca}
-                                                        </span>
-                                                      )}
-                                                      {produto.modelo && (
-                                                        <span className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">
-                                                          {produto.modelo}
-                                                        </span>
-                                                      )}
-                                                      {produto.compativel && (
-                                                        <span className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">
-                                                          {produto.compativel}
-                                                        </span>
-                                                      )}
-                                                    </div>
-
-                                                    {produto.preco_venda && (
-                                                      <div className="flex justify-between items-center">
-                                                        <span className="text-emerald-600 dark:text-emerald-400 font-semibold text-sm">
-                                                          R${" "}
-                                                          {produto.preco_venda.toFixed(
-                                                            2
-                                                          )}
-                                                        </span>
-                                                        <Button
-                                                          size="sm"
-                                                          color="primary"
-                                                          variant="flat"
-                                                          className="text-xs"
-                                                        >
-                                                          Selecionar
-                                                        </Button>
-                                                      </div>
-                                                    )}
-                                                  </div>
-                                                );
-                                              }
-                                            )
-                                          ) : (
-                                            <div className="text-center py-8 text-slate-500 dark:text-slate-400">
-                                              <MagnifyingGlassIcon className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                                              <p className="text-sm">
-                                                {productSearchTerms[index]
-                                                  ? `Nenhum produto encontrado para "${productSearchTerms[index]}"`
-                                                  : "Nenhum produto disponível"}
-                                              </p>
-                                              {productSearchTerms[index] && (
-                                                <Button
-                                                  size="sm"
-                                                  variant="flat"
-                                                  onPress={() =>
-                                                    updateProductSearchTerm(
-                                                      index,
-                                                      ""
-                                                    )
-                                                  }
-                                                  className="mt-2"
-                                                >
-                                                  Limpar busca
-                                                </Button>
-                                              )}
-                                            </div>
-                                          )}
+                                                    Limpar busca
+                                                  </Button>
+                                                )}
+                                              </div>
+                                            );
+                                          })()}
                                         </div>
                                       </div>
                                     ) : (
@@ -2139,6 +2642,21 @@ export default function TransferenciasPage() {
                         );
                       })}
 
+                      {/* Botão Adicionar Produto (após a lista) */}
+                      {formData.loja_origem_id && (
+                        <div className="flex justify-center pt-4">
+                          <Button
+                            color="primary"
+                            variant="flat"
+                            onPress={adicionarItem}
+                            startContent={<PlusIcon className="w-4 h-4" />}
+                            className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white hover:from-blue-600 hover:to-indigo-700 shadow-lg"
+                          >
+                            Adicionar Produto
+                          </Button>
+                        </div>
+                      )}
+
                       {/* Resumo da Transferência RENOVADO */}
                       {formData.itens && formData.itens.length > 0 && (
                         <div className="bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 border-2 border-emerald-200 dark:border-emerald-700 rounded-2xl p-6 shadow-lg">
@@ -2216,6 +2734,24 @@ export default function TransferenciasPage() {
                             isDisabled={produtosOrigem.length === 0}
                           >
                             Adicionar Primeiro Produto
+                          </Button>
+                        </div>
+                      )}
+
+                      {/* Botão para adicionar mais produtos (aparece após os itens) */}
+                      {formData.itens && formData.itens.length > 0 && (
+                        <div className="pt-4">
+                          <Button
+                            color="primary"
+                            variant="bordered"
+                            size="lg"
+                            fullWidth
+                            startContent={<PlusIcon className="w-5 h-5" />}
+                            onPress={adicionarItem}
+                            isDisabled={produtosOrigem.length === 0}
+                            className="border-2 border-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-all"
+                          >
+                            Adicionar Mais um Produto
                           </Button>
                         </div>
                       )}
@@ -2340,7 +2876,7 @@ export default function TransferenciasPage() {
                           variant="flat"
                           startContent={<CheckCircleIcon className="w-4 h-4" />}
                           onPress={() =>
-                            confirmarTransferencia(selectedTransferencia)
+                            confirmarTransferenciaWrapper(selectedTransferencia)
                           }
                           className="bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-900 dark:hover:bg-emerald-800"
                         >
@@ -2353,7 +2889,7 @@ export default function TransferenciasPage() {
                           variant="flat"
                           startContent={<XCircleIcon className="w-4 h-4" />}
                           onPress={() =>
-                            cancelarTransferencia(selectedTransferencia)
+                            cancelarTransferenciaWrapper(selectedTransferencia)
                           }
                           className="bg-red-100 hover:bg-red-200 dark:bg-red-900 dark:hover:bg-red-800"
                         >
@@ -2492,6 +3028,146 @@ export default function TransferenciasPage() {
           </div>
         )}
       </div>
+
+      {/* Modal de Alerta */}
+      <Modal
+        isOpen={alertDialog.isOpen}
+        onClose={closeAlert}
+        size="md"
+        backdrop="blur"
+      >
+        <ModalContent>
+          <ModalHeader className="flex gap-3 items-center">
+            {alertDialog.type === "success" && (
+              <>
+                <div className="w-10 h-10 bg-emerald-100 dark:bg-emerald-900 rounded-full flex items-center justify-center">
+                  <CheckCircleIcon className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
+                </div>
+                <span className="text-emerald-700 dark:text-emerald-400">
+                  {alertDialog.title}
+                </span>
+              </>
+            )}
+            {alertDialog.type === "error" && (
+              <>
+                <div className="w-10 h-10 bg-red-100 dark:bg-red-900 rounded-full flex items-center justify-center">
+                  <XCircleIcon className="w-6 h-6 text-red-600 dark:text-red-400" />
+                </div>
+                <span className="text-red-700 dark:text-red-400">
+                  {alertDialog.title}
+                </span>
+              </>
+            )}
+            {alertDialog.type === "warning" && (
+              <>
+                <div className="w-10 h-10 bg-amber-100 dark:bg-amber-900 rounded-full flex items-center justify-center">
+                  <ExclamationTriangleIcon className="w-6 h-6 text-amber-600 dark:text-amber-400" />
+                </div>
+                <span className="text-amber-700 dark:text-amber-400">
+                  {alertDialog.title}
+                </span>
+              </>
+            )}
+            {alertDialog.type === "info" && (
+              <>
+                <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center">
+                  <ExclamationTriangleIcon className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                </div>
+                <span className="text-blue-700 dark:text-blue-400">
+                  {alertDialog.title}
+                </span>
+              </>
+            )}
+          </ModalHeader>
+          <ModalBody>
+            <p className="text-slate-600 dark:text-slate-300 whitespace-pre-line">
+              {alertDialog.message}
+            </p>
+          </ModalBody>
+          <ModalFooter>
+            <Button
+              color={
+                alertDialog.type === "success"
+                  ? "success"
+                  : alertDialog.type === "error"
+                    ? "danger"
+                    : alertDialog.type === "warning"
+                      ? "warning"
+                      : "primary"
+              }
+              variant="flat"
+              onPress={closeAlert}
+            >
+              OK
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      {/* Modal de Confirmação */}
+      <Modal
+        isOpen={confirmDialog.isOpen}
+        onClose={closeConfirm}
+        size="md"
+        backdrop="blur"
+      >
+        <ModalContent>
+          <ModalHeader className="flex gap-3 items-center">
+            <div
+              className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                confirmDialog.type === "danger"
+                  ? "bg-red-100 dark:bg-red-900"
+                  : confirmDialog.type === "warning"
+                    ? "bg-amber-100 dark:bg-amber-900"
+                    : "bg-blue-100 dark:bg-blue-900"
+              }`}
+            >
+              <ExclamationTriangleIcon
+                className={`w-6 h-6 ${
+                  confirmDialog.type === "danger"
+                    ? "text-red-600 dark:text-red-400"
+                    : confirmDialog.type === "warning"
+                      ? "text-amber-600 dark:text-amber-400"
+                      : "text-blue-600 dark:text-blue-400"
+                }`}
+              />
+            </div>
+            <span
+              className={
+                confirmDialog.type === "danger"
+                  ? "text-red-700 dark:text-red-400"
+                  : confirmDialog.type === "warning"
+                    ? "text-amber-700 dark:text-amber-400"
+                    : "text-blue-700 dark:text-blue-400"
+              }
+            >
+              {confirmDialog.title}
+            </span>
+          </ModalHeader>
+          <ModalBody>
+            <p className="text-slate-600 dark:text-slate-300 whitespace-pre-line">
+              {confirmDialog.message}
+            </p>
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="flat" onPress={closeConfirm}>
+              {confirmDialog.cancelText}
+            </Button>
+            <Button
+              color={
+                confirmDialog.type === "danger"
+                  ? "danger"
+                  : confirmDialog.type === "warning"
+                    ? "warning"
+                    : "primary"
+              }
+              onPress={handleConfirm}
+            >
+              {confirmDialog.confirmText}
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
     </div>
   );
 }
