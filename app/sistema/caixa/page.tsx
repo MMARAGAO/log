@@ -512,21 +512,18 @@ export default function CaixaPage() {
     const totalVendas = vendasPagas.length + vendasDevolvidasComCredito.length;
 
     // Calcular valor bruto: vendas pagas + devolvidas com crédito
-    // IMPORTANTE: Descontar o crédito usado, pois só entra no caixa o valor efetivamente pago
+    // IMPORTANTE: Usar o valor TOTAL da venda (incluindo crédito usado)
+    // O crédito é apenas uma forma de pagamento, não altera o valor da venda
     let valorBrutoVendas = vendasPagas.reduce((acc, v) => {
       const totalVenda =
         (v as any).valor_total ?? (v as any).total_liquido ?? 0;
-      const creditoUsado = Number((v as any).credito_usado || 0);
-      const valorPago = totalVenda - creditoUsado; // Valor que realmente entrou no caixa
-      return acc + Number(valorPago || 0);
+      return acc + Number(totalVenda || 0);
     }, 0);
 
     valorBrutoVendas += vendasDevolvidasComCredito.reduce((acc, v) => {
       const totalVenda =
         (v as any).valor_total ?? (v as any).total_liquido ?? 0;
-      const creditoUsado = Number((v as any).credito_usado || 0);
-      const valorPago = totalVenda - creditoUsado; // Valor que realmente entrou no caixa
-      return acc + Number(valorPago || 0);
+      return acc + Number(totalVenda || 0);
     }, 0);
 
     // Valor real do caixa = Vendas (pagas + devolvidas com crédito) - Devoluções sem Crédito
@@ -552,7 +549,8 @@ export default function CaixaPage() {
         (v as any).valor_total ?? (v as any).total_liquido ?? 0
       );
       const creditoUsado = Number((v as any).credito_usado || 0);
-      const valorVenda = totalVenda - creditoUsado; // Valor efetivamente pago (desconta crédito)
+      // Usar o valor TOTAL da venda (o crédito é apenas outra forma de pagamento)
+      const valorVenda = totalVenda;
 
       // Se existir detalhe de pagamento (pagamentos mistos), somar por chave
       const detalhes: any = (v as any).pagamento_detalhes;
@@ -561,7 +559,8 @@ export default function CaixaPage() {
         typeof detalhes === "object" &&
         Object.keys(detalhes).length > 0
       ) {
-        // Somar cada forma de pagamento dos detalhes
+        // Somar cada forma de pagamento dos detalhes (SEM ajuste - valores originais)
+        // O crédito é apenas uma forma de pagamento adicional, não altera os valores recebidos
         Object.entries(detalhes).forEach(([key, val]) => {
           const valor = Number(val || 0);
           if (valor <= 0) return;

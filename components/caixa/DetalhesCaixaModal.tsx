@@ -195,7 +195,13 @@ export default function DetalhesCaixaModal({
                       <p className="text-sm text-default-600">
                         Dinheiro no Caixa
                       </p>
-                      <p className="text-2xl font-bold text-secondary-700">
+                      <p
+                        className={`text-2xl font-bold ${
+                          caixa.valor_inicial + resumo.valorDinheiro < 0
+                            ? "text-danger"
+                            : "text-secondary-700"
+                        }`}
+                      >
                         {new Intl.NumberFormat("pt-BR", {
                           style: "currency",
                           currency: "BRL",
@@ -218,7 +224,13 @@ export default function DetalhesCaixaModal({
                     <p className="text-sm text-success-600 font-medium mb-1">
                       💵 Dinheiro
                     </p>
-                    <p className="text-lg font-bold text-success-700">
+                    <p
+                      className={`text-lg font-bold ${
+                        resumo.valorDinheiro < 0
+                          ? "text-danger"
+                          : "text-success-700"
+                      }`}
+                    >
                       {new Intl.NumberFormat("pt-BR", {
                         style: "currency",
                         currency: "BRL",
@@ -230,7 +242,13 @@ export default function DetalhesCaixaModal({
                     <p className="text-sm text-secondary-600 font-medium mb-1">
                       📱 PIX
                     </p>
-                    <p className="text-lg font-bold text-secondary-700">
+                    <p
+                      className={`text-lg font-bold ${
+                        resumo.valorPix < 0
+                          ? "text-danger"
+                          : "text-secondary-700"
+                      }`}
+                    >
                       {new Intl.NumberFormat("pt-BR", {
                         style: "currency",
                         currency: "BRL",
@@ -242,7 +260,13 @@ export default function DetalhesCaixaModal({
                     <p className="text-sm text-primary-600 font-medium mb-1">
                       💳 Cartão Débito
                     </p>
-                    <p className="text-lg font-bold text-primary-700">
+                    <p
+                      className={`text-lg font-bold ${
+                        resumo.valorCartaoDebito < 0
+                          ? "text-danger"
+                          : "text-primary-700"
+                      }`}
+                    >
                       {new Intl.NumberFormat("pt-BR", {
                         style: "currency",
                         currency: "BRL",
@@ -254,7 +278,13 @@ export default function DetalhesCaixaModal({
                     <p className="text-sm text-primary-600 font-medium mb-1">
                       💳 Cartão Crédito
                     </p>
-                    <p className="text-lg font-bold text-primary-700">
+                    <p
+                      className={`text-lg font-bold ${
+                        resumo.valorCartaoCredito < 0
+                          ? "text-danger"
+                          : "text-primary-700"
+                      }`}
+                    >
                       {new Intl.NumberFormat("pt-BR", {
                         style: "currency",
                         currency: "BRL",
@@ -266,7 +296,13 @@ export default function DetalhesCaixaModal({
                     <p className="text-sm text-warning-600 font-medium mb-1">
                       🏦 Transferência
                     </p>
-                    <p className="text-lg font-bold text-warning-700">
+                    <p
+                      className={`text-lg font-bold ${
+                        resumo.valorTransferencia < 0
+                          ? "text-danger"
+                          : "text-warning-700"
+                      }`}
+                    >
                       {new Intl.NumberFormat("pt-BR", {
                         style: "currency",
                         currency: "BRL",
@@ -278,7 +314,13 @@ export default function DetalhesCaixaModal({
                     <p className="text-sm text-default-600 font-medium mb-1">
                       📄 Boleto
                     </p>
-                    <p className="text-lg font-bold text-default-700">
+                    <p
+                      className={`text-lg font-bold ${
+                        resumo.valorBoleto < 0
+                          ? "text-danger"
+                          : "text-default-700"
+                      }`}
+                    >
                       {new Intl.NumberFormat("pt-BR", {
                         style: "currency",
                         currency: "BRL",
@@ -290,7 +332,13 @@ export default function DetalhesCaixaModal({
                     <p className="text-sm text-secondary-600 font-medium mb-1">
                       📅 Crediário
                     </p>
-                    <p className="text-lg font-bold text-secondary-700">
+                    <p
+                      className={`text-lg font-bold ${
+                        resumo.valorCrediario < 0
+                          ? "text-danger"
+                          : "text-secondary-700"
+                      }`}
+                    >
                       {new Intl.NumberFormat("pt-BR", {
                         style: "currency",
                         currency: "BRL",
@@ -302,7 +350,13 @@ export default function DetalhesCaixaModal({
                     <p className="text-sm text-danger-600 font-medium mb-1">
                       ✋ Fiado
                     </p>
-                    <p className="text-lg font-bold text-danger-700">
+                    <p
+                      className={`text-lg font-bold ${
+                        resumo.valorFiado < 0
+                          ? "text-danger"
+                          : "text-danger-700"
+                      }`}
+                    >
                       {new Intl.NumberFormat("pt-BR", {
                         style: "currency",
                         currency: "BRL",

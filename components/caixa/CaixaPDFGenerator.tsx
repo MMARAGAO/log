@@ -205,7 +205,12 @@ export class CaixaPDFGenerator {
     doc.setFont("helvetica", "bold");
     doc.text("Valor Total:", 25, yPos + 16);
     doc.setFont("helvetica", "normal");
-    doc.setTextColor(...successColor);
+    // Se valor negativo, usar vermelho; senão, verde
+    if (resumo.valorTotalVendas < 0) {
+      doc.setTextColor(...dangerColor);
+    } else {
+      doc.setTextColor(...successColor);
+    }
     doc.setFontSize(11);
     doc.text(
       resumo.valorTotalVendas.toLocaleString("pt-BR", {
@@ -232,10 +237,17 @@ export class CaixaPDFGenerator {
     );
 
     // Dinheiro no Caixa
+    doc.setTextColor(...textColor);
     doc.setFont("helvetica", "bold");
     doc.text("Dinheiro no Caixa:", 110, yPos + 16);
     doc.setFont("helvetica", "normal");
     const dinheiroNoCaixa = caixa.valor_inicial + resumo.valorDinheiro;
+
+    // Se for negativo, usar cor vermelha
+    if (dinheiroNoCaixa < 0) {
+      doc.setTextColor(...dangerColor);
+    }
+
     doc.text(
       dinheiroNoCaixa.toLocaleString("pt-BR", {
         style: "currency",
@@ -244,6 +256,9 @@ export class CaixaPDFGenerator {
       145,
       yPos + 16
     );
+
+    // Resetar cor
+    doc.setTextColor(...textColor);
 
     yPos += 32;
 
@@ -331,7 +346,12 @@ export class CaixaPDFGenerator {
       doc.text(forma.nome, 25, yPos + 6);
 
       doc.setFont("helvetica", "normal");
-      doc.setTextColor(...forma.color);
+      // Se valor negativo, usar vermelho; senão, usar a cor definida
+      if (forma.valor < 0) {
+        doc.setTextColor(...dangerColor);
+      } else {
+        doc.setTextColor(...forma.color);
+      }
       doc.text(
         forma.valor.toLocaleString("pt-BR", {
           style: "currency",
@@ -554,10 +574,26 @@ export class CaixaPDFGenerator {
         doc.text(`[${icone}] ${formaPagamento}`, 25, yPos + 3);
 
         // Quantidade e total
-        // Usa valorParcial para somar apenas a parte correspondente a esta forma
-        const totalForma = vendasDaForma.reduce((acc, v) => {
-          return acc + v.valorParcial;
-        }, 0);
+        // Usar o valor do RESUMO ao invés de somar da lista (mais preciso)
+        let totalForma = 0;
+        if (formaPagamento === "Dinheiro") totalForma = resumo.valorDinheiro;
+        else if (formaPagamento === "PIX") totalForma = resumo.valorPix;
+        else if (formaPagamento === "Cartão de Débito")
+          totalForma = resumo.valorCartaoDebito;
+        else if (formaPagamento === "Cartão de Crédito")
+          totalForma = resumo.valorCartaoCredito;
+        else if (formaPagamento === "Transferência")
+          totalForma = resumo.valorTransferencia;
+        else if (formaPagamento === "Boleto") totalForma = resumo.valorBoleto;
+        else if (formaPagamento === "Crediário")
+          totalForma = resumo.valorCrediario;
+        else if (formaPagamento === "Fiado") totalForma = resumo.valorFiado;
+        else {
+          // Fallback: somar da lista se não encontrar no resumo
+          totalForma = vendasDaForma.reduce((acc, v) => {
+            return acc + v.valorParcial;
+          }, 0);
+        }
 
         // Conta vendas únicas (não duplica vendas com múltiplas formas)
         const vendasUnicas = new Set(vendasDaForma.map((v) => v.venda.id)).size;
@@ -570,7 +606,12 @@ export class CaixaPDFGenerator {
         doc.text(infoTexto, 25, yPos + 8);
 
         doc.setFont("helvetica", "bold");
-        doc.setTextColor(...successColor);
+        // Se total negativo, usar vermelho; senão, verde
+        if (totalForma < 0) {
+          doc.setTextColor(...dangerColor);
+        } else {
+          doc.setTextColor(...successColor);
+        }
         doc.text(
           totalForma.toLocaleString("pt-BR", {
             style: "currency",
@@ -692,7 +733,12 @@ export class CaixaPDFGenerator {
 
           // Valor - mostra apenas a parte correspondente a esta forma
           doc.setFont("helvetica", "bold");
-          doc.setTextColor(...successColor);
+          // Se valor negativo, usar vermelho; senão, verde
+          if (entry.valorParcial < 0) {
+            doc.setTextColor(...dangerColor);
+          } else {
+            doc.setTextColor(...successColor);
+          }
           doc.text(
             entry.valorParcial.toLocaleString("pt-BR", {
               style: "currency",

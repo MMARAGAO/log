@@ -176,7 +176,13 @@ export default function CaixaAbertoCard({
 
           <div className="bg-content2 rounded-lg p-3 border border-divider">
             <p className="text-xs text-default-500 mb-1">Dinheiro no Caixa</p>
-            <p className="text-lg font-bold text-warning">
+            <p
+              className={`text-lg font-bold ${
+                caixa.valor_inicial + resumo.valorDinheiro - totalSangrias < 0
+                  ? "text-danger"
+                  : "text-warning"
+              }`}
+            >
               {new Intl.NumberFormat("pt-BR", {
                 style: "currency",
                 currency: "BRL",
