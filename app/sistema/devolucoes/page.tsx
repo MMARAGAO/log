@@ -513,6 +513,16 @@ export default function DevolucoesPagina() {
     return TIPO_DEVOLUCAO.find((t) => t.key === tipo) || TIPO_DEVOLUCAO[1];
   }
 
+  // Normalização de texto para busca (case/acentos/pontuação) - igual ao estoque
+  function normalizeText(text?: string): string {
+    return (text || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "") // remove acentos
+      .replace(/[^a-z0-9]+/g, " ") // mantém letras/números e espaços
+      .trim();
+  }
+
   // Filtros / ordenação
   const filtered = useMemo(() => {
     // Filtrar por loja primeiro
@@ -527,20 +537,22 @@ export default function DevolucoesPagina() {
 
     return devolucoesFiltradasPorLoja
       .filter((d) => {
-        if (
-          filters.search &&
-          !(
-            d.cliente_nome
-              ?.toLowerCase()
-              .includes(filters.search.toLowerCase()) ||
-            d.id.toString() === filters.search ||
-            d.id_venda.toString() === filters.search ||
-            motivoLabel(d.motivo_devolucao || "")
-              .toLowerCase()
-              .includes(filters.search.toLowerCase())
-          )
-        )
-          return false;
+        // Busca multi-termos: cada termo precisa existir (parcial) em algum campo
+        if (filters.search) {
+          const tokens = normalizeText(filters.search)
+            .split(" ")
+            .filter(Boolean);
+          const composite = normalizeText(
+            [
+              d.id.toString(),
+              d.id_venda.toString(),
+              d.cliente_nome,
+              motivoLabel(d.motivo_devolucao || ""),
+            ].join(" ")
+          );
+          const searchMatch = tokens.every((t) => composite.includes(t));
+          if (!searchMatch) return false;
+        }
 
         if (filters.tipo && d.tipo_devolucao !== filters.tipo) return false;
         if (filters.motivo && d.motivo_devolucao !== filters.motivo)

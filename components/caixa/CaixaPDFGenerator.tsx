@@ -442,16 +442,18 @@ export class CaixaPDFGenerator {
         const isDevolucaoSemCredito =
           (venda as any)._isDevolucaoSemCredito === true;
 
-        // Valor total da venda
-        let valorTotal = totalVenda;
+        // Identificar se é devolução COM crédito (não deve aparecer no PDF)
+        const isDevolucaoComCredito =
+          venda.status_pagamento === "devolvido" && !isDevolucaoSemCredito;
 
-        // Se é devolução sem crédito, inverte o sinal para aparecer negativo
-        if (isDevolucaoSemCredito) {
-          valorTotal = -valorTotal;
+        // Pular devoluções COM crédito (não entraram dinheiro no caixa)
+        if (isDevolucaoComCredito) {
+          return;
         }
 
         const parts: { label: string; amt: number }[] = [];
         let temDetalhes = false;
+        let valorTotal = 0;
 
         // Se tem pagamento_detalhes (vendas novas), usar ele
         if (
@@ -465,29 +467,24 @@ export class CaixaPDFGenerator {
             if (amt > 0) {
               const label = mapPaymentKeyToLabel(k);
               parts.push({ label, amt });
+              valorTotal += amt;
             }
           });
         } else {
           // FALLBACK: Se não tem pagamento_detalhes (vendas antigas), usar forma_pagamento
+          // Aqui SIM desconta crédito usado
+          valorTotal = totalVenda - creditoUsado;
+          
+          // Se é devolução sem crédito, inverte o sinal
+          if (isDevolucaoSemCredito) {
+            valorTotal = -valorTotal;
+          }
+          
           const formaPrincipal = venda.forma_pagamento || "Outros";
           parts.push({
             label: mapPaymentKeyToLabel(formaPrincipal.toLowerCase()),
             amt: valorTotal,
           });
-        }
-
-        // APENAS para vendas SEM pagamento_detalhes (antigas):
-        // Se há diferença entre valor_total e soma dos parts, adicionar restante
-        if (!temDetalhes) {
-          const soma = parts.reduce((s, p) => s + p.amt, 0);
-          const restante = Math.max(0, valorTotal - soma);
-          if (restante > 0.01) {
-            // Tolerância de 1 centavo
-            parts.push({
-              label: venda.forma_pagamento || "Outros",
-              amt: restante,
-            });
-          }
         }
 
         const isMultiple = parts.length > 1;

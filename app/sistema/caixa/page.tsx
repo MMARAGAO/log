@@ -508,25 +508,35 @@ export default function CaixaPage() {
       }
     });
 
-    // Total de vendas = pagas + devolvidas COM crédito
-    const totalVendas = vendasPagas.length + vendasDevolvidasComCredito.length;
+    // Total de vendas = apenas pagas (devoluções COM crédito não contam pois não entraram dinheiro)
+    const totalVendas = vendasPagas.length;
 
-    // Calcular valor bruto: vendas pagas + devolvidas com crédito
-    // IMPORTANTE: Usar o valor TOTAL da venda (incluindo crédito usado)
-    // O crédito é apenas uma forma de pagamento, não altera o valor da venda
+    // Calcular valor bruto: SOMENTE vendas pagas
+    // IMPORTANTE: Se TEM pagamento_detalhes, usa valor_total direto (valores já separados)
+    //             Se NÃO TEM, desconta crédito usado
     let valorBrutoVendas = vendasPagas.reduce((acc, v) => {
       const totalVenda =
         (v as any).valor_total ?? (v as any).total_liquido ?? 0;
-      return acc + Number(totalVenda || 0);
+      const creditoUsado = Number((v as any).credito_usado || 0);
+      const detalhes = (v as any).pagamento_detalhes;
+      
+      // Se TEM pagamento_detalhes: soma os valores detalhados (já estão corretos)
+      if (detalhes && typeof detalhes === "object" && Object.keys(detalhes).length > 0) {
+        const somaDetalhes = Object.values(detalhes).reduce(
+          (sum: number, val) => sum + Number(val || 0),
+          0
+        );
+        return acc + somaDetalhes;
+      }
+      
+      // Se NÃO TEM: desconta crédito do total (vendas antigas)
+      const valorEfetivamentePago = totalVenda - creditoUsado;
+      return acc + Number(valorEfetivamentePago || 0);
     }, 0);
 
-    valorBrutoVendas += vendasDevolvidasComCredito.reduce((acc, v) => {
-      const totalVenda =
-        (v as any).valor_total ?? (v as any).total_liquido ?? 0;
-      return acc + Number(totalVenda || 0);
-    }, 0);
+    // NÃO somar devoluções com crédito pois não entrou dinheiro real no caixa
 
-    // Valor real do caixa = Vendas (pagas + devolvidas com crédito) - Devoluções sem Crédito
+    // Valor real do caixa = Vendas pagas (já descontado crédito) - Devoluções sem Crédito
     const valorTotalVendas = valorBrutoVendas - valorDevolvidoSemCredito;
     const valorTotalDevolvido = valorDevolvidoSemCredito;
     const totalDevolvidas = vendasDevolvidasSemCredito.length;
@@ -541,16 +551,14 @@ export default function CaixaPage() {
     let valorCrediario = 0;
     let valorFiado = 0;
 
-    // Processar formas de pagamento: vendas PAGAS + devolvidas COM crédito
-    const vendasParaProcessar = [...vendasPagas, ...vendasDevolvidasComCredito];
+    // Processar formas de pagamento: SOMENTE vendas PAGAS (devoluções com crédito não somam)
+    const vendasParaProcessar = vendasPagas;
 
     vendasParaProcessar.forEach((v: Venda) => {
       const totalVenda = Number(
         (v as any).valor_total ?? (v as any).total_liquido ?? 0
       );
       const creditoUsado = Number((v as any).credito_usado || 0);
-      // Usar o valor TOTAL da venda (o crédito é apenas outra forma de pagamento)
-      const valorVenda = totalVenda;
 
       // Se existir detalhe de pagamento (pagamentos mistos), somar por chave
       const detalhes: any = (v as any).pagamento_detalhes;
@@ -559,8 +567,8 @@ export default function CaixaPage() {
         typeof detalhes === "object" &&
         Object.keys(detalhes).length > 0
       ) {
-        // Somar cada forma de pagamento dos detalhes (SEM ajuste - valores originais)
-        // O crédito é apenas uma forma de pagamento adicional, não altera os valores recebidos
+        // Quando TEM pagamento_detalhes: os valores já estão separados corretamente
+        // (ex: PIX R$55 já está correto, NÃO precisa descontar crédito aqui)
         Object.entries(detalhes).forEach(([key, val]) => {
           const valor = Number(val || 0);
           if (valor <= 0) return;
@@ -580,25 +588,11 @@ export default function CaixaPage() {
           else if (k === "fiado") valorFiado += valor;
           else valorDinheiro += valor; // fallback para formas desconhecidas
         });
-
-        // Verificar se há diferença (tolerância de 1 centavo)
-        const somaDetalhes = Object.values(detalhes).reduce(
-          (acc: number, val) => acc + Number(val || 0),
-          0
-        );
-        const restante = valorVenda - somaDetalhes;
-        if (Math.abs(restante) > 0.01) {
-          // Se há diferença significativa, adicionar/subtrair da forma principal
-          const forma = (v.forma_pagamento || "").toLowerCase();
-          if (forma.includes("fiad")) valorFiado += restante;
-          else if (forma.includes("credi")) valorCrediario += restante;
-          else if (forma.includes("boleto")) valorBoleto += restante;
-          else if (forma.includes("transfer")) valorTransferencia += restante;
-          else if (forma.includes("pix")) valorPix += restante;
-          else valorDinheiro += restante; // fallback
-        }
+        // Quando TEM pagamento_detalhes: os valores já estão corretos, não precisa ajustes
       } else {
         // FALLBACK: Não há detalhes, usar forma_pagamento (vendas antigas)
+        // Aqui SIM precisa descontar crédito pois não tem detalhamento
+        const valorVenda = totalVenda - creditoUsado;
         const forma = (v.forma_pagamento || "").toLowerCase();
         if (forma.includes("dinheiro")) valorDinheiro += valorVenda;
         else if (forma.includes("pix")) valorPix += valorVenda;
