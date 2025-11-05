@@ -1133,6 +1133,14 @@ export default function EstoquePage() {
     observacao?: string
   ) {
     try {
+      // Verifica se o usuário está autenticado
+      if (!user?.id) {
+        console.warn(
+          "⚠️ Usuário não autenticado, pulando registro de histórico"
+        );
+        return;
+      }
+
       const quantidadeAlterada = quantidadeNova - quantidadeAnterior;
 
       const historicoData = {
@@ -1142,8 +1150,8 @@ export default function EstoquePage() {
         quantidade_nova: quantidadeNova,
         quantidade_alterada: quantidadeAlterada,
         tipo_operacao: tipoOperacao,
-        usuario_id: user?.id,
-        usuario_nome: user?.nome || user?.email || "Sistema",
+        usuario_id: user.id,
+        usuario_nome: user.nome || user.email || "Sistema",
         observacao: observacao || null,
       };
 
@@ -1154,6 +1162,7 @@ export default function EstoquePage() {
       console.log("✅ Histórico de estoque registrado com sucesso");
     } catch (error) {
       console.error("❌ Erro ao registrar histórico de estoque:", error);
+      console.error("❌ Detalhes do erro:", JSON.stringify(error, null, 2));
       // Não bloqueia a operação principal, apenas loga o erro
     }
   }

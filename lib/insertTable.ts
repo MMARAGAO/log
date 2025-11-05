@@ -106,7 +106,12 @@ export async function insertTable(
     insertValues = { ...rest, uuid: uid }; // <-- altere para uuid
   } else {
     // Para todas as outras tabelas, adiciona usuario_id automaticamente
-    insertValues = { ...values, usuario_id: usuarioId };
+    // EXCETO para estoque_historico que já vem com usuario_id
+    if (table === "estoque_historico") {
+      insertValues = values; // Não adiciona usuario_id duplicado
+    } else {
+      insertValues = { ...values, usuario_id: usuarioId };
+    }
   }
 
   // 3. Inserir registro na tabela (com fotourl se existir)
