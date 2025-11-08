@@ -38,6 +38,7 @@ interface EstoqueCardProps {
   onViewHistory?: (produto: EstoqueItem) => void;
   canEdit: boolean;
   canDelete: boolean;
+  canVerPrecoCusto?: boolean;
 }
 
 export default function EstoqueCard({
@@ -48,6 +49,7 @@ export default function EstoqueCard({
   onViewHistory,
   canEdit,
   canDelete,
+  canVerPrecoCusto = true,
 }: EstoqueCardProps) {
   const quantidadeTotal = produto.quantidade_total || 0;
   const abaixoMinimo =
@@ -183,16 +185,20 @@ export default function EstoqueCard({
           <Divider />
 
           {/* Preços */}
-          <div className="grid grid-cols-2 gap-2 text-sm">
-            <div>
-              <p className="text-xs text-default-500">Preço Compra</p>
-              <p className="font-semibold text-success">
-                R${" "}
-                {(produto.preco_compra || 0).toLocaleString("pt-BR", {
-                  minimumFractionDigits: 2,
-                })}
-              </p>
-            </div>
+          <div
+            className={`grid ${canVerPrecoCusto ? "grid-cols-2" : "grid-cols-1"} gap-2 text-sm`}
+          >
+            {canVerPrecoCusto && (
+              <div>
+                <p className="text-xs text-default-500">Preço Compra</p>
+                <p className="font-semibold text-success">
+                  R${" "}
+                  {(produto.preco_compra || 0).toLocaleString("pt-BR", {
+                    minimumFractionDigits: 2,
+                  })}
+                </p>
+              </div>
+            )}
             <div>
               <p className="text-xs text-default-500">Preço Venda</p>
               <p className="font-semibold text-primary">
@@ -205,7 +211,7 @@ export default function EstoqueCard({
           </div>
 
           {/* Margem */}
-          {margemLucro > 0 && (
+          {canVerPrecoCusto && margemLucro > 0 && (
             <div className="flex items-center gap-2 text-xs">
               <CurrencyDollarIcon className="w-4 h-4 text-success" />
               <span className="text-success font-medium">

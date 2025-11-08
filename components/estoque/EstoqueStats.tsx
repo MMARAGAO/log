@@ -16,9 +16,13 @@ import type { EstoqueItem, EstoqueStats as Stats } from "./types";
 
 interface EstoqueStatsProps {
   produtos: EstoqueItem[];
+  canVerPrecoCusto?: boolean;
 }
 
-export default function EstoqueStats({ produtos }: EstoqueStatsProps) {
+export default function EstoqueStats({
+  produtos,
+  canVerPrecoCusto = true,
+}: EstoqueStatsProps) {
   // Calcula estatísticas
   const stats: Stats = {
     totalProdutos: produtos.length,
@@ -71,15 +75,19 @@ export default function EstoqueStats({ produtos }: EstoqueStatsProps) {
       color: "secondary" as const,
       description: "Unidades em estoque",
     },
-    {
-      label: "Valor em Estoque (Compra)",
-      value: `R$ ${stats.valorTotalCompra.toLocaleString("pt-BR", {
-        minimumFractionDigits: 2,
-      })}`,
-      icon: CurrencyDollarIcon,
-      color: "success" as const,
-      description: "Custo total",
-    },
+    ...(canVerPrecoCusto
+      ? [
+          {
+            label: "Valor em Estoque (Compra)",
+            value: `R$ ${stats.valorTotalCompra.toLocaleString("pt-BR", {
+              minimumFractionDigits: 2,
+            })}`,
+            icon: CurrencyDollarIcon,
+            color: "success" as const,
+            description: "Custo total",
+          },
+        ]
+      : []),
     {
       label: "Valor em Estoque (Venda)",
       value: `R$ ${stats.valorTotalVenda.toLocaleString("pt-BR", {
@@ -89,13 +97,17 @@ export default function EstoqueStats({ produtos }: EstoqueStatsProps) {
       color: "success" as const,
       description: "Valor de venda",
     },
-    {
-      label: "Margem Média",
-      value: `${stats.margemMedia.toFixed(1)}%`,
-      icon: ChartBarIcon,
-      color: stats.margemMedia >= 30 ? "success" : "warning",
-      description: "Lucro sobre custo",
-    },
+    ...(canVerPrecoCusto
+      ? [
+          {
+            label: "Margem Média",
+            value: `${stats.margemMedia.toFixed(1)}%`,
+            icon: ChartBarIcon,
+            color: stats.margemMedia >= 30 ? "success" : "warning",
+            description: "Lucro sobre custo",
+          },
+        ]
+      : []),
     {
       label: "Abaixo do Mínimo",
       value: stats.produtosAbaixoMinimo,

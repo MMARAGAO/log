@@ -452,6 +452,7 @@ export default function EstoquePage() {
   const canEditEstoque = !!permEstoque?.editar_estoque;
   const canDeleteEstoque = !!permEstoque?.deletar_estoque;
   const canVerEstatisticasEstoque = !!permEstoque?.ver_estatisticas_estoque;
+  const canVerPrecoCusto = !!permEstoque?.ver_preco_custo;
 
   // Carregar lojas
   async function loadLojas() {
@@ -1174,6 +1175,18 @@ export default function EstoquePage() {
     setShowHistoricoModal(true);
 
     try {
+      console.log("🔍 Carregando histórico para produto:", produto.descricao);
+      console.log("📊 Estoque atual do produto:", {
+        id: produto.id,
+        descricao: produto.descricao,
+        quantidade_total: produto.quantidade_total,
+        estoque_lojas: produto.estoque_lojas?.map((el) => ({
+          loja_id: el.loja_id,
+          loja_nome: lojas.find((l) => l.id === el.loja_id)?.nome,
+          quantidade: el.quantidade,
+        })),
+      });
+
       const historico = await fetchTable("estoque_historico");
 
       // Filtrar histórico por produto e ordenar por data (mais recente primeiro)
@@ -1190,6 +1203,7 @@ export default function EstoquePage() {
         historicoFiltrado.length,
         "registros"
       );
+      console.log("📋 Detalhes do histórico:", historicoFiltrado);
     } catch (error) {
       console.error("❌ Erro ao carregar histórico:", error);
       alert("Erro ao carregar histórico de alterações!");
@@ -1480,7 +1494,10 @@ export default function EstoquePage() {
 
       {/* Estatísticas */}
       {canVerEstatisticasEstoque && (
-        <EstoqueStats produtos={filteredAndSortedEstoque} />
+        <EstoqueStats
+          produtos={filteredAndSortedEstoque}
+          canVerPrecoCusto={canVerPrecoCusto}
+        />
       )}
 
       {/* Busca e Filtros */}
@@ -1628,36 +1645,40 @@ export default function EstoquePage() {
                   </div>
                 </div>
 
-                {/* Preço de Compra */}
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Preço de Compra</label>
-                  <div className="flex gap-2">
-                    <Input
-                      size="sm"
-                      placeholder="Min"
-                      value={filters.minPrecoCompra}
-                      onChange={(e) => {
-                        const masked = currencyMask(e.target.value);
-                        setFilters((prev) => ({
-                          ...prev,
-                          minPrecoCompra: masked,
-                        }));
-                      }}
-                    />
-                    <Input
-                      size="sm"
-                      placeholder="Max"
-                      value={filters.maxPrecoCompra}
-                      onChange={(e) => {
-                        const masked = currencyMask(e.target.value);
-                        setFilters((prev) => ({
-                          ...prev,
-                          maxPrecoCompra: masked,
-                        }));
-                      }}
-                    />
+                {/* Preço de Compra - só mostra se tiver permissão */}
+                {canVerPrecoCusto && (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">
+                      Preço de Compra
+                    </label>
+                    <div className="flex gap-2">
+                      <Input
+                        size="sm"
+                        placeholder="Min"
+                        value={filters.minPrecoCompra}
+                        onChange={(e) => {
+                          const masked = currencyMask(e.target.value);
+                          setFilters((prev) => ({
+                            ...prev,
+                            minPrecoCompra: masked,
+                          }));
+                        }}
+                      />
+                      <Input
+                        size="sm"
+                        placeholder="Max"
+                        value={filters.maxPrecoCompra}
+                        onChange={(e) => {
+                          const masked = currencyMask(e.target.value);
+                          setFilters((prev) => ({
+                            ...prev,
+                            maxPrecoCompra: masked,
+                          }));
+                        }}
+                      />
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* Preço de Venda */}
                 <div className="space-y-2">
@@ -1798,6 +1819,7 @@ export default function EstoquePage() {
                   onViewHistory={carregarHistorico}
                   canEdit={canEditEstoque}
                   canDelete={canDeleteEstoque}
+                  canVerPrecoCusto={canVerPrecoCusto}
                 />
               ))}
 
@@ -1835,9 +1857,9 @@ export default function EstoquePage() {
                     <th className="py-2 pr-3">Marca</th>
                     <th className="py-2 pr-3">Modelo</th>
                     <th className="py-2 pr-3">Quantidade</th>
-                    <th className="py-2 pr-3">Compra</th>
+                    {canVerPrecoCusto && <th className="py-2 pr-3">Compra</th>}
                     <th className="py-2 pr-3">Venda</th>
-                    <th className="py-2 pr-3">Lucro</th>
+                    {canVerPrecoCusto && <th className="py-2 pr-3">Lucro</th>}
                     <th className="py-2 pr-3">Ações</th>
                   </tr>
                 </thead>
@@ -1877,24 +1899,28 @@ export default function EstoquePage() {
                         <td className="py-2 pr-3">{item.marca || "-"}</td>
                         <td className="py-2 pr-3">{item.modelo || "-"}</td>
                         <td className="py-2 pr-3">{quantidade}</td>
-                        <td className="py-2 pr-3">
-                          {compra.toLocaleString("pt-BR", {
-                            style: "currency",
-                            currency: "BRL",
-                          })}
-                        </td>
+                        {canVerPrecoCusto && (
+                          <td className="py-2 pr-3">
+                            {compra.toLocaleString("pt-BR", {
+                              style: "currency",
+                              currency: "BRL",
+                            })}
+                          </td>
+                        )}
                         <td className="py-2 pr-3">
                           {venda.toLocaleString("pt-BR", {
                             style: "currency",
                             currency: "BRL",
                           })}
                         </td>
-                        <td className="py-2 pr-3">
-                          {lucro.toLocaleString("pt-BR", {
-                            style: "currency",
-                            currency: "BRL",
-                          })}
-                        </td>
+                        {canVerPrecoCusto && (
+                          <td className="py-2 pr-3">
+                            {lucro.toLocaleString("pt-BR", {
+                              style: "currency",
+                              currency: "BRL",
+                            })}
+                          </td>
+                        )}
                         <td className="py-2 pr-3">
                           <div className="flex gap-2">
                             <Button
@@ -2052,19 +2078,23 @@ export default function EstoquePage() {
                 </div>
 
                 {/* Preços */}
-                <div className="grid grid-cols-2 gap-4">
-                  <Input
-                    label="Preço de Compra"
-                    placeholder="R$ 0,00"
-                    value={numberToCurrencyInput(formData.preco_compra || 0)}
-                    onChange={(e) => {
-                      const masked = currencyMask(e.target.value);
-                      setFormData({
-                        ...formData,
-                        preco_compra: currencyToNumber(masked),
-                      });
-                    }}
-                  />
+                <div
+                  className={`grid ${canVerPrecoCusto ? "grid-cols-2" : "grid-cols-1"} gap-4`}
+                >
+                  {canVerPrecoCusto && (
+                    <Input
+                      label="Preço de Compra"
+                      placeholder="R$ 0,00"
+                      value={numberToCurrencyInput(formData.preco_compra || 0)}
+                      onChange={(e) => {
+                        const masked = currencyMask(e.target.value);
+                        setFormData({
+                          ...formData,
+                          preco_compra: currencyToNumber(masked),
+                        });
+                      }}
+                    />
+                  )}
                   <Input
                     label="Preço de Venda"
                     placeholder="R$ 0,00"
@@ -2257,79 +2287,129 @@ export default function EstoquePage() {
                 <p>Nenhuma alteração registrada para este produto</p>
               </div>
             ) : (
-              <div className="space-y-3">
-                {historicoEstoque.map((hist) => {
-                  const loja = lojas.find((l) => l.id === hist.loja_id);
-                  const isPositive = hist.quantidade_alterada > 0;
-                  const dataFormatada = new Date(
-                    hist.created_at
-                  ).toLocaleString("pt-BR", {
-                    day: "2-digit",
-                    month: "2-digit",
-                    year: "numeric",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  });
+              <>
+                {/* Estoque Atual por Loja */}
+                {produtoHistorico && produtoHistorico.estoque_lojas && (
+                  <Card className="mb-4 bg-primary-50 border-2 border-primary-200">
+                    <CardBody>
+                      <h3 className="text-sm font-bold text-primary-800 mb-2">
+                        📊 Estoque Atual
+                      </h3>
+                      {produtoHistorico.estoque_lojas.length === 0 ? (
+                        <p className="text-sm text-warning-600">
+                          ⚠️ Nenhum estoque registrado atualmente (quantidade
+                          zerada em todas as lojas)
+                        </p>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-2">
+                          {produtoHistorico.estoque_lojas.map((el) => {
+                            const loja = lojas.find((l) => l.id === el.loja_id);
+                            return (
+                              <div
+                                key={el.id}
+                                className="flex justify-between items-center p-2 bg-white rounded"
+                              >
+                                <span className="text-sm font-medium">
+                                  {loja?.nome || `Loja ${el.loja_id}`}:
+                                </span>
+                                <Chip
+                                  size="sm"
+                                  color={
+                                    Number(el.quantidade) > 0
+                                      ? "success"
+                                      : "default"
+                                  }
+                                  variant="flat"
+                                >
+                                  {el.quantidade} un
+                                </Chip>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                      <p className="text-xs text-default-500 mt-2">
+                        Total: {produtoHistorico.quantidade_total || 0} unidades
+                      </p>
+                    </CardBody>
+                  </Card>
+                )}
 
-                  // Mapear tipos de operação para labels em português
-                  const tipoOperacaoLabel: Record<string, string> = {
-                    ajuste_manual: "Ajuste Manual",
-                    venda: "Venda",
-                    devolucao: "Devolução",
-                    transferencia: "Transferência",
-                    entrada_estoque: "Entrada de Estoque",
-                  };
+                {/* Histórico de Alterações */}
+                <div className="space-y-3">
+                  {historicoEstoque.map((hist) => {
+                    const loja = lojas.find((l) => l.id === hist.loja_id);
+                    const isPositive = hist.quantidade_alterada > 0;
+                    const dataFormatada = new Date(
+                      hist.created_at
+                    ).toLocaleString("pt-BR", {
+                      day: "2-digit",
+                      month: "2-digit",
+                      year: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    });
 
-                  return (
-                    <Card key={hist.id} className="p-4">
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex-1 space-y-2">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <Chip
-                              size="sm"
-                              color={isPositive ? "success" : "danger"}
-                              variant="flat"
-                            >
-                              {isPositive ? "+" : ""}
-                              {hist.quantidade_alterada}
-                            </Chip>
-                            <Chip size="sm" variant="flat" color="primary">
-                              {tipoOperacaoLabel[hist.tipo_operacao] ||
-                                hist.tipo_operacao}
-                            </Chip>
-                            {loja && (
-                              <Chip size="sm" variant="flat">
-                                {loja.nome}
+                    // Mapear tipos de operação para labels em português
+                    const tipoOperacaoLabel: Record<string, string> = {
+                      ajuste_manual: "Ajuste Manual",
+                      venda: "Venda",
+                      devolucao: "Devolução",
+                      transferencia: "Transferência",
+                      entrada_estoque: "Entrada de Estoque",
+                    };
+
+                    return (
+                      <Card key={hist.id} className="p-4">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1 space-y-2">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <Chip
+                                size="sm"
+                                color={isPositive ? "success" : "danger"}
+                                variant="flat"
+                              >
+                                {isPositive ? "+" : ""}
+                                {hist.quantidade_alterada}
                               </Chip>
+                              <Chip size="sm" variant="flat" color="primary">
+                                {tipoOperacaoLabel[hist.tipo_operacao] ||
+                                  hist.tipo_operacao}
+                              </Chip>
+                              {loja && (
+                                <Chip size="sm" variant="flat">
+                                  {loja.nome}
+                                </Chip>
+                              )}
+                            </div>
+
+                            <div className="text-sm">
+                              <p className="text-default-600">
+                                <span className="font-medium">Quantidade:</span>{" "}
+                                {hist.quantidade_anterior} →{" "}
+                                {hist.quantidade_nova}
+                              </p>
+                              <p className="text-default-600">
+                                <span className="font-medium">Por:</span>{" "}
+                                {hist.usuario_nome || "Sistema"}
+                              </p>
+                              <p className="text-default-400 text-xs mt-1">
+                                {dataFormatada}
+                              </p>
+                            </div>
+
+                            {hist.observacao && (
+                              <p className="text-sm text-default-500 italic mt-2">
+                                {hist.observacao}
+                              </p>
                             )}
                           </div>
-
-                          <div className="text-sm">
-                            <p className="text-default-600">
-                              <span className="font-medium">Quantidade:</span>{" "}
-                              {hist.quantidade_anterior} →{" "}
-                              {hist.quantidade_nova}
-                            </p>
-                            <p className="text-default-600">
-                              <span className="font-medium">Por:</span>{" "}
-                              {hist.usuario_nome || "Sistema"}
-                            </p>
-                            <p className="text-default-400 text-xs mt-1">
-                              {dataFormatada}
-                            </p>
-                          </div>
-
-                          {hist.observacao && (
-                            <p className="text-sm text-default-500 italic mt-2">
-                              {hist.observacao}
-                            </p>
-                          )}
                         </div>
-                      </div>
-                    </Card>
-                  );
-                })}
-              </div>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </>
             )}
           </ModalBody>
           <ModalFooter>

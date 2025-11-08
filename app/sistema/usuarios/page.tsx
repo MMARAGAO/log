@@ -132,6 +132,7 @@ export default function UsuariosPage() {
           editar_estoque: false,
           deletar_estoque: false,
           ver_estatisticas_estoque: false,
+          ver_preco_custo: false,
         },
         fornecedores: {
           criar_fornecedores: false,

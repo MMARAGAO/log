@@ -693,19 +693,9 @@ export default function TransferenciasPage() {
         }
         console.log("✅ Todos os itens criados!");
 
-        console.log("\n🔄 Recarregando estoque...");
+        console.log("\n🔄 Recarregando estoque e transferências...");
         await loadEstoque();
-
-        // Verificar quantidade DEPOIS de recarregar
-        console.log("\n📊 QUANTIDADE DEPOIS DE RECARREGAR:");
-        for (const item of formData.itens || []) {
-          const quantidadeDepois = getQuantidadeLoja(
-            item.produto_id,
-            formData.loja_origem_id!
-          );
-          const produto = estoque.find((p) => p.id === item.produto_id);
-          console.log(`   ${produto?.descricao}: ${quantidadeDepois}`);
-        }
+        await loadTransferencias();
 
         console.log("\n✅ Transferência criada com sucesso!");
         showAlert(
@@ -713,7 +703,6 @@ export default function TransferenciasPage() {
           "Transferência Criada!",
           "Transferência criada com sucesso! Status: PENDENTE (o estoque não foi alterado ainda)"
         );
-        await loadTransferencias();
         setViewMode("list");
         clearForm();
       } else {
@@ -776,11 +765,21 @@ export default function TransferenciasPage() {
         console.log(`   Produto: ${produto.descricao} (ID: ${produto.id})`);
         console.log(`   Quantidade a transferir: ${item.quantidade}`);
 
-        // Diminuir quantidade da loja origem
-        const quantidadeOrigem = getQuantidadeLoja(
-          produto.id,
-          transferencia.loja_origem_id
-        );
+        // ✅ CORREÇÃO: Buscar quantidade diretamente do banco ao invés de usar o estado
+        const { data: estoqueOrigem, error: erroOrigem } = await supabase
+          .from("estoque_lojas")
+          .select("quantidade")
+          .eq("produto_id", produto.id)
+          .eq("loja_id", transferencia.loja_origem_id)
+          .single();
+
+        if (erroOrigem && erroOrigem.code !== "PGRST116") {
+          throw new Error(
+            `Erro ao buscar estoque de origem: ${erroOrigem.message}`
+          );
+        }
+
+        const quantidadeOrigem = Number(estoqueOrigem?.quantidade) || 0;
         console.log(`   Quantidade na origem: ${quantidadeOrigem}`);
 
         if (quantidadeOrigem < item.quantidade) {
@@ -798,15 +797,21 @@ export default function TransferenciasPage() {
           novaQuantidadeOrigem
         );
 
-        // Recarregar estoque para obter valores atualizados
-        console.log("🔄 Recarregando estoque após atualizar origem...");
-        await loadEstoque();
+        // Buscar quantidade do destino diretamente do banco
+        const { data: estoqueDestino, error: erroDestino } = await supabase
+          .from("estoque_lojas")
+          .select("quantidade")
+          .eq("produto_id", produto.id)
+          .eq("loja_id", transferencia.loja_destino_id)
+          .single();
 
-        // Aumentar quantidade da loja destino
-        const quantidadeDestino = getQuantidadeLoja(
-          produto.id,
-          transferencia.loja_destino_id
-        );
+        if (erroDestino && erroDestino.code !== "PGRST116") {
+          throw new Error(
+            `Erro ao buscar estoque de destino: ${erroDestino.message}`
+          );
+        }
+
+        const quantidadeDestino = Number(estoqueDestino?.quantidade) || 0;
         console.log(`   Quantidade no destino: ${quantidadeDestino}`);
 
         const novaQuantidadeDestino = quantidadeDestino + item.quantidade;
@@ -817,10 +822,6 @@ export default function TransferenciasPage() {
           transferencia.loja_destino_id,
           novaQuantidadeDestino
         );
-
-        // Recarregar estoque após atualizar destino
-        console.log("🔄 Recarregando estoque após atualizar destino...");
-        await loadEstoque();
 
         console.log(`✅ Item ${i + 1} processado com sucesso!`);
       }
@@ -919,11 +920,21 @@ export default function TransferenciasPage() {
           console.log(`   Produto: ${produto.descricao} (ID: ${produto.id})`);
           console.log(`   Quantidade a reverter: ${item.quantidade}`);
 
-          // Devolver quantidade para a loja ORIGEM
-          const quantidadeOrigem = getQuantidadeLoja(
-            produto.id,
-            transferencia.loja_origem_id
-          );
+          // ✅ CORREÇÃO: Buscar quantidade diretamente do banco
+          const { data: estoqueOrigem, error: erroOrigem } = await supabase
+            .from("estoque_lojas")
+            .select("quantidade")
+            .eq("produto_id", produto.id)
+            .eq("loja_id", transferencia.loja_origem_id)
+            .single();
+
+          if (erroOrigem && erroOrigem.code !== "PGRST116") {
+            throw new Error(
+              `Erro ao buscar estoque de origem: ${erroOrigem.message}`
+            );
+          }
+
+          const quantidadeOrigem = Number(estoqueOrigem?.quantidade) || 0;
           console.log(`   Quantidade atual na origem: ${quantidadeOrigem}`);
 
           const novaQuantidadeOrigem = quantidadeOrigem + item.quantidade;
@@ -935,15 +946,21 @@ export default function TransferenciasPage() {
             novaQuantidadeOrigem
           );
 
-          // Recarregar estoque para obter valores atualizados
-          console.log("🔄 Recarregando estoque após devolver para origem...");
-          await loadEstoque();
+          // Buscar quantidade do destino diretamente do banco
+          const { data: estoqueDestino, error: erroDestino } = await supabase
+            .from("estoque_lojas")
+            .select("quantidade")
+            .eq("produto_id", produto.id)
+            .eq("loja_id", transferencia.loja_destino_id)
+            .single();
 
-          // Retirar quantidade da loja DESTINO
-          const quantidadeDestino = getQuantidadeLoja(
-            produto.id,
-            transferencia.loja_destino_id
-          );
+          if (erroDestino && erroDestino.code !== "PGRST116") {
+            throw new Error(
+              `Erro ao buscar estoque de destino: ${erroDestino.message}`
+            );
+          }
+
+          const quantidadeDestino = Number(estoqueDestino?.quantidade) || 0;
           console.log(`   Quantidade atual no destino: ${quantidadeDestino}`);
 
           if (quantidadeDestino < item.quantidade) {
@@ -961,10 +978,6 @@ export default function TransferenciasPage() {
             transferencia.loja_destino_id,
             novaQuantidadeDestino
           );
-
-          // Recarregar estoque após retirar do destino
-          console.log("🔄 Recarregando estoque após retirar do destino...");
-          await loadEstoque();
 
           console.log(`✅ Item ${i + 1} revertido com sucesso!`);
         }
